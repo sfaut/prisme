@@ -6,9 +6,10 @@
  * received since the last one, in blocks, with a pause between two blocks so that the page keeps
  * answering; `end` copies the last ones, once the result is complete. A table, a list of values or
  * a window waits for the copy of the rows the result held when it was asked, and is computed on
- * them: a table asked again after new rows adds them to its state. The filter of the grid is
- * applied in the page, to the rows copied so far, then to each block. Closing the client stops the
- * Worker, and with it the memory of its module.
+ * them: a table asked again after new rows adds them to its state. A table comes with the window of
+ * the area the page draws, so that its values replace those of the previous table at once. The
+ * filter of the grid is applied in the page, to the rows copied so far, then to each block. Closing
+ * the client stops the Worker, and with it the memory of its module.
  */
 
 import { toRaw } from 'vue'
@@ -19,6 +20,7 @@ import type { Cell, QueryResult } from '@/api/querySession'
 
 import {
   type PivotAnswer,
+  type PivotArea,
   type PivotFailure,
   type PivotLayout,
   type PivotOrder,
@@ -68,6 +70,24 @@ export interface PivotWorkerPort {
 }
 
 /**
+ * Window read with a table: its first line, its first column of values, and its content.
+ */
+export interface PivotTableWindow {
+  /**
+   * First line of the window.
+   */
+  firstLine: number
+  /**
+   * First column of values of the window.
+   */
+  firstColumn: number
+  /**
+   * Content of the window.
+   */
+  content: PivotWindow
+}
+
+/**
  * Table computed by the Worker.
  */
 export interface PivotTable {
@@ -97,6 +117,10 @@ export interface PivotTable {
    * those received when it was asked.
    */
   received: number
+  /**
+   * Window of the area asked with the table, `null` without one.
+   */
+  window: PivotTableWindow | null
 }
 
 /**
@@ -345,6 +369,7 @@ export class PivotClient {
    * @param order Order of its lines and of its columns.
    * @param layout Form of its lines and totals shown.
    * @param targets Columns of values named by their values, whose positions the table gives.
+   * @param area Area drawn by the page, whose window comes with the table; `null` for none.
    * @throws {PivotError} If the engine refuses it, or refused a block.
    */
   async compute(
@@ -352,17 +377,30 @@ export class PivotClient {
     order: PivotOrder = LABEL_ORDER,
     layout: PivotLayout = FIRST_LAYOUT,
     targets: PivotValueTarget[] = [],
+    area: PivotArea | null = null,
   ): Promise<PivotTable> {
     await this.copy
     // The Worker takes in every row sent before the table.
     const received = this.sent
     const id = this.nextId++
-    const answer = await this.ask({ type: 'compute', id, request, order, layout, targets })
+    const answer = await this.ask({
+      type: 'compute',
+      id,
+      request,
+      order,
+      layout,
+      targets,
+      ...(area === null ? {} : { area }),
+    })
     if (answer.type !== 'table') {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)
     }
     const { shape, positions, lengths, durationMs } = answer
-    return { id, shape, positions, lengths, durationMs, received }
+    const window =
+      area === null || answer.window === null
+        ? null
+        : { firstLine: area.lines[0], firstColumn: area.columns[0], content: answer.window }
+    return { id, shape, positions, lengths, durationMs, received, window }
   }
 
   /**

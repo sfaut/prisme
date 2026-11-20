@@ -8,6 +8,7 @@ import type { TypeFamily } from '@/api/generated/TypeFamily'
 import type { Cell } from '@/api/querySession'
 
 import {
+  type PivotArea,
   type PivotOrder,
   type PivotRequest,
   type PivotRequestFilter,
@@ -825,6 +826,19 @@ describe('answerMessage', () => {
       shape: { lines: 1, columns: 1 },
       positions: [0],
       lengths: { labels: [0] },
+      window: null,
+    })
+    // The table comes with the window of the area drawn, bounded by the table.
+    const area = { lines: [0, 50], columns: [0, 8] } as PivotArea
+    expect(
+      answerMessage(state, { type: 'compute', id: 2, request, order, layout, targets, area }),
+    ).toMatchObject({
+      type: 'table',
+      window: {
+        lines: [{ depth: 0, label: null, path: [], shared: 0 }],
+        columns: [{ node: 0, path: [], total: false, measure: 0 }],
+        cells: [['10']],
+      },
     })
     expect(
       answerMessage(state, {

@@ -10,7 +10,6 @@ import {
   labelCells,
   labelColumnCount,
   lineLabel,
-  sameLayout,
   sortMark,
 } from '../pivotLayout'
 
@@ -196,17 +195,6 @@ describe('sortMark', () => {
     expect(sortMark(false)).toBe('▲')
     expect(sortMark(true)).toBe('▼')
     expect(sortMark(null)).toBe('⇅')
-  })
-})
-
-describe('sameLayout', () => {
-  it('compares the room of two tables, whatever their groups and their rows', () => {
-    const shape = { lines: 3, columns: 2, rowLevels: 1, columnLevels: 1, groups: 4, rows: 9 }
-    expect(sameLayout(shape, { ...shape, groups: 1, rows: 1 })).toBe(true)
-    expect(sameLayout(shape, { ...shape, lines: 4 })).toBe(false)
-    expect(sameLayout(shape, { ...shape, columns: 3 })).toBe(false)
-    expect(sameLayout(shape, { ...shape, rowLevels: 2 })).toBe(false)
-    expect(sameLayout(shape, { ...shape, columnLevels: 0 })).toBe(false)
   })
 })
 

@@ -379,6 +379,20 @@ export interface PivotWindow {
 }
 
 /**
+ * Area of a table: lines and columns of values, start included, end excluded.
+ */
+export interface PivotArea {
+  /**
+   * Lines of the area.
+   */
+  lines: [number, number]
+  /**
+   * Columns of values of the area.
+   */
+  columns: [number, number]
+}
+
+/**
  * Lengths of the texts of the columns of values of a table, in characters, one number per column
  * in each list: what their default widths fit (`defaultSteps` in `pivotWidths.ts`).
  */
@@ -491,6 +505,11 @@ export type PivotRequestMessage =
        * Columns of values named by their values, whose position in the table the answer gives.
        */
       targets: PivotValueTarget[]
+      /**
+       * Area drawn by the page, whose window the answer gives, bounded by the table: the table
+       * and its values are drawn at once. None while no table is drawn.
+       */
+      area?: PivotArea
     }
   | {
       /**
@@ -526,6 +545,10 @@ export type PivotAnswer =
       positions: (number | null)[]
       lengths: PivotTextLengths
       durationMs: number
+      /**
+       * Window of the area asked with the table, `null` without one.
+       */
+      window: PivotWindow | null
     }
   | { type: 'window'; id: number; window: PivotWindow }
   | { type: 'values'; id: number; values: Cell[] }
@@ -1219,7 +1242,9 @@ export function answerMessage(
         const lengths = state.engine.textLengths()
         state.table = message.id
         const durationMs = performance.now() - started
-        return { type: 'table', id: message.id, shape, positions, lengths, durationMs }
+        const { area } = message
+        const window = area ? state.engine.window(area.lines, area.columns) : null
+        return { type: 'table', id: message.id, shape, positions, lengths, durationMs, window }
       }
       case 'window':
         if (message.table !== state.table) {

@@ -80,6 +80,7 @@ async function mountGrid(props: Record<string, unknown> = {}) {
     props: {
       table: 1,
       shape: SHAPE,
+      first: null,
       lengths: LENGTHS,
       measureLabels: ['SUM(montant)'],
       rowNames: ['region'],
@@ -214,35 +215,80 @@ describe('the sort buttons of PivotGrid', () => {
 })
 
 describe('the window of PivotGrid', () => {
-  it('keeps the previous window while a table of the same room is read', async () => {
-    let answer: (window: PivotWindow) => void = () => undefined
+  /**
+   * Window of the table after a new region, Sud, came in: a line more.
+   */
+  const GROWN: PivotWindow = {
+    ...WINDOW,
+    lines: [
+      { depth: 1, label: 'Nord', path: ['Nord'], shared: 0 },
+      { depth: 1, label: 'Sud', path: ['Sud'], shared: 0 },
+      { depth: 1, label: null, path: [null], shared: 0 },
+      { depth: 0, label: null, path: [], shared: 0 },
+    ],
+    cells: [
+      ['2', '4', '6'],
+      ['3', '3', '6'],
+      ['4', '5', '9'],
+      ['9', '12', '21'],
+    ],
+  }
+
+  /**
+   * Texts of the cells drawn.
+   *
+   * @param grid Table mounted.
+   */
+  function cells(grid: VueWrapper): string[] {
+    return grid.findAll('.pivot-cell').map((cell) => cell.text())
+  }
+
+  it('gives the panel the area it draws', async () => {
     const grid = await mountGrid()
-    const cells = () => grid.findAll('.pivot-cell').map((cell) => cell.text())
-    expect(cells().slice(0, 3)).toEqual(['1', '2', '3'])
-
-    await grid.setProps({
-      table: 2,
-      read: () => new Promise<PivotWindow>((resolve) => (answer = resolve)),
-    })
-    expect(cells().slice(0, 3)).toEqual(['1', '2', '3'])
-
-    answer({
-      ...WINDOW,
-      cells: [
-        ['4', '5', '9'],
-        ['1', '2', '3'],
-        ['5', '7', '12'],
-      ],
-    })
-    await flushPromises()
-    expect(cells().slice(0, 3)).toEqual(['4', '5', '9'])
+    expect(grid.emitted('drawn')).toEqual([[{ lines: [0, 3], columns: [0, 3] }]])
   })
 
-  it('leaves the previous window when the new table takes another room', async () => {
+  it('shows the window that came with a new table in the same render', async () => {
+    const grid = await mountGrid()
+    const read = vi.fn<() => Promise<PivotWindow>>(() => new Promise(() => undefined))
+    await grid.setProps({
+      table: 2,
+      shape: { ...SHAPE, lines: 4, groups: 6, rows: 14 },
+      first: { firstLine: 0, firstColumn: 0, content: GROWN },
+      read,
+    })
+    expect(cells(grid)).toEqual(GROWN.cells.flat())
+    expect(read).not.toHaveBeenCalled()
+  })
+
+  it('reads the area that the window of a new table does not cover, keeping it drawn', async () => {
+    let answer: (window: PivotWindow) => void = () => undefined
+    const grid = await mountGrid()
+    const read = vi.fn<() => Promise<PivotWindow>>(
+      () => new Promise((resolve) => (answer = resolve)),
+    )
+    await grid.setProps({
+      table: 2,
+      shape: { ...SHAPE, lines: 4, groups: 6, rows: 14 },
+      first: {
+        firstLine: 0,
+        firstColumn: 0,
+        content: { ...GROWN, lines: GROWN.lines.slice(0, 2), cells: GROWN.cells.slice(0, 2) },
+      },
+      read,
+    })
+    expect(cells(grid)).toEqual(GROWN.cells.slice(0, 2).flat())
+    expect(read).toHaveBeenCalledWith([0, 4], [0, 3])
+
+    answer(GROWN)
+    await flushPromises()
+    expect(cells(grid)).toEqual(GROWN.cells.flat())
+  })
+
+  it('never draws the window of another table', async () => {
     const grid = await mountGrid()
     await grid.setProps({
       table: 2,
-      shape: { ...SHAPE, lines: 5 },
       read: () => new Promise<PivotWindow>(() => undefined),
     })
     expect(grid.findAll('.pivot-cell')).toHaveLength(0)

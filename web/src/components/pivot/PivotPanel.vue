@@ -27,7 +27,9 @@
   computes the table again; a filter of the panel leaves the grid as it is
   (F-20); a new name only changes its labels, a sort (C-11, C-13) lays the table
   out again, without computing any aggregate, and a width only draws it again:
-  each table gives the position of the columns given a width. An error of
+  each table gives the position of the columns given a width. A table comes
+  with the window of the area the grid draws (`drawn`): its values replace
+  those of the previous table at once, without a blank. An error of
   calculation empties the table and shows the value in cause with its row; any
   other refusal of the engine shows its message above the table, which keeps its
   last computation (F-22); a Worker that stops is replaced at the next change. A
@@ -78,6 +80,7 @@ import {
   zoneLabels,
 } from './pivotConfig'
 import {
+  type PivotArea,
   type PivotFailure,
   type PivotLayout,
   type PivotOrder,
@@ -352,6 +355,27 @@ const shownTable = shallowRef<{
 } | null>(null)
 
 /**
+ * Area the table shown draws, whose window comes with the next table; `null`
+ * without a table shown.
+ */
+let drawn: PivotArea | null = null
+
+/**
+ * Keeps the area the table shown draws.
+ *
+ * @param area Area drawn.
+ */
+function keepDrawn(area: PivotArea): void {
+  drawn = area
+}
+
+watch(shownTable, (shown) => {
+  if (shown === null) {
+    drawn = null
+  }
+})
+
+/**
  * Message of the last refusal of the engine, `null` without one.
  */
 const failure = ref<string | null>(null)
@@ -514,7 +538,7 @@ async function compute(current: PivotClient): Promise<void> {
   computing.value = true
   lastStart = performance.now()
   try {
-    const table = await current.compute(asked, order.value, arranged, targets)
+    const table = await current.compute(asked, order.value, arranged, targets, drawn)
     if (computation === computations) {
       const positions = new Map(
         targets.flatMap((target, index): [string, number][] => {
@@ -741,6 +765,7 @@ const groupsText = computed(() => {
           v-if="shownTable"
           :table="shownTable.table.id"
           :shape="shownTable.table.shape"
+          :first="shownTable.table.window"
           :lengths="shownTable.table.lengths"
           :measure-labels="tableLabels.measures"
           :row-names="tableLabels.rows"
@@ -757,6 +782,7 @@ const groupsText = computed(() => {
           @sort-values="sortValues"
           @resize-column="resizeColumn"
           @resize-labels="resizeLabels"
+          @drawn="keepDrawn"
         />
         <p
           v-else-if="!hasTable(config)"

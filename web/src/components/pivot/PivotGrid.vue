@@ -36,8 +36,12 @@
   label of a line ranks the columns by its own, by their first measure (C-13).
   The button of a line shows when the pointer is on that line, or when it
   ranks the columns. The panel holds the order (`order`), and computes nothing
-  to lay the table out again. While the new window is read, the previous one
-  stays in place when it fits.
+  to lay the table out again.
+
+  The grid gives the panel the area it draws (`drawn`), and a new table comes
+  with the window of that area (`first`): its values replace those of the
+  previous table in the same render, without a blank between the two. Only
+  an area that the window does not cover is read.
 -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
@@ -45,9 +49,11 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, 
 import type { PivotColumnWidth } from '@/api/generated/PivotColumnWidth'
 import { cssPixels } from '@/utils/cssLength'
 
+import type { PivotTableWindow } from './pivotClient'
 import type { PivotAxis } from './pivotConfig'
 import { sameTarget } from './pivotConfig'
 import type {
+  PivotArea,
   PivotLayout,
   PivotLine,
   PivotOrder,
@@ -64,7 +70,6 @@ import {
   headerRowCount,
   labelCells,
   labelColumnCount,
-  sameLayout,
   sortMark,
 } from './pivotLayout'
 import {
@@ -94,6 +99,10 @@ const props = defineProps<{
    * Shape of the table.
    */
   shape: PivotShape
+  /**
+   * Window that came with the table, that of the area drawn when it was asked; `null` without one.
+   */
+  first: PivotTableWindow | null
   /**
    * Lengths of the texts of its columns of values, which their default widths fit.
    */
@@ -167,6 +176,10 @@ const emit = defineEmits<{
    * single column.
    */
   resizeLabels: [level: number | null, width: number | null]
+  /**
+   * The grid draws another area: the window of the next table is that of this area.
+   */
+  drawn: [area: PivotArea]
 }>()
 
 /**
@@ -449,31 +462,15 @@ const drawnColumns = computed(() =>
 /**
  * Window shown: its table, its lines and columns, and its content.
  */
-interface ShownWindow {
+interface ShownWindow extends PivotTableWindow {
   /**
    * Id of the table.
    */
   table: number
   /**
-   * Shape of the table.
-   */
-  shape: PivotShape
-  /**
    * Number of the reading that gave it, which keeps the latest one.
    */
   reading: number
-  /**
-   * First line of the window.
-   */
-  firstLine: number
-  /**
-   * First column of the window.
-   */
-  firstColumn: number
-  /**
-   * Content of the window.
-   */
-  content: PivotWindow
 }
 
 const shown = shallowRef<ShownWindow | null>(null)
@@ -483,12 +480,24 @@ const shown = shallowRef<ShownWindow | null>(null)
  */
 let readings = 0
 
-// The table or the drawn area changes: the window that covers it is read,
-// unless the window shown covers it already. The answers come in order;
-// the latest one of the table shown is kept.
+// The panel asks the next table with the window of the area drawn.
+watch(
+  [drawnLines, drawnColumns],
+  ([lines, columns]) =>
+    emit('drawn', { lines: [lines.start, lines.end], columns: [columns.start, columns.end] }),
+  { immediate: true },
+)
+
+// The table or the drawn area changes: a new table shows the window that came
+// with it, in the same render; then the window that covers the area is read,
+// unless the window shown covers it already. The answers come in order; the
+// latest one of the table shown is kept.
 watch(
   [() => props.table, drawnLines, drawnColumns],
   ([table, lines, columns]) => {
+    if (shown.value?.table !== table && props.first !== null) {
+      shown.value = { ...props.first, table, reading: ++readings }
+    }
     const current = shown.value
     if (
       current !== null &&
@@ -511,7 +520,6 @@ watch(
         ) {
           shown.value = {
             table,
-            shape: props.shape,
             reading,
             firstLine: lines.start,
             firstColumn: columns.start,
@@ -527,15 +535,9 @@ watch(
 )
 
 /**
- * Window to draw: that of the table shown, or, while it is read, that of the
- * previous table when it takes the same room.
+ * Window to draw: that of the table shown.
  */
-const content = computed(() => {
-  const window = shown.value
-  return window !== null && (window.table === props.table || sameLayout(window.shape, props.shape))
-    ? window
-    : null
-})
+const content = computed(() => (shown.value?.table === props.table ? shown.value : null))
 
 /**
  * Position in the table of the first column of the window drawn.

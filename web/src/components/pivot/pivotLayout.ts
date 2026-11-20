@@ -13,7 +13,7 @@
 import type { PivotForm } from '@/api/generated/PivotForm'
 import type { Cell } from '@/api/querySession'
 
-import type { PivotColumn, PivotLine, PivotShape, PivotValueTarget } from './pivotEngine'
+import type { PivotColumn, PivotLine, PivotValueTarget } from './pivotEngine'
 import { NULL_TEXT } from '@/components/result/resultGrid'
 
 /**
@@ -215,22 +215,6 @@ export function sortMark(descending: boolean | null): string {
     return '⇅'
   }
   return descending ? '▼' : '▲'
-}
-
-/**
- * Do two tables take the same room? A window of one can stand in for a window of the other while
- * it is read: a sort does not blink.
- *
- * @param a Shape of a table.
- * @param b Shape of another table.
- */
-export function sameLayout(a: PivotShape, b: PivotShape): boolean {
-  return (
-    a.lines === b.lines &&
-    a.columns === b.columns &&
-    a.rowLevels === b.rowLevels &&
-    a.columnLevels === b.columnLevels
-  )
 }
 
 /**
