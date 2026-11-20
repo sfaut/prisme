@@ -4,6 +4,9 @@
   back the default label. Used by the editor and result tabs. The field
   keeps the size of the label's text, and its width follows the name typed,
   within the tab: renaming moves neither the text nor the tab's height.
+  The field is 6 steps high, one step under each edge of the tab, so that
+  its focus ring stays inside the tab list, which scrolls and clips what
+  goes beyond it.
 -->
 <script setup lang="ts">
 import { nextTick, ref, useTemplateRef } from 'vue'
@@ -67,7 +70,7 @@ function commit(): void {
     ref="input"
     v-model="draft"
     aria-label="Nom de l'onglet"
-    class="field-sizing-content h-7 max-w-full min-w-24 rounded-lg border border-line bg-surface px-1 text-base text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary/60"
+    class="field-sizing-content h-6 max-w-full min-w-24 rounded-lg border border-line bg-surface px-1 text-base text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary/60"
     @blur="commit"
     @keydown.stop
     @keydown.enter.prevent="commit"
