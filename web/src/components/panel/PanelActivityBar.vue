@@ -5,7 +5,8 @@
   (editor, results, Pivoteur); then the data explorer and the console. A
   closed panel leaves no trace in the tab: its button, released, is the way
   back. A pressed button is lit, with a mark of the primary color on the
-  bar's edge. The tooltip says what the click does, with the panel's name.
+  bar's edge. The tooltip, on the right of the button, says what the click
+  does, with the panel's name.
   At the bottom of the bar, a button shares the room again: the open panels
   of the view take equal heights, the side panels and the console their
   default size.
@@ -219,7 +220,7 @@ const BUTTON =
             :class="BUTTON"
             :aria-label="button.label"
             :aria-pressed="button.open"
-            v-tooltip="tooltip(button)"
+            v-tooltip:right="tooltip(button)"
             @click="button.toggle()"
           >
             <component :is="button.icon" class="size-5" aria-hidden="true" />
@@ -231,7 +232,7 @@ const BUTTON =
       type="button"
       :class="BUTTON"
       aria-label="Répartir les volets"
-      v-tooltip="
+      v-tooltip:right="
         `Répartir les volets ouverts : hauteurs égales, largeur par défaut des volets latéraux (${chordLabel(DISTRIBUTE_KEY)})`
       "
       @click="distribute"

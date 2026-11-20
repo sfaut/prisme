@@ -7,6 +7,10 @@
  * component: the directive adds nothing to the DOM nor to the layout, so it
  * fits any element (table cell, grid cell, button, label), and a grid of
  * thousands of cells costs one attribute per cell.
+ *
+ * The bubble shows above its element; `v-tooltip:right` puts it on the
+ * right, for an element on the left edge of the window (activity bar), whose
+ * neighbours above and below share the same kind of tooltip.
  */
 
 import { type Directive, reactive } from 'vue'
@@ -17,17 +21,43 @@ import { type Directive, reactive } from 'vue'
 export const TOOLTIP_ATTRIBUTE = 'data-tooltip'
 
 /**
+ * Attribute that holds the side of an element's tooltip, when it is not the
+ * top.
+ */
+export const TOOLTIP_SIDE_ATTRIBUTE = 'data-tooltip-side'
+
+/**
+ * Side of the element where the bubble shows.
+ */
+export type TooltipSide = 'top' | 'right'
+
+/**
+ * Side of an element's tooltip.
+ *
+ * @param element Element of the tooltip.
+ */
+export function tooltipSideOf(element: HTMLElement): TooltipSide {
+  return element.getAttribute(TOOLTIP_SIDE_ATTRIBUTE) === 'right' ? 'right' : 'top'
+}
+
+/**
  * Characters of a tooltip at most: a cell can hold a whole document, the
  * bubble only shows its beginning.
  */
 const MAX_LENGTH = 1000
 
 /**
- * Element whose tooltip is shown, `null` when none is, and its text.
+ * Element whose tooltip is shown, `null` when none is, its text and its
+ * side.
  */
-export const shownTooltip = reactive<{ element: HTMLElement | null; text: string }>({
+export const shownTooltip = reactive<{
+  element: HTMLElement | null
+  text: string
+  side: TooltipSide
+}>({
   element: null,
   text: '',
+  side: 'top',
 })
 
 /**
@@ -35,13 +65,19 @@ export const shownTooltip = reactive<{ element: HTMLElement | null; text: string
  *
  * @param element Element of the tooltip.
  * @param text Text of the tooltip; empty or absent, no tooltip.
+ * @param side Side of the bubble, `right` or the top when absent.
  */
-function mark(element: HTMLElement, text: string | null | undefined): void {
+function mark(element: HTMLElement, text: string | null | undefined, side?: string): void {
   const shown = text ? (text.length > MAX_LENGTH ? `${text.slice(0, MAX_LENGTH)}…` : text) : ''
   if (shown === '') {
     element.removeAttribute(TOOLTIP_ATTRIBUTE)
   } else {
     element.setAttribute(TOOLTIP_ATTRIBUTE, shown)
+  }
+  if (side === 'right') {
+    element.setAttribute(TOOLTIP_SIDE_ATTRIBUTE, side)
+  } else {
+    element.removeAttribute(TOOLTIP_SIDE_ATTRIBUTE)
   }
   if (shownTooltip.element === element) {
     shownTooltip.text = shown
@@ -52,13 +88,13 @@ function mark(element: HTMLElement, text: string | null | undefined): void {
 }
 
 /**
- * `v-tooltip="text"`: tooltip of the element, empty or absent for none. A
- * text that changes while it shows (a button that turns into a stop button)
- * changes in the bubble too.
+ * `v-tooltip="text"`: tooltip of the element, empty or absent for none, above
+ * it; `v-tooltip:right="text"`, on its right. A text that changes while it
+ * shows (a button that turns into a stop button) changes in the bubble too.
  */
 export const vTooltip: Directive<HTMLElement, string | null | undefined> = {
-  mounted: (element, { value }) => mark(element, value),
-  updated: (element, { value }) => mark(element, value),
+  mounted: (element, { value, arg }) => mark(element, value, arg),
+  updated: (element, { value, arg }) => mark(element, value, arg),
   beforeUnmount: (element) => {
     if (shownTooltip.element === element) {
       shownTooltip.element = null

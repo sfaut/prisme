@@ -4,7 +4,9 @@
   element under the pointer, after a short hover, or to the element that
   takes the keyboard focus. A short text in a small font on a dark
   background, above its element, so that the pointer does not hide it;
-  under it when there is no room above.
+  under it when there is no room above. On the right of its element for a
+  tooltip given on that side (`v-tooltip:right`, `data-tooltip-side`), on
+  its left when there is no room on the right.
 
   Built on the browser's own tools: the `popover` attribute (`hint`: shows in
   the top layer, over the windows, and closes with Escape) and the anchor
@@ -14,7 +16,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
 
-import { TOOLTIP_ATTRIBUTE, shownTooltip } from './tooltip'
+import { TOOLTIP_ATTRIBUTE, shownTooltip, tooltipSideOf } from './tooltip'
 
 /**
  * Delay of the hover before the tooltip shows, in milliseconds.
@@ -64,6 +66,7 @@ function schedule(element: HTMLElement | null, delay: number): void {
   timer = setTimeout(
     () => {
       shownTooltip.text = element.getAttribute(TOOLTIP_ATTRIBUTE) ?? ''
+      shownTooltip.side = tooltipSideOf(element)
       shownTooltip.element = element
     },
     shownTooltip.element ? 0 : delay,
@@ -190,7 +193,14 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="bubble" popover="hint" role="tooltip" class="ui-tooltip" @toggle="onToggle">
+  <div
+    ref="bubble"
+    popover="hint"
+    role="tooltip"
+    class="ui-tooltip"
+    :data-side="shownTooltip.side"
+    @toggle="onToggle"
+  >
     {{ shownTooltip.text }}
   </div>
 </template>
@@ -234,6 +244,15 @@ onBeforeUnmount(() => {
 
   &:popover-open {
     display: -webkit-box;
+  }
+
+  /* On the right of its element, centered on it; on its left when there is
+     no room on the right. */
+  &[data-side='right'] {
+    position-area: right;
+    position-try-fallbacks: flip-inline;
+    margin-block: 0;
+    margin-inline: var(--popup-offset);
   }
 }
 </style>
