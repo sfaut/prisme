@@ -3,7 +3,7 @@
   bar of each editor (`EditorView.vue`). Both bars look and behave the same:
 
   - Look: a pill (`tab-pill` in `main.css`, shared with the tabs of the
-    console): the active tab is filled (`surface-strong`), its text darker;
+    console): the active tab is filled (`surface-raised`), its text darker;
     a line sets two inactive tabs apart. The bottom edge of a tab stays free
     for the progress bar of the result tabs.
   - Height: that of a button, its small buttons inside.

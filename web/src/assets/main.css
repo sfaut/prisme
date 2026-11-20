@@ -415,7 +415,7 @@
   }
 
   &[data-state='active'] {
-    background: var(--color-surface-strong);
+    background: var(--color-surface-raised);
     color: var(--color-fg-strong);
   }
 
