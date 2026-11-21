@@ -3,7 +3,8 @@
   page behind no longer scrolls, Escape or a click outside closes it.
 
   Title and description at the top, closing cross, content (default slot)
-  then footer (`footer` slot, for the buttons). On opening, the focus goes
+  then footer (`footer` slot, for the buttons). `wide` gives a wider window
+  of a fixed height, for a window of several sections. On opening, the focus goes
   to the first input field, or failing that to the first button of the
   footer ("Annuler" of a confirmation).
 -->
@@ -30,6 +31,11 @@ defineProps<{
    * Description, under the title.
    */
   description?: string
+  /**
+   * Wide window of a fixed height, for a window of several sections: its
+   * size stays the same from one section to the next.
+   */
+  wide?: boolean
 }>()
 
 /**
@@ -61,7 +67,8 @@ function focusFirst(event: Event): void {
     <dialog-portal>
       <dialog-overlay class="fixed inset-0 z-50 bg-overlay" />
       <dialog-content
-        class="fixed top-1/2 left-1/2 z-50 flex w-[calc(100vw-(--spacing(11)))] max-w-149 -translate-1/2 flex-col gap-4 rounded-xl border border-line bg-surface p-4 text-base shadow-xl"
+        class="fixed top-1/2 left-1/2 z-50 flex w-[calc(100vw-(--spacing(11)))] -translate-1/2 flex-col gap-4 rounded-xl border border-line bg-surface p-4 text-base shadow-xl"
+        :class="wide ? 'h-207 max-h-[calc(100dvh-(--spacing(11)))] max-w-266' : 'max-w-149'"
         :aria-describedby="description ? undefined : ''"
         @open-auto-focus="focusFirst"
       >

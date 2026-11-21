@@ -5,8 +5,8 @@
   main action, filled in the primary color, which opens an editor on the
   connection of the active one (later, a menu: editor or notebook), exports
   manager (`ExportManager`), synchronisation state
-  (`SyncStatus`), theme choice, and the "Options" menu, which opens the
-  settings (row limit, language) and the user's profile.
+  (`SyncStatus`), theme choice, and the account menu, which opens the
+  preferences: the user's profile and the settings (`PreferencesDialog`).
 
   The windows it opens are its own: the menu only chooses which one shows.
 -->
@@ -20,9 +20,8 @@ import { useEditorsStore } from '@/stores/editors'
 import { useProfileStore } from '@/stores/profile'
 
 import ExportManager from './ExportManager.vue'
-import ProfileDialog from './ProfileDialog.vue'
+import PreferencesDialog from './PreferencesDialog.vue'
 import SyncStatus from './SyncStatus.vue'
-import SettingsDialog from './SettingsDialog.vue'
 import UiDropdownMenu from '@/components/ui/UiDropdownMenu.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiChoiceSwitch from '@/components/ui/UiChoiceSwitch.vue'
@@ -63,21 +62,15 @@ const COLOR_MODES: { label: string; value: ColorMode; icon: typeof Monitor }[] =
 ]
 
 /**
- * Settings window open or closed.
+ * Preferences window open or closed.
  */
-const settingsOpen = ref(false)
-
-/**
- * Profile window open or closed.
- */
-const profileOpen = ref(false)
+const preferencesOpen = ref(false)
 
 /**
  * Choices of the account menu, opened from the avatar.
  */
 const menuItems: MenuItem[] = [
-  { label: 'Profil', icon: User, onSelect: () => (profileOpen.value = true) },
-  { label: 'Paramètres', icon: Settings, onSelect: () => (settingsOpen.value = true) },
+  { label: 'Préférences', icon: Settings, onSelect: () => (preferencesOpen.value = true) },
 ]
 </script>
 
@@ -112,7 +105,6 @@ const menuItems: MenuItem[] = [
         </button>
       </ui-dropdown-menu>
     </div>
-    <settings-dialog v-model:open="settingsOpen" />
-    <profile-dialog v-model:open="profileOpen" />
+    <preferences-dialog v-model:open="preferencesOpen" />
   </header>
 </template>
