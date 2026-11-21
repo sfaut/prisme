@@ -121,7 +121,12 @@ onBeforeUnmount(() => group.unregister(entry))
 
 <style scoped>
 .split-panel {
-  overflow: hidden;
+  /* Clipped without being a scroll container, and with room for the
+     focus ring of a field at its edge (the width of the ring, which
+     goes beyond its field by less: Chromium ignores a margin given
+     by a `calc()` holding a product). */
+  overflow: clip;
+  overflow-clip-margin: var(--focus-width);
   transition-property: flex-grow, flex-shrink, flex-basis;
   transition-duration: var(--default-transition-duration);
   transition-timing-function: var(--default-transition-timing-function);
