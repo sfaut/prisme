@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import enginePath from 'virtual:pivot-engine-path'
 import { beforeAll, describe, expect, it } from 'vitest'
 
-import type { Cell, QueryResult } from '@/api/querySession'
+import { NO_OUTCOME, type Cell, type QueryResult } from '@/api/querySession'
 
 import { BLOCK_ROWS, PivotClient, type PivotWorkerPort } from '../pivotClient'
 import {
@@ -96,7 +96,7 @@ function result(
     rowCount: rows.length,
     truncated: false,
     verb: 'other',
-    outcome: { affected: 0 },
+    outcome: NO_OUTCOME,
     elapsedMs: 0,
   }
 }

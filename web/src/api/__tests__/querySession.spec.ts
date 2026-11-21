@@ -16,6 +16,8 @@ import {
   formatDuration,
   formatInstant,
   formatRowCount,
+  formatWarnings,
+  generatedIdLabel,
   initialState,
   nextReading,
   outcomeSummary,
@@ -31,7 +33,9 @@ import {
 } from '../querySession'
 import type { ResultTab } from '../generated/ResultTab'
 import type { ErrorDetail } from '../generated/ErrorDetail'
+import type { OutcomeCounts } from '../generated/OutcomeCounts'
 import type { ServerMessage } from '../generated/ServerMessage'
+import type { StatementOutcome } from '../generated/StatementOutcome'
 import type { TabPivot } from '../generated/TabPivot'
 import { describe as describeError } from '../messages'
 
@@ -69,6 +73,30 @@ function readyState() {
     transaction: false,
   })
   return state
+}
+
+/**
+ * Outcome an engine reported: its affected rows, and the counts it gave.
+ *
+ * @param affected Number of affected rows, `null` if not reported.
+ * @param counts Counts reported, the others absent.
+ */
+function reported(affected: number | null, counts: Partial<OutcomeCounts> = {}): StatementOutcome {
+  return {
+    affected,
+    counts: {
+      matched: null,
+      changed: null,
+      unchanged: null,
+      inserted: null,
+      replaced: null,
+      deleted: null,
+      ignored: null,
+      ...counts,
+    },
+    generated_id: null,
+    warnings: null,
+  }
 }
 
 describe('applyMessage', () => {
@@ -124,7 +152,7 @@ describe('applyMessage', () => {
       row_count: 2,
       truncated: false,
       verb: 'other',
-      outcome: { affected: 0 },
+      outcome: reported(0),
       elapsed_ms: 5,
       database: 'xlist',
     })
@@ -154,7 +182,7 @@ describe('applyMessage', () => {
       row_count: 0,
       truncated: false,
       verb: 'other',
-      outcome: { affected: 0 },
+      outcome: reported(0),
       elapsed_ms: 1,
       database: 'shop',
     })
@@ -288,7 +316,7 @@ describe('tabProgress', () => {
       row_count: 0,
       truncated: false,
       verb: 'other',
-      outcome: { affected: 0 },
+      outcome: reported(0),
       elapsed_ms: 1,
       database: null,
     })
@@ -328,7 +356,7 @@ describe('batchProgress', () => {
       row_count: 0,
       truncated: false,
       verb: 'other',
-      outcome: { affected: 0 },
+      outcome: reported(0),
       elapsed_ms: 1,
       database: null,
     }
@@ -474,7 +502,7 @@ describe('stop of a query', () => {
           row_count: 0,
           truncated: false,
           verb: 'other',
-          outcome: { affected: 0 },
+          outcome: reported(0),
           transfer_us: 0,
           bytes: 0,
         },
@@ -534,7 +562,7 @@ describe('durations', () => {
         row_count: 0,
         truncated: false,
         verb: 'other',
-        outcome: { affected: 0 },
+        outcome: reported(0),
         elapsed_ms: 500,
         database: null,
       },
@@ -627,18 +655,52 @@ describe('durations', () => {
     expect(formatRowCount(5000, 120)).toBe('120 / 5 000 lignes')
   })
 
-  it('sums up the outcome of a statement without rows', () => {
-    expect(outcomeSummary('insert', { affected: 3 })).toBe('3 lignes insérées')
-    expect(outcomeSummary('insert', { affected: 1 })).toBe('1 ligne insérée')
-    expect(outcomeSummary('update', { affected: 0 })).toBe('Aucune ligne modifiée')
-    expect(outcomeSummary('delete', { affected: 2500 })).toBe('2 500 lignes supprimées')
-    expect(outcomeSummary('truncate', { affected: 0 })).toBe('Table vidée')
+  it('sums up the outcome of a statement without rows from its affected rows', () => {
+    expect(outcomeSummary('insert', reported(3))).toBe('3 lignes insérées')
+    expect(outcomeSummary('insert', reported(1))).toBe('1 ligne insérée')
+    expect(outcomeSummary('update', reported(0))).toBe('Aucune ligne modifiée')
+    expect(outcomeSummary('delete', reported(2500))).toBe('2 500 lignes supprimées')
+    expect(outcomeSummary('truncate', reported(0))).toBe('Table vidée')
     // A count whose meaning depends on the engine.
-    expect(outcomeSummary('upsert', { affected: 4 })).toBe('4 lignes concernées')
-    expect(outcomeSummary('schema', { affected: 0 })).toBe('Requête exécutée')
-    expect(outcomeSummary('other', { affected: 0 })).toBe('Requête exécutée')
+    expect(outcomeSummary('upsert', reported(4))).toBe('4 lignes concernées')
+    expect(outcomeSummary('schema', reported(0))).toBe('Requête exécutée')
+    expect(outcomeSummary('other', reported(0))).toBe('Requête exécutée')
     // An engine that reports no count.
-    expect(outcomeSummary('delete', { affected: null })).toBe('Requête exécutée')
+    expect(outcomeSummary('delete', reported(null))).toBe('Requête exécutée')
+  })
+
+  it('sums up the outcome of a statement without rows from its counts', () => {
+    expect(outcomeSummary('insert', reported(1, { inserted: 1, ignored: 1 }))).toBe(
+      '1 ligne insérée, 1 ignorée',
+    )
+    expect(outcomeSummary('insert', reported(3, { inserted: 3, ignored: 0 }))).toBe(
+      '3 lignes insérées',
+    )
+    expect(outcomeSummary('upsert', reported(3, { inserted: 1, changed: 1, unchanged: 1 }))).toBe(
+      '1 ligne insérée, 1 modifiée, 1 inchangée',
+    )
+    expect(outcomeSummary('replace', reported(3, { inserted: 0, replaced: 2 }))).toBe(
+      '2 lignes remplacées',
+    )
+    expect(outcomeSummary('update', reported(2, { matched: 3, changed: 2, unchanged: 1 }))).toBe(
+      '2 lignes modifiées sur 3 trouvées',
+    )
+    expect(outcomeSummary('update', reported(0, { matched: 1, changed: 0, unchanged: 1 }))).toBe(
+      'Aucune ligne modifiée sur 1 trouvée',
+    )
+    expect(outcomeSummary('delete', reported(0, { deleted: 0 }))).toBe('Aucune ligne supprimée')
+  })
+
+  it('names the generated id and the warnings', () => {
+    expect(generatedIdLabel({ ...reported(1, { inserted: 1 }), generated_id: '42' })).toBe(
+      'Id généré : 42',
+    )
+    expect(generatedIdLabel({ ...reported(3, { inserted: 3 }), generated_id: '7' })).toBe(
+      'Premier id généré : 7',
+    )
+    expect(generatedIdLabel(reported(1))).toBeNull()
+    expect(formatWarnings(1)).toBe('1 avertissement')
+    expect(formatWarnings(3)).toBe('3 avertissements')
   })
 
   it('formats the volumes', () => {
@@ -725,7 +787,7 @@ describe('savedTab', () => {
           row_count: 2,
           truncated: false,
           verb: 'other',
-          outcome: { affected: 0 },
+          outcome: reported(0),
           transfer_us: 4000,
           bytes: 120,
         },
@@ -765,7 +827,7 @@ describe('resume', () => {
             row_count: 0,
             truncated: false,
             verb: 'other',
-            outcome: { affected: 0 },
+            outcome: reported(0),
             transfer_us: 0,
             bytes: 0,
           },
@@ -794,7 +856,7 @@ describe('resume', () => {
       row_count: 1,
       truncated: false,
       verb: 'other' as const,
-      outcome: { affected: 0 },
+      outcome: reported(0),
       transfer_us: 0,
       bytes: 50,
     }
@@ -868,7 +930,7 @@ describe('resume', () => {
       row_count: 3,
       truncated: false,
       verb: 'other' as const,
-      outcome: { affected: 0 },
+      outcome: reported(0),
       transfer_us: 9000,
       bytes: 90,
     }
@@ -927,7 +989,7 @@ function done(query: number): ServerMessage {
     row_count: 1,
     truncated: false,
     verb: 'other',
-    outcome: { affected: 0 },
+    outcome: reported(0),
     elapsed_ms: 1,
     database: null,
   }
@@ -1038,7 +1100,7 @@ describe('refresh', () => {
       row_count: 0,
       truncated: false,
       verb: 'other' as const,
-      outcome: { affected: 0 },
+      outcome: reported(0),
       transfer_us: 0,
       bytes: 0,
     }
@@ -1125,7 +1187,7 @@ function saved(id: number, rows: number, chunks: number): ResultTab {
       row_count: rows,
       truncated: false,
       verb: 'other',
-      outcome: { affected: 0 },
+      outcome: reported(0),
       transfer_us: 9000,
       bytes: 90,
     },

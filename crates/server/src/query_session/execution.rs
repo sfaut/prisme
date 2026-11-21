@@ -359,13 +359,14 @@ impl Session<'_> {
                 .await?;
         }
 
-        let outcome = stream.outcome();
+        let verb = kind.verb();
+        let outcome = stream.outcome(verb);
         stream.discard().await;
         trace(row_count, truncated, outcome.affected.unwrap_or(0), None);
         Ok(Some(Summary {
             row_count,
             truncated,
-            verb: kind.verb(),
+            verb,
             outcome,
             elapsed_ms: started.elapsed().as_millis(),
         }))

@@ -57,6 +57,7 @@ import type { ResumedQuery } from './generated/ResumedQuery'
 import type { SelectionRange } from './generated/SelectionRange'
 import type { ServerInfo } from './generated/ServerInfo'
 import type { ServerMessage } from './generated/ServerMessage'
+import type { OutcomeCounts } from './generated/OutcomeCounts'
 import type { StatementOutcome } from './generated/StatementOutcome'
 import type { StatementVerb } from './generated/StatementVerb'
 import type { TabPivot } from './generated/TabPivot'
@@ -194,6 +195,24 @@ export interface UserFilter {
  * User filter that keeps every row.
  */
 export const NO_FILTER: Readonly<UserFilter> = Object.freeze({ text: '', column: null })
+
+/**
+ * Outcome of a statement whose engine has reported nothing yet.
+ */
+export const NO_OUTCOME: Readonly<StatementOutcome> = Object.freeze({
+  affected: null,
+  counts: Object.freeze({
+    matched: null,
+    changed: null,
+    unchanged: null,
+    inserted: null,
+    replaced: null,
+    deleted: null,
+    ignored: null,
+  }),
+  generated_id: null,
+  warnings: null,
+})
 
 /**
  * Configuration of the Pivoteur without any element.
@@ -516,7 +535,7 @@ export function applyMessage(
           rowCount: 0,
           truncated: false,
           verb: 'other',
-          outcome: { affected: null },
+          outcome: NO_OUTCOME,
           elapsedMs: 0,
         }
       }
@@ -958,11 +977,59 @@ function countedRows(count: number, [one, many]: [string, string]): string {
 }
 
 /**
+ * Counts of the rows, in the order the summary gives them, with their
+ * participle: singular, plural. `matched` stands apart: it holds the rows
+ * changed and unchanged.
+ */
+const COUNTED: [Exclude<keyof OutcomeCounts, 'matched'>, [string, string]][] = [
+  ['inserted', ['insérée', 'insérées']],
+  ['replaced', ['remplacée', 'remplacées']],
+  ['changed', ['modifiée', 'modifiées']],
+  ['unchanged', ['inchangée', 'inchangées']],
+  ['deleted', ['supprimée', 'supprimées']],
+  ['ignored', ['ignorée', 'ignorées']],
+]
+
+/**
+ * Summary of the rows counted by what happened to them: "1 ligne insérée,
+ * 1 modifiée, 1 inchangée", "2 lignes modifiées sur 3 trouvées"; `null`
+ * when the engine counted none. The counts at 0 are left out, unless all
+ * are: "aucune ligne modifiée".
+ *
+ * @param counts Counts the engine reported.
+ */
+function countsSummary(counts: OutcomeCounts): string | null {
+  if (counts.matched !== null && counts.changed !== null) {
+    const found = `${counts.matched.toLocaleString('fr-FR')} ${counts.matched > 1 ? 'trouvées' : 'trouvée'}`
+    return `${countedRows(counts.changed, ['modifiée', 'modifiées'])} sur ${found}`
+  }
+  const known = COUNTED.flatMap(([key, forms]) => {
+    const count = counts[key]
+    return count === null ? [] : [{ count, forms }]
+  })
+  const [first] = known
+  if (first === undefined) {
+    return null
+  }
+  const shown = known.filter(({ count }) => count > 0)
+  const [lead, ...rest] = shown.length > 0 ? shown : [first]
+  return [
+    countedRows(lead!.count, lead!.forms),
+    ...rest.map(
+      ({ count, forms: [one, many] }) =>
+        `${count.toLocaleString('fr-FR')} ${count > 1 ? many : one}`,
+    ),
+  ].join(', ')
+}
+
+/**
  * Summary of what a statement without rows did, from its verb and from the
- * fields its engine reported, without knowing the engine: "3 lignes
- * insérées", "aucune ligne supprimée". A count whose meaning depends on the
- * engine (a `REPLACE`, an upsert, a change of the schema that copies rows)
- * says "concernées"; without a count, "Requête exécutée".
+ * fields its engine reported, without knowing the engine: the counts of the
+ * rows when the engine gives them ("1 ligne insérée, 1 ignorée"), else its
+ * number of affected rows named by the verb ("3 lignes insérées"). A number
+ * whose meaning depends on the engine (a `REPLACE`, an upsert, a change of
+ * the schema that copies rows) says "concernées"; without any count,
+ * "Requête exécutée".
  *
  * @param verb What the statement does to the data.
  * @param outcome What its engine reported.
@@ -971,6 +1038,10 @@ export function outcomeSummary(verb: StatementVerb, outcome: StatementOutcome): 
   const affected = outcome.affected
   if (verb === 'truncate') {
     return 'Table vidée'
+  }
+  const counted = countsSummary(outcome.counts)
+  if (counted !== null) {
+    return capitalized(counted)
   }
   if (affected === null) {
     return 'Requête exécutée'
@@ -983,6 +1054,29 @@ export function outcomeSummary(verb: StatementVerb, outcome: StatementOutcome): 
     return 'Requête exécutée'
   }
   return capitalized(countedRows(affected, ['concernée', 'concernées']))
+}
+
+/**
+ * Id the statement generated, for the summary: "Id généré : 42" for one row
+ * inserted, "Premier id généré : 42" for several; `null` without an id.
+ *
+ * @param outcome What the engine reported.
+ */
+export function generatedIdLabel(outcome: StatementOutcome): string | null {
+  if (outcome.generated_id === null) {
+    return null
+  }
+  const several = (outcome.counts.inserted ?? 1) > 1
+  return `${several ? 'Premier id généré' : 'Id généré'} : ${outcome.generated_id}`
+}
+
+/**
+ * Formats a number of warnings: "1 avertissement", "3 avertissements".
+ *
+ * @param count Number of warnings, notes included.
+ */
+export function formatWarnings(count: number): string {
+  return `${count.toLocaleString('fr-FR')} ${count > 1 ? 'avertissements' : 'avertissement'}`
 }
 
 /**

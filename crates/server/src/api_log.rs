@@ -314,7 +314,10 @@ mod tests {
                 row_count: 0,
                 truncated: false,
                 verb: StatementVerb::Insert,
-                outcome: StatementOutcome { affected: Some(1) },
+                outcome: StatementOutcome {
+                    affected: Some(1),
+                    ..StatementOutcome::default()
+                },
                 elapsed_ms: 3,
                 database: None,
             }),

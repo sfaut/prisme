@@ -6,6 +6,8 @@ license.workspace = true
 
 [dependencies]
 mysql_async = "0.37.1"
+# The verb of a statement, which tells what the counts of its OK packet mean.
+prisme-dialects = { path = "../dialects" }
 secrecy = "0.10.3"
 serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.21"

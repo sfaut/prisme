@@ -16,6 +16,7 @@ use std::time::Duration;
 use mysql_async::consts::{ColumnType, StatusFlags};
 use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, OptsBuilder, QueryResult, TextProtocol, Value};
+use prisme_dialects::verb::StatementVerb;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -28,6 +29,7 @@ pub use mysql_async::Conn as Connection;
 pub mod catalog;
 mod column_type;
 mod connect_error;
+mod outcome;
 mod secret_mask;
 pub mod sql_log;
 
@@ -400,12 +402,18 @@ impl ResultStream<'_> {
         self.result.affected_rows()
     }
 
-    /// Outcome of the statement, in its neutral form, from the OK packet
-    /// that ends it: to read once the rows are read.
-    pub fn outcome(&self) -> StatementOutcome {
-        StatementOutcome {
-            affected: Some(self.result.affected_rows()),
-        }
+    /// Outcome of the statement of verb `verb`, in its neutral form, from
+    /// the OK packet that ends it (`outcome` module): to read once the rows
+    /// are read.
+    pub fn outcome(&self, verb: StatementVerb) -> StatementOutcome {
+        let info = self.result.info();
+        let packet = outcome::OkPacket {
+            affected: self.result.affected_rows(),
+            last_insert_id: self.result.last_insert_id(),
+            warnings: self.result.warnings(),
+            info: &info,
+        };
+        outcome::outcome(verb, &packet)
     }
 
     /// Gives up reading: the remaining rows are read and dropped by the

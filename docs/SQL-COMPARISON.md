@@ -358,10 +358,36 @@ What the metadata of a result tell of the column a result column reads, measured
 
 `UNIQUE_KEY_FLAG` and `MULTIPLE_KEY_FLAG` tell the other indexes. A foreign key has no flag of its own: a column `p_id` referencing a table and a column `amount` under a plain index both give `MULTIPLE_KEY_FLAG`, and only `information_schema.KEY_COLUMN_USAGE` tells them apart.
 
+### 3.16 Outcome of a write
+
+What the server reports at the end of a statement without rows, in its OK packet, measured on 2026-11-21 by the test `reports_the_outcome_of_writes` of `crates/connectors/tests/mysql.rs` (through `mysql_async`, without `CLIENT_FOUND_ROWS`), on the six servers of `compose.yaml`, and by `mysql -vvv`. This is the protocol of MySQL and MariaDB, without a case in `bench/sql/cases.mjs`, which compares expressions; the other engines have no connector yet, and are not measured. The connector turns it into the neutral counts of `StatementOutcome` (`crates/connectors/src/mysql/outcome.rs`).
+
+The table `t (id INT AUTO_INCREMENT PRIMARY KEY, a INT)` holds `(1, 1)`, `(2, 2)`, `(3, 3)` before the upsert and the `REPLACE`.
+
+| Statement | Affected rows | Info text | Meaning of the counts |
+|---|---|---|---|
+| `INSERT` of one row | 1 | none | |
+| `INSERT` of three rows, `INSERT ... SELECT` | 3 | `Records: 3  Duplicates: 0  Warnings: 0` | |
+| `INSERT IGNORE` of `(1, 9), (10, 10)` | 1 | `Records: 2  Duplicates: 1  Warnings: 1` | `Duplicates`: rows skipped, each with a warning 1062 |
+| `INSERT ... ON DUPLICATE KEY UPDATE a = VALUES(a)` of `(1, 1), (2, 7), (20, 20)` | 3 | `Records: 3  Duplicates: 1  Warnings: 0` | a new row counts 1, an updated row 2, a row found with the same values 0; `Duplicates`: the updated rows only |
+| The same upsert of one row | 1 (new), 2 (updated), 0 (unchanged) | none | |
+| `REPLACE` of `(3, 30), (30, 30)` | 3 | `Records: 2  Duplicates: 1  Warnings: 0` | a replaced row counts 2 (deleted, then inserted); `Duplicates`: the replaced rows |
+| `UPDATE` of 3 rows, 2 of them changed | 2 | `Rows matched: 3  Changed: 2  Warnings: 0` | the affected rows are the changed ones, 0 when the values were already the new ones |
+| `DELETE` | rows deleted | none | |
+| `CREATE TABLE ... SELECT` of 6 rows | 6 | `Records: 6  Duplicates: 0  Warnings: 0` | |
+| `ALTER TABLE ... ADD` | 0 | `Records: 0  Duplicates: 0  Warnings: 0` | `Records`: the rows copied, the same label as an insertion |
+| `TRUNCATE TABLE`, `DROP TABLE` | 0 | none | |
+| `DROP TABLE IF EXISTS` of a missing table | 0 | none | 1 warning: the note 1051 (`Unknown table`) |
+| `INSERT IGNORE` of `'abcdef'` into a `VARCHAR(3)` | 1 | none | 1 warning: 1265 (`Data truncated`); without `IGNORE`, strict mode gives error 1406 |
+
+The last auto-increment id of the packet is the first id of the rows inserted (`1` for the three rows inserted into the empty table), absent (0) for an `UPDATE`. MySQL and MariaDB give the same texts and the same counts on their three versions; only the warnings differ (section 4).
+
 ## 4. Differences between versions of one engine
 
 | Engine | Subject | Versions |
 |---|---|---|
+| MySQL | warning of `VALUES(a)` in `ON DUPLICATE KEY UPDATE` (deprecated) | none on 8.0.11, 1 on 9.7.4 and 26.10.0; none on MariaDB |
+| MySQL | `UPDATE IGNORE` that would duplicate a key | 1 warning on MySQL, none on MariaDB, on their three versions |
 | MySQL | type of `YEAR('0000-00-00')` | BIGINT on 8.0.11, YEAR on 9.7.4 and 26.10.0 |
 | MySQL | writing of `ROUND(1.005e0, 2)` | `1.00` on 8.0.11, `1` on 9.7.4 and 26.10.0 |
 | MySQL | `PRI_KEY_FLAG` of a column under `GROUP BY` | absent on 8.0.11, present on 9.7.4 and 26.10.0 |

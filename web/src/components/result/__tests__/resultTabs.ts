@@ -2,7 +2,7 @@
  * Result tabs for the tests of the components that show them: a finished
  * query, with its columns and its rows, as the server saves it.
  */
-import { NO_PIVOT, type QueryTab, savedTab } from '@/api/querySession'
+import { NO_OUTCOME, NO_PIVOT, savedTab, type QueryTab } from '@/api/querySession'
 
 /**
  * Finished tab of a query.
@@ -40,7 +40,7 @@ export function finishedTab(columns: string[], rows: string[][] = []): QueryTab 
         row_count: rows.length,
         truncated: false,
         verb: 'other',
-        outcome: { affected: 0 },
+        outcome: NO_OUTCOME,
         transfer_us: 3000,
         bytes: 120,
       },

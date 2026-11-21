@@ -12,7 +12,10 @@ use prisme_connectors::mysql::catalog::{self, RoutineKind, TableKind};
 use prisme_connectors::mysql::{
     Connection, Flavor, connect, execute, in_transaction, kill_query, probe,
 };
+use prisme_connectors::outcome::{OutcomeCounts, StatementOutcome};
 use prisme_connectors::test_servers::SERVERS;
+use prisme_dialects::Dialect;
+use prisme_dialects::classify::classify;
 
 #[tokio::test]
 #[ignore = "requires the development servers (docker compose up --detach --wait)"]
@@ -79,6 +82,148 @@ async fn streams_rows_and_reports_writes() {
                     Some(vec![Some("2".to_string()), None, None])
                 );
                 assert_eq!(stream.next_row().await.unwrap(), None);
+            })
+            .await;
+    }
+}
+
+/// Runs the statement `sql` and returns its outcome, its verb taken from its
+/// classification as Prisme does.
+async fn outcome_of(connection: &mut Connection, sql: &str) -> StatementOutcome {
+    let verb = classify(sql, Dialect::MySql).verb();
+    let stream = execute(connection, sql).await.unwrap();
+    let outcome = stream.outcome(verb);
+    stream.discard().await;
+    outcome
+}
+
+#[tokio::test]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
+async fn reports_the_outcome_of_writes() {
+    for server in SERVERS {
+        server
+            .with_database("outcome", async |target| {
+                let mut connection = connect(&target).await.unwrap();
+                let name = server.name;
+                execute(
+                    &mut connection,
+                    "CREATE TABLE t (id INT AUTO_INCREMENT PRIMARY KEY, a INT, s VARCHAR(3))",
+                )
+                .await
+                .unwrap()
+                .discard()
+                .await;
+
+                let insert =
+                    outcome_of(&mut connection, "INSERT INTO t (a) VALUES (1), (2), (3)").await;
+                assert_eq!(insert.affected, Some(3), "{name}");
+                assert_eq!(insert.counts.inserted, Some(3), "{name}");
+                // The first id of the rows inserted.
+                assert_eq!(insert.generated_id.as_deref(), Some("1"), "{name}");
+
+                let ignore = outcome_of(
+                    &mut connection,
+                    "INSERT IGNORE INTO t (id, a) VALUES (1, 9), (10, 10)",
+                )
+                .await;
+                assert_eq!(
+                    (ignore.counts.inserted, ignore.counts.ignored),
+                    (Some(1), Some(1)),
+                    "{name}"
+                );
+                assert_eq!(ignore.warnings, Some(1), "{name}");
+
+                // (1, 1) already holds a = 1, (2, 7) changes it, (20, 20) is new.
+                let upsert = outcome_of(
+                    &mut connection,
+                    concat!(
+                        "INSERT INTO t (id, a) VALUES (1, 1), (2, 7), (20, 20) ",
+                        "ON DUPLICATE KEY UPDATE a = VALUES(a)",
+                    ),
+                )
+                .await;
+                assert_eq!(
+                    (
+                        upsert.counts.inserted,
+                        upsert.counts.changed,
+                        upsert.counts.unchanged
+                    ),
+                    (Some(1), Some(1), Some(1)),
+                    "{name}"
+                );
+                let single = outcome_of(
+                    &mut connection,
+                    "INSERT INTO t (id, a) VALUES (3, 8) ON DUPLICATE KEY UPDATE a = 8",
+                )
+                .await;
+                assert_eq!(
+                    (
+                        single.counts.inserted,
+                        single.counts.changed,
+                        single.counts.unchanged
+                    ),
+                    (Some(0), Some(1), Some(0)),
+                    "{name}"
+                );
+                let same = outcome_of(
+                    &mut connection,
+                    "INSERT INTO t (id, a) VALUES (3, 8) ON DUPLICATE KEY UPDATE a = 8",
+                )
+                .await;
+                assert_eq!(same.affected, Some(0), "{name}");
+                assert_eq!(same.counts.unchanged, Some(1), "{name}");
+                let new = outcome_of(
+                    &mut connection,
+                    "INSERT INTO t (id, a) VALUES (40, 1) ON DUPLICATE KEY UPDATE a = 1",
+                )
+                .await;
+                assert_eq!(new.affected, Some(1), "{name}");
+                assert_eq!(new.counts.inserted, Some(1), "{name}");
+
+                let replace = outcome_of(
+                    &mut connection,
+                    "REPLACE INTO t (id, a) VALUES (3, 30), (30, 30)",
+                )
+                .await;
+                assert_eq!(replace.affected, Some(3), "{name}");
+                assert_eq!(
+                    (replace.counts.inserted, replace.counts.replaced),
+                    (Some(1), Some(1)),
+                    "{name}"
+                );
+
+                let update = outcome_of(&mut connection, "UPDATE t SET a = 1 WHERE id <= 3").await;
+                assert_eq!(
+                    (
+                        update.counts.matched,
+                        update.counts.changed,
+                        update.counts.unchanged
+                    ),
+                    (Some(3), Some(2), Some(1)),
+                    "{name}"
+                );
+                assert_eq!(update.generated_id, None, "{name}");
+
+                let delete = outcome_of(&mut connection, "DELETE FROM t WHERE id >= 20").await;
+                assert_eq!(
+                    delete.counts,
+                    OutcomeCounts {
+                        deleted: Some(3),
+                        ..OutcomeCounts::default()
+                    },
+                    "{name}"
+                );
+
+                let truncated = outcome_of(
+                    &mut connection,
+                    "INSERT IGNORE INTO t (s) VALUES ('abcdef')",
+                )
+                .await;
+                assert_eq!(truncated.warnings, Some(1), "{name}");
+
+                let note = outcome_of(&mut connection, "DROP TABLE IF EXISTS missing").await;
+                assert_eq!(note.warnings, Some(1), "{name}");
+                assert_eq!(note.counts, OutcomeCounts::default(), "{name}");
             })
             .await;
     }
