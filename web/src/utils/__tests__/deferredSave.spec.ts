@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { syncState } from '@/api/sync'
+
 import { SAVE_DELAY, deferredSave, removeStoredKeys } from '../deferredSave'
 
 beforeEach(() => {
@@ -39,6 +41,28 @@ describe('deferredSave', () => {
     await saves.flush(1)
     vi.advanceTimersByTime(SAVE_DELAY)
     expect(send.mock.calls).toEqual([[1, false]])
+  })
+
+  it('shows a change as being saved from its change to the end of its save', async () => {
+    let answer = () => {}
+    const send = vi.fn<(key: number, keepalive: boolean) => Promise<void>>(
+      () => new Promise<void>((resolve) => (answer = resolve)),
+    )
+    const saves = deferredSave(send)
+    saves.schedule(1)
+    expect(syncState.value).toBe('writing')
+    vi.advanceTimersByTime(SAVE_DELAY)
+    expect(syncState.value).toBe('writing')
+
+    // A change made during the save stays declared after it.
+    saves.schedule(1)
+    answer()
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce())
+    await Promise.resolve()
+    expect(syncState.value).toBe('writing')
+
+    saves.cancel(1)
+    expect(syncState.value).not.toBe('writing')
   })
 
   it('drops a cancelled save', () => {

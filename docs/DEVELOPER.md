@@ -84,6 +84,7 @@ Common rules:
 - A field added later takes `#[serde(default)]`: an older or partial document is still read, its missing fields at their default. In the database, an empty string means nothing saved: the interface then starts from its defaults (`defaultUserDisplay`, `defaultEditorDisplay`, `startingLayout`).
 - Each panel has the same shape: `{ open, size }`, `size` in CSS pixels, `null` for the default size of the theme or a share of the room.
 - The page sends the whole document on each change, shortly after the last one (300 ms, `utils/deferredSave.ts`); a save waiting for its delay goes out at once, with `keepalive`, when the page is hidden or closed, and before an editor closes.
+- A change waiting for its save shows in the synchronisation state of the top bar (`api/sync.ts`) from the change to the end of its save: `markPending` at the change, `clearPending` once saved or dropped. Any save made later than the change itself (delay, grouping of changes) declares itself that way, so that "synchronised" only shows once everything is in the database; `deferredSave` does it for its documents, the editors store for the SQL texts.
 
 **User** (`GET` / `PUT /api/display`, `userDisplay` store, read before the interface is mounted):
 

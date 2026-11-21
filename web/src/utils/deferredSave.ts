@@ -5,12 +5,25 @@
  * document at once. A save waiting for its delay goes out at once when the
  * page is hidden or closed, which would lose it, and on demand (`flush`),
  * before its owner closes for example.
+ *
+ * A change waiting for its save is declared to the synchronisation state of
+ * the top bar (`markPending`), from the change to the end of its save: the
+ * state shows the save under way, and "synchronised" only once the change is
+ * in the database. A save that ends while a newer change waits leaves it
+ * declared.
  */
+
+import { clearPending, markPending } from '@/api/sync'
 
 /**
  * Delay between the last change of a document and its save, in milliseconds.
  */
 export const SAVE_DELAY = 300
+
+/**
+ * Deferred saves made so far in the page, to name their keys apart.
+ */
+let instances = 0
 
 /**
  * Deferred saves of documents, by key.
@@ -43,15 +56,49 @@ export function deferredSave<Key>(
 ): DeferredSave<Key> {
   const timers = new Map<Key, ReturnType<typeof setTimeout>>()
 
+  /**
+   * Name of each key in the synchronisation state, unique in the page.
+   */
+  const pendingNames = new Map<Key, string>()
+  const instance = ++instances
+
+  /**
+   * Name of a key in the synchronisation state.
+   *
+   * @param key Key of a document.
+   */
+  function pendingName(key: Key): string {
+    let name = pendingNames.get(key)
+    if (name === undefined) {
+      name = `deferred-save:${instance}:${pendingNames.size}`
+      pendingNames.set(key, name)
+    }
+    return name
+  }
+
+  /**
+   * Withdraws the declaration of a key, unless a newer change waits.
+   *
+   * @param key Key of a document.
+   */
+  function settle(key: Key): void {
+    if (!timers.has(key)) {
+      clearPending(pendingName(key))
+    }
+  }
+
   async function save(key: Key, keepalive: boolean): Promise<void> {
     clearTimeout(timers.get(key))
     timers.delete(key)
-    await send(key, keepalive).catch(() => {
-      // Shown by the synchronisation state; the next change saves again.
-    })
+    await send(key, keepalive)
+      .catch(() => {
+        // Shown by the synchronisation state; the next change saves again.
+      })
+      .finally(() => settle(key))
   }
 
   function schedule(key: Key): void {
+    markPending(pendingName(key))
     clearTimeout(timers.get(key))
     timers.set(
       key,
@@ -68,6 +115,7 @@ export function deferredSave<Key>(
   function cancel(key: Key): void {
     clearTimeout(timers.get(key))
     timers.delete(key)
+    settle(key)
   }
 
   function flushPending(): void {
