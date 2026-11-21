@@ -380,7 +380,7 @@ The table `t (id INT AUTO_INCREMENT PRIMARY KEY, a INT)` holds `(1, 1)`, `(2, 2)
 | `DROP TABLE IF EXISTS` of a missing table | 0 | none | 1 warning: the note 1051 (`Unknown table`) |
 | `INSERT IGNORE` of `'abcdef'` into a `VARCHAR(3)` | 1 | none | 1 warning: 1265 (`Data truncated`); without `IGNORE`, strict mode gives error 1406 |
 
-The last auto-increment id of the packet is the first id of the rows inserted (`1` for the three rows inserted into the empty table), absent (0) for an `UPDATE`. MySQL and MariaDB give the same texts and the same counts on their three versions; only the warnings differ (section 4).
+The last auto-increment id of the packet is the id of the first row inserted: generated (`1` for the three rows inserted into the empty table), or written by the statement (`40` for an upsert that inserts `(40, 1)`); absent (0) for an `UPDATE`. MySQL and MariaDB give the same texts and the same counts on their three versions; only the warnings differ (section 4).
 
 ## 4. Differences between versions of one engine
 

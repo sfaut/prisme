@@ -119,7 +119,7 @@ async fn reports_the_outcome_of_writes() {
                 assert_eq!(insert.affected, Some(3), "{name}");
                 assert_eq!(insert.counts.inserted, Some(3), "{name}");
                 // The first id of the rows inserted.
-                assert_eq!(insert.generated_id.as_deref(), Some("1"), "{name}");
+                assert_eq!(insert.inserted_id.as_deref(), Some("1"), "{name}");
 
                 let ignore = outcome_of(
                     &mut connection,
@@ -179,6 +179,8 @@ async fn reports_the_outcome_of_writes() {
                 .await;
                 assert_eq!(new.affected, Some(1), "{name}");
                 assert_eq!(new.counts.inserted, Some(1), "{name}");
+                // An id written by the statement is reported too.
+                assert_eq!(new.inserted_id.as_deref(), Some("40"), "{name}");
 
                 let replace = outcome_of(
                     &mut connection,
@@ -202,7 +204,7 @@ async fn reports_the_outcome_of_writes() {
                     (Some(3), Some(2), Some(1)),
                     "{name}"
                 );
-                assert_eq!(update.generated_id, None, "{name}");
+                assert_eq!(update.inserted_id, None, "{name}");
 
                 let delete = outcome_of(&mut connection, "DELETE FROM t WHERE id >= 20").await;
                 assert_eq!(

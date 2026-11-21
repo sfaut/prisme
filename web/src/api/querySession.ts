@@ -211,7 +211,7 @@ export const NO_OUTCOME: Readonly<StatementOutcome> = Object.freeze({
     deleted: null,
     ignored: null,
   }),
-  generated_id: null,
+  inserted_id: null,
   warnings: null,
   notices: Object.freeze([]) as unknown as StatementOutcome['notices'],
 })
@@ -1059,17 +1059,18 @@ export function outcomeSummary(verb: StatementVerb, outcome: StatementOutcome): 
 }
 
 /**
- * Id the statement generated, for the summary: "Id généré : 42" for one row
- * inserted, "Premier id généré : 42" for several; `null` without an id.
+ * Auto-increment id of the row the statement inserted, for the summary: "Id
+ * inséré : 42" for one row, "Premier id inséré : 42" for several; `null`
+ * without an id.
  *
  * @param outcome What the engine reported.
  */
-export function generatedIdLabel(outcome: StatementOutcome): string | null {
-  if (outcome.generated_id === null) {
+export function insertedIdLabel(outcome: StatementOutcome): string | null {
+  if (outcome.inserted_id === null) {
     return null
   }
   const several = (outcome.counts.inserted ?? 1) > 1
-  return `${several ? 'Premier id généré' : 'Id généré'} : ${outcome.generated_id}`
+  return `${several ? 'Premier id inséré' : 'Id inséré'} : ${outcome.inserted_id}`
 }
 
 /**

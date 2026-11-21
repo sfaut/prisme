@@ -18,10 +18,11 @@ export type StatementOutcome = {
    */
   counts: OutcomeCounts;
   /**
-   * First value the statement generated for an auto-increment column, as
-   * text (an id is not always an integer); absent when it generated none.
+   * Value of the auto-increment column of the first row the statement
+   * inserted, generated or written by the statement, as text (an id is
+   * not always an integer); absent when it inserted none.
    */
-  generated_id: string | null;
+  inserted_id: string | null;
   /**
    * Number of warnings and notes the statement raised; absent when the
    * engine does not count them.

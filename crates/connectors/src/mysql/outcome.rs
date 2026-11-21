@@ -1,7 +1,8 @@
 //! Outcome of a MySQL or MariaDB statement, from its OK packet.
 //!
-//! The OK packet gives the number of affected rows, the first generated
-//! auto-increment id, the number of warnings, and an info text whose counts
+//! The OK packet gives the number of affected rows, the auto-increment id
+//! of the first row inserted (generated, or written by the statement), the
+//! number of warnings, and an info text whose counts
 //! depend on the statement: `Records: 3  Duplicates: 1  Warnings: 0` for an
 //! insertion of several rows, `Rows matched: 3  Changed: 2  Warnings: 0` for
 //! an `UPDATE`. The same `Duplicates` means skipped rows for an
@@ -24,7 +25,7 @@ use crate::outcome::{Notice, NoticeLevel, OutcomeCounts, StatementOutcome};
 pub(super) struct OkPacket<'a> {
     /// Number of affected rows.
     pub(super) affected: u64,
-    /// First auto-increment id generated, 0 or absent for none.
+    /// Auto-increment id of the first row inserted, 0 or absent for none.
     pub(super) last_insert_id: Option<u64>,
     /// Number of warnings and notes.
     pub(super) warnings: u16,
@@ -74,7 +75,7 @@ pub(super) fn outcome(verb: StatementVerb, packet: &OkPacket) -> StatementOutcom
     StatementOutcome {
         affected: Some(affected),
         counts: counts(verb, affected, &info),
-        generated_id: packet
+        inserted_id: packet
             .last_insert_id
             .filter(|id| *id > 0)
             .map(|id| id.to_string()),
@@ -305,7 +306,7 @@ mod tests {
     }
 
     #[test]
-    fn keeps_the_generated_id_and_the_warnings() {
+    fn keeps_the_inserted_id_and_the_warnings() {
         let packet = OkPacket {
             affected: 3,
             last_insert_id: Some(42),
@@ -314,12 +315,12 @@ mod tests {
         };
         let reported = outcome(StatementVerb::Insert, &packet);
         assert_eq!(reported.affected, Some(3));
-        assert_eq!(reported.generated_id.as_deref(), Some("42"));
+        assert_eq!(reported.inserted_id.as_deref(), Some("42"));
         assert_eq!(reported.warnings, Some(2));
         let none = OkPacket {
             last_insert_id: Some(0),
             ..OkPacket::default()
         };
-        assert_eq!(outcome(StatementVerb::Update, &none).generated_id, None);
+        assert_eq!(outcome(StatementVerb::Update, &none).inserted_id, None);
     }
 }

@@ -28,9 +28,10 @@ pub struct StatementOutcome {
     /// Rows counted by what happened to them, each count absent when the
     /// engine does not tell it.
     pub counts: OutcomeCounts,
-    /// First value the statement generated for an auto-increment column, as
-    /// text (an id is not always an integer); absent when it generated none.
-    pub generated_id: Option<String>,
+    /// Value of the auto-increment column of the first row the statement
+    /// inserted, generated or written by the statement, as text (an id is
+    /// not always an integer); absent when it inserted none.
+    pub inserted_id: Option<String>,
     /// Number of warnings and notes the statement raised; absent when the
     /// engine does not count them.
     pub warnings: Option<u64>,

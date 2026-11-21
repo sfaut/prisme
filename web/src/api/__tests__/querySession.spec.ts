@@ -18,7 +18,7 @@ import {
   formatRowCount,
   droppedNotices,
   formatWarnings,
-  generatedIdLabel,
+  insertedIdLabel,
   initialState,
   nextReading,
   outcomeSummary,
@@ -95,7 +95,7 @@ function reported(affected: number | null, counts: Partial<OutcomeCounts> = {}):
       ignored: null,
       ...counts,
     },
-    generated_id: null,
+    inserted_id: null,
     warnings: null,
     notices: [],
   }
@@ -693,14 +693,14 @@ describe('durations', () => {
     expect(outcomeSummary('delete', reported(0, { deleted: 0 }))).toBe('Aucune ligne supprimée')
   })
 
-  it('names the generated id and the warnings', () => {
-    expect(generatedIdLabel({ ...reported(1, { inserted: 1 }), generated_id: '42' })).toBe(
-      'Id généré : 42',
+  it('names the inserted id and the warnings', () => {
+    expect(insertedIdLabel({ ...reported(1, { inserted: 1 }), inserted_id: '42' })).toBe(
+      'Id inséré : 42',
     )
-    expect(generatedIdLabel({ ...reported(3, { inserted: 3 }), generated_id: '7' })).toBe(
-      'Premier id généré : 7',
+    expect(insertedIdLabel({ ...reported(3, { inserted: 3 }), inserted_id: '7' })).toBe(
+      'Premier id inséré : 7',
     )
-    expect(generatedIdLabel(reported(1))).toBeNull()
+    expect(insertedIdLabel(reported(1))).toBeNull()
     expect(formatWarnings(1)).toBe('1 avertissement')
     expect(formatWarnings(3)).toBe('3 avertissements')
   })
