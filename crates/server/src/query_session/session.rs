@@ -320,6 +320,7 @@ impl Session<'_> {
                 start: statement.start,
                 end: statement.end,
                 pivot: None,
+                grid: None,
             })
             .collect();
         self.outbox.send(ServerMessage::Batch { queries }).await?;

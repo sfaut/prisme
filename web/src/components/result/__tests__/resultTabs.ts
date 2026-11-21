@@ -19,6 +19,7 @@ export function finishedTab(columns: string[], rows: string[][] = []): QueryTab 
       name: '',
       pinned: false,
       pivot: NO_PIVOT,
+      grid: null,
       result: {
         started: true,
         done: true,

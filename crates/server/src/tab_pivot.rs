@@ -4,11 +4,14 @@
 //! The page makes the configuration, computes its table and fits it to the
 //! columns of a new result (`web/src/components/pivot/pivotConfig.ts`). The server
 //! stores it, and carries it over when a new run replaces the unpinned tabs of
-//! an editor (`carry_over`): it alone sees the tabs that leave and those that
+//! an editor (`carry_over`), with the display of the grid of the tab
+//! (`grid_display.rs`): it alone sees the tabs that leave and those that
 //! replace them at the same time, whichever queries of the text are run.
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+
+use crate::grid_display::GridDisplay;
 
 /// Aggregate of a measure of the Pivoteur.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -495,35 +498,40 @@ pub struct ReplacedTab {
     pub sql: String,
     /// Configuration of the Pivoteur of the tab.
     pub pivot: TabPivot,
+    /// Display of the grid of the tab, `None` if none was saved.
+    pub grid: Option<GridDisplay>,
 }
 
 /// Does a replaced tab give its configuration to a query, by number and text?
 type Rule = fn(&ReplacedTab, &(u32, String)) -> bool;
 
-/// Configuration of the new tab of each query: that of the tab it replaces,
-/// which is the tab of the same text at the same rank, else of the same text
-/// (a single query of the text run alone), else of the same rank (a query
-/// changed). A replaced tab gives its configuration once.
+/// Tab replaced by the new tab of each query, whose configuration and
+/// display it takes: the tab of the same text at the same rank, else of the
+/// same text (a single query of the text run alone), else of the same rank
+/// (a query changed); `None` for none. A replaced tab is taken once.
 ///
 /// * `replaced`: tabs replaced.
 /// * `queries`: number and text of each query.
-pub fn carry_over(mut replaced: Vec<ReplacedTab>, queries: &[(u32, String)]) -> Vec<TabPivot> {
+pub fn carry_over(
+    mut replaced: Vec<ReplacedTab>,
+    queries: &[(u32, String)],
+) -> Vec<Option<ReplacedTab>> {
     let rules: [Rule; 3] = [
         |tab, (query, sql)| tab.query == *query && tab.sql == *sql,
         |tab, (_, sql)| tab.sql == *sql,
         |tab, (query, _)| tab.query == *query,
     ];
-    let mut pivots: Vec<Option<TabPivot>> = vec![None; queries.len()];
+    let mut taken: Vec<Option<ReplacedTab>> = queries.iter().map(|_| None).collect();
     for rule in rules {
-        for (pivot, query) in pivots.iter_mut().zip(queries) {
-            if pivot.is_none()
-                && let Some(found) = replaced.iter().position(|tab| rule(tab, query))
+        for (tab, query) in taken.iter_mut().zip(queries) {
+            if tab.is_none()
+                && let Some(found) = replaced.iter().position(|candidate| rule(candidate, query))
             {
-                *pivot = Some(replaced.remove(found).pivot);
+                *tab = Some(replaced.remove(found));
             }
         }
     }
-    pivots.into_iter().map(Option::unwrap_or_default).collect()
+    taken
 }
 
 #[cfg(test)]
@@ -544,6 +552,7 @@ mod tests {
             query,
             sql: sql.to_string(),
             pivot: pivot(field),
+            grid: None,
         }
     }
 
@@ -552,7 +561,10 @@ mod tests {
         let queries: Vec<_> = queries.iter().map(|(q, s)| (*q, s.to_string())).collect();
         carry_over(replaced, &queries)
             .into_iter()
-            .map(|pivot| pivot.fields.first().cloned().unwrap_or_default())
+            .map(|tab| {
+                tab.and_then(|tab| tab.pivot.fields.first().cloned())
+                    .unwrap_or_default()
+            })
             .collect()
     }
 

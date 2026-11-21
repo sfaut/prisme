@@ -116,7 +116,7 @@ The screen has these areas:
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
 - **Console**, at the bottom of the tab, under the side panels: the history of the queries sent to the servers by the editor, and its debug log (see [Console](#console)).
 
-On the left of each editor's tab, a dark **activity bar** opens and closes its panels, one button each: the object navigator; the editor, the results and the Pivoteur; the data explorer and the console. A lit button, marked in blue on the edge of the bar, is an open panel; its tooltip says what a click does. A closed panel leaves no trace: its button is the way back. Dragging the line of a panel below its smallest size closes it too. At the bottom of the bar, **Répartir les volets** (Share the panels) gives the open panels of the editor equal heights, and the side panels and the console their default size.
+On the left of each editor's tab, a dark **activity bar** opens and closes its panels, one button each: the object navigator; the editor, the results and the Pivoteur; the data explorer and the console. A lit button, marked in blue on the edge of the bar, is an open panel; its tooltip says what a click does. A closed panel leaves no trace: its button is the way back. Dragging the line of a panel below its smallest size closes it too. At the bottom of the bar, **Réinitialiser l’affichage** (Reset the display) brings the display of the editor back to its defaults: its panels, its object navigator (the source of the editor open, at the top), the widths, order, sort and scroll of the grid of each of its result tabs, and the widths of the sections of their Pivoteur. The SQL text and the position in it, the result tab shown, the filters of the grids and the configuration of the Pivoteur stay; the other editors are left as they are. Under it, **Répartir les volets** (Share the panels) gives the open panels of the editor equal heights, and the side panels and the console their default size.
 
 Each button has its shortcut: **Ctrl+K** (**Cmd+K** on macOS), then a key, as in VS Code. The tooltips recall them.
 
@@ -128,9 +128,10 @@ Each button has its shortcut: **Ctrl+K** (**Cmd+K** on macOS), then a key, as in
 | Pivoteur | Ctrl+K then P |
 | Data explorer | Ctrl+K then X |
 | Console | Ctrl+K then C |
+| Reset the display | Ctrl+K then 0 |
 | Share the panels again | Ctrl+K then = |
 
-The side panels go from the editor tabs down to the console, and the activity bar down to the bottom of the tab. The object navigator and the console are open by default, the data explorer closed; your choice is remembered for each editor, and a new editor starts from these defaults.
+The side panels go from the editor tabs down to the console, and the activity bar down to the bottom of the tab. The object navigator and the console are open by default, the data explorer closed; your choice is remembered for each editor, even once closed and reopened, and a new editor starts from these defaults.
 
 The version of Prisme shows next to its name, at the top left.
 
@@ -182,9 +183,9 @@ The tab bar above the SQL editor holds several editors:
 - **Nouveau** (New), the blue button at the right of the top bar, opens an editor on the connection of the active one.
 - A **dot** and a **progress bar**, as on the [result tabs](#result-tabs), follow the last run of the editor's queries: pulsing while they run, then green once all are done, red if one failed.
 - **Double-click** a tab to rename it. Drag it to move it.
-- The **cross** (or a middle click) closes it. A closed editor can be reopened for 24 hours from the **Rouvrir** (Reopen) button, the clock icon; its object navigator comes back as it was left (open levels, scroll, width).
+- The **cross** (or a middle click) closes it. A closed editor can be reopened for 24 hours from the **Rouvrir** (Reopen) button, the clock icon; its panels come back as they were left (open or closed, their sizes), and its object navigator with its open levels, its scroll and its sorts.
 
-Each editor has its own connection, its own session (and therefore its own transactions, see [Transactions](#transactions)) and its own results. Everything is saved as you type: texts, editors, result tabs and rows. A page reload or a browser restart brings everything back. The result tabs show at once, and their rows arrive in the background, the tab shown first, the status bar counting them ("Chargement : 120 000 / 1 000 000 lignes"): the grid and the Pivoteur follow them as during a run, and the editor can run queries meanwhile.
+Each editor has its own connection, its own session (and therefore its own transactions, see [Transactions](#transactions)) and its own results. Everything is saved as you type: texts, editors, result tabs and rows, and the display of each editor and of the console. A page reload, a browser restart or another browser brings everything back. The result tabs show at once, the one you were looking at in front, and their rows arrive in the background, the tab shown first, the status bar counting them ("Chargement : 120 000 / 1 000 000 lignes"): the grid and the Pivoteur follow them as during a run, and the editor can run queries meanwhile.
 
 ### Running queries
 
@@ -225,6 +226,8 @@ A transaction lives on the session of its editor: its queries run on the session
 - When the cursor leaves a line, the spaces at its end are removed, except inside a string or a quoted identifier that goes on to the next line.
 - **Ctrl+Up** / **Ctrl+Down** scroll the editor by one line, without moving the cursor.
 - To leave the editor with the keyboard: **Esc** then **Tab**, or **Ctrl+M** (Tab then moves the focus again).
+- **Ctrl+Shift+[** folds the block at the cursor, **Ctrl+Shift+]** unfolds it.
+- The editor opens where you left it, after a page reload or a reopening: cursor and selection, scroll, folded passages.
 - **Enjoliver** (Beautify) rewrites the query in a consistent style: keywords and function names in capitals, table and column names as written in the catalog, `AS` before aliases, one clause per line, indented by the **Indentation** of the preferences, spaces around operators. Stored procedures and `DELIMITER` blocks are supported. Ctrl+Z undoes it. The button is active once the connection's catalog is loaded.
 
 The editor, the results and the Pivoteur each stand under a header, its title on the left, and open and close from the activity bar. At first, the editor takes the whole height, and the results and the Pivoteur are closed. When all three are closed, the room left is grey; a panel opened again takes back the height it had when it was closed, or else shares the height with the panels already open. Running queries opens the results, which show their tabs. Drag the line between two panels to share the height between them, or use the arrow keys once the line has the focus; dragged below its smallest height, the panel under the line closes. Your layout is remembered for each editor.
@@ -262,6 +265,7 @@ Each query gets its own tab:
 | Export the full result as CSV | **Exporter** button, then **Résultat complet en CSV (requête relancée)**; followed in the exports manager of the top bar |
 | Explore JSON or XML values | Button of the data explorer, in the activity bar of the editor's tab |
 
+- **The display of the grid** is saved with its tab: the widths and the order of the columns, the sort, the filter and its form, the scroll. A page reload finds it again, and a new run gives each new tab the display of the tab it replaces, as for the [Pivoteur](#pivoteur): the widths, the order, the sort and the scroll while the columns stay the same, the filter in any case (on all columns if the columns changed).
 - **Refresh** keeps the tab, its name and its pin, and, while the columns stay the same, the sort and the filter. The current result stays displayed until the new one starts to arrive. While other queries run, the refresh waits for their end. During the refresh, or while it waits, the same button (crossed out) stops it: the result stays as it was. If the query fails, the result stays too, with the error above it.
 - **Copy** is a raw copy: values as they are, separated by tabs, with column names on the first line, ready to paste into a spreadsheet. A single cell is copied as its value alone, without its column name. `NULL` is copied as an empty cell. Control characters are written literally (`\t`, `\n`, `\r`, `\0`, `\b`, `\f`…, or `\xHH`), so each value stays in one cell.
 - **Download** saves a CSV file that Excel in French opens with a double click: UTF-8 with a BOM, `;` as separator. With a selection, it holds the selected cells only, an unselected cell among the selected rows and columns left empty; without one, the displayed result, sorted and filtered as on screen. The menu says which one it downloads, with its size. Columns come in the displayed order, with their names on the first line. `NULL` is an empty field and an empty string is `""`, which Excel both shows as an empty cell. Decimal numbers take the decimal comma (`3,14`), so that Excel reads them as numbers; other values are written as stored, line breaks included. Columns sharing a name refuse the download. Excel itself opens at most 1,048,576 rows, rounds integers beyond 15 digits and drops the leading zeros of codes such as `007`: the file keeps them all. Excel also reads a value that starts with `=`, `+`, `-` or `@` as a formula, which it may compute on opening: the file keeps the value as it is.
@@ -475,7 +479,7 @@ Prisme keeps its data in a folder of your user account:
 
 It holds two files that go together:
 
-- **`prisme.db`**: the internal database (settings, connections, editors, results, history of the queries, debug log).
+- **`prisme.db`**: the internal database (settings, connections, editors, results, history of the queries, debug log). It also keeps the display: the theme, the panels and their sizes, the object navigator, the position in the SQL text, the columns, sort, filter and scroll of each result grid, the console. Opening Prisme from another browser or another computer finds them as you left them; the browser itself only keeps a copy of the theme, for the first paint.
 - **`prisme.key`**: the master key, created on first launch. It encrypts the passwords of your connections.
 
 The **`exports`** folder holds the files of the full exports, until you remove them from the exports manager.

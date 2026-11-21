@@ -555,8 +555,9 @@ list, flat by nature, cannot give.
 3. Start Prisme in release on a throwaway data folder (`--listen`,
    `--data-dir`), and save the connection through `POST /api/connections`.
 4. Start Chrome headless with `--window-size=1600,1000`: the interface folds
-   the navigator in a narrow window and keeps it folded
-   (`prisme.navigator.open` in `localStorage`). Check the height of the tree
+   the navigator in a narrow window and keeps it folded (in `localStorage`,
+   `prisme.navigator.open`, at the time of the measure; now in the display
+   of the editor, `editors.display`). Check the height of the tree
    (`[role=tree]`) before measuring.
 5. Time each click until the expected line is in the page, then one frame.
    In the virtual tree, the number of lines in the page does not grow when a

@@ -1,8 +1,10 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { nextTick } from 'vue'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { useEditorDisplaysStore } from '../editorDisplays'
 import { useExplorerStore } from '../explorer'
+
+vi.mock('@/api/editors', () => ({ saveEditorDisplay: async () => {} }))
 
 beforeEach(() => {
   window.localStorage.clear()
@@ -13,36 +15,24 @@ afterEach(() => {
   window.localStorage.clear()
 })
 
-describe('layout of an explorer', () => {
-  it('starts closed, at the default width, without anything kept', () => {
-    expect({ ...useExplorerStore().layoutOf(1) }).toEqual({ open: false, width: null })
+describe('panel of an explorer', () => {
+  it('starts closed, at the default width', () => {
+    expect({ ...useExplorerStore().layoutOf(1) }).toEqual({ open: false, size: null })
   })
 
-  it('is kept per editor, and a new editor starts from the defaults', async () => {
+  it('is the panel of the display of its editor', () => {
     const explorer = useExplorerStore()
     explorer.layoutOf(1).open = true
-    explorer.layoutOf(1).width = 480
-    await nextTick()
-
-    expect(JSON.parse(window.localStorage.getItem('prisme.explorer.layout.1')!)).toEqual({
-      open: true,
-      width: 480,
-    })
-    expect({ ...explorer.layoutOf(2) }).toEqual({ open: false, width: null })
-    setActivePinia(createPinia())
-    expect({ ...useExplorerStore().layoutOf(1) }).toEqual({ open: true, width: 480 })
+    expect(useEditorDisplaysStore().displayOf(1).panels.explorer.open).toBe(true)
+    expect(explorer.layoutOf(2).open).toBe(false)
   })
 
-  it('forgets the explorer of a closed editor', async () => {
+  it('forgets the content of the explorer of a closed editor', () => {
     const explorer = useExplorerStore()
-    explorer.layoutOf(1).open = true
-    await nextTick()
     explorer.show(1, Symbol('grid'), { state: 'several' })
 
     explorer.forget(1)
 
-    expect(window.localStorage.getItem('prisme.explorer.layout.1')).toBeNull()
-    expect(explorer.layoutOf(1).open).toBe(false)
     expect(explorer.contentOf(1)).toEqual({ state: 'none' })
   })
 })

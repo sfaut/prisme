@@ -50,6 +50,7 @@ import { describe } from './messages'
 import { markRaw, onScopeDispose, reactive } from 'vue'
 
 import type { ColumnTypeInfo } from './generated/ColumnTypeInfo'
+import type { GridDisplay } from './generated/GridDisplay'
 import type { LimitReport } from './generated/LimitReport'
 import type { ClientMessage } from './generated/ClientMessage'
 import type { ResultTab } from './generated/ResultTab'
@@ -193,6 +194,28 @@ export interface UserFilter {
 }
 
 /**
+ * Layout of the grid of a tab: its saved display (`GridDisplay`) but the
+ * user filter, which the tab holds (`QueryTab.filter`, `filterOpen`).
+ */
+export type GridLayout = Omit<GridDisplay, 'filter' | 'filter_open'>
+
+/**
+ * State of a tab given by the saved display of its grid: its layout and
+ * its filter; none saved, the defaults.
+ *
+ * @param display Saved display, `null` or absent without one.
+ */
+function savedGrid(
+  display: GridDisplay | null | undefined,
+): Pick<QueryTab, 'grid' | 'filter' | 'filterOpen'> {
+  if (!display) {
+    return { grid: null, filter: NO_FILTER, filterOpen: false }
+  }
+  const { filter, filter_open, ...grid } = display
+  return { grid, filter, filterOpen: filter_open }
+}
+
+/**
  * User filter that keeps every row.
  */
 export const NO_FILTER: Readonly<UserFilter> = Object.freeze({ text: '', column: null })
@@ -313,6 +336,12 @@ export interface QueryTab {
    * applied.
    */
   filterOpen: boolean
+  /**
+   * Layout of the tab's grid (widths and order of its columns, sort,
+   * scroll), saved with the filter and replaced as a whole on each change
+   * (`gridDisplay.ts`); `null` as long as none was saved.
+   */
+  grid: GridLayout | null
   /**
    * Configuration of the Pivoteur of the tab, saved with it and replaced as a
    * whole on each change (`PivotPanel.vue`).
@@ -504,8 +533,7 @@ export function applyMessage(
             pinned: false,
             name: null,
             previous: null,
-            filter: NO_FILTER,
-            filterOpen: false,
+            ...savedGrid(query.grid),
             pivot: query.pivot ?? NO_PIVOT,
             awaitedRows: null,
           })),
@@ -1317,8 +1345,7 @@ export function savedTab(saved: ResultTab, rows: Cell[][]): QueryTab {
     pinned: saved.pinned,
     name: saved.name === '' ? null : saved.name,
     previous: null,
-    filter: NO_FILTER,
-    filterOpen: false,
+    ...savedGrid(saved.grid),
     pivot: saved.pivot,
     awaitedRows: null,
   }
@@ -1393,7 +1420,7 @@ export function nextReading(
  * @param now Instant of reception (`performance.now()`).
  * @param existing
  *     Tab already shown for this query, whose name, pinning, number, user
- *     filter and configuration of the Pivoteur it keeps.
+ *     filter, layout of the grid and configuration of the Pivoteur it keeps.
  */
 export function resumedTab(
   query: ResumedQuery,
@@ -1409,6 +1436,7 @@ export function resumedTab(
       name: existing?.name ?? '',
       pinned: existing?.pinned ?? false,
       pivot: existing?.pivot ?? NO_PIVOT,
+      grid: null,
       result: query.result,
       chunks: 0,
     },
@@ -1418,6 +1446,7 @@ export function resumedTab(
   tab.number = existing?.number ?? query.query
   tab.filter = existing?.filter ?? NO_FILTER
   tab.filterOpen = existing?.filterOpen ?? false
+  tab.grid = existing?.grid ?? null
   if (!query.result.done) {
     const since = (microseconds: number | null) =>
       microseconds === null ? null : now - microseconds / 1000

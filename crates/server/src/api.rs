@@ -17,6 +17,8 @@
 //! | `PUT /api/settings`                 | Changes the settings, returns the updated settings.           |
 //! | `GET /api/profile`                  | Profile of the user: names and email address.                 |
 //! | `PUT /api/profile`                  | Changes the names, returns the profile.                       |
+//! | `GET /api/display`                  | Display settings of the user: theme, active editor, console (`user_display.rs`). |
+//! | `PUT /api/display`                  | Saves the display settings (204).                             |
 //! | `POST /api/beautify`                | Beautifies SQL (keywords in capitals...).                     |
 //! | `POST /api/analyze`                 | Analyses the editor's text (see `analyze.rs`).                |
 //! | `GET /api/dialects/{flavor}/keywords` | Keywords of the dialect (`?version=`: those of the version). |
@@ -64,6 +66,7 @@ use crate::recorder::Recorder;
 use crate::request_guard;
 use crate::sessions::Sessions;
 use crate::settings::{self, Settings, SettingsError, SettingsUpdate};
+use crate::user_display;
 use crate::web_assets;
 
 /// State shared by all the routes.
@@ -176,6 +179,7 @@ pub fn router(state: AppState) -> Router {
         .merge(navigator::routes())
         .merge(console::routes())
         .merge(editors::routes())
+        .merge(user_display::routes())
         .merge(exports::routes())
         .fallback(web_assets::serve)
         .layer(middleware::from_fn(request_guard::local_only))

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { mount } from '@vue/test-utils'
 import App from '../App.vue'
+import { useUserDisplayStore } from '../stores/userDisplay'
 
 vi.mock('@/api/connections', () => ({
   listConnections: async () => [],
@@ -41,10 +42,10 @@ vi.mock('@/api/exports', () => ({
 const editorIds = vi.hoisted(() => ({ next: 1 }))
 
 /**
- * Saves of the navigators' states.
+ * Saves of the displays of the editors.
  */
-const saveNavigator = vi.hoisted(() =>
-  vi.fn<(typeof import('@/api/editors'))['saveNavigator']>(async () => {}),
+const saveEditorDisplay = vi.hoisted(() =>
+  vi.fn<(typeof import('@/api/editors'))['saveEditorDisplay']>(async () => {}),
 )
 
 // No saved editor: the interface creates one, without a connection.
@@ -55,14 +56,14 @@ vi.mock('@/api/editors', () => ({
     name: '',
     connection_id: null,
     sql: '',
-    navigator: null,
+    display: null,
   }),
-  saveNavigator,
+  saveEditorDisplay,
 }))
 
 beforeEach(() => {
   editorIds.next = 1
-  saveNavigator.mockClear()
+  saveEditorDisplay.mockClear()
   setActivePinia(createPinia())
   // The navigator's tree (virtual scrolling) queries the media queries, missing
   // from jsdom. Without layout, it shows no node anyway.
@@ -126,9 +127,11 @@ describe('App', () => {
     expect(objects()).toBe(false)
     expect(wrapper.find('[aria-controls^="navigator-panel-"]').exists()).toBe(false)
     await vi.waitFor(() =>
-      expect(saveNavigator).toHaveBeenLastCalledWith(
+      expect(saveEditorDisplay).toHaveBeenLastCalledWith(
         1,
-        expect.objectContaining({ open: false }),
+        expect.objectContaining({
+          panels: expect.objectContaining({ navigator: { open: false, size: null } }),
+        }),
         expect.anything(),
       ),
     )
@@ -155,7 +158,7 @@ describe('App', () => {
     await toggle().trigger('click')
     expect(toggle().attributes('aria-pressed')).toBe('true')
     expect(wrapper.find('[aria-label="Action"]').exists()).toBe(true)
-    expect(window.localStorage.getItem('prisme.console.filtersShown')).toBe('true')
+    expect(useUserDisplayStore().display.console.filters_open).toBe(true)
     const debugTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text() === 'Debug')!
     await debugTab.trigger('mousedown', { button: 0 })
     await vi.waitFor(() => expect(wrapper.find('[aria-label="Niveau"]').exists()).toBe(true))
@@ -181,14 +184,20 @@ describe('App', () => {
     await debugTab.trigger('mousedown', { button: 0 })
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucun message pour le moment'))
     expect(wrapper.find('[aria-label="Effacer le debug de l’éditeur"]').exists()).toBe(true)
-    expect(window.localStorage.getItem('prisme.console.tab')).toBe('debug')
+    expect(useUserDisplayStore().display.console.tab).toBe('debug')
     const button = wrapper.find('nav button[aria-label="Console"]')
     expect(button.attributes('aria-pressed')).toBe('true')
     await button.trigger('click')
     expect(wrapper.text()).not.toContain('Aucune requête envoyée')
     expect(wrapper.find('[aria-controls^="console-panel-"]').exists()).toBe(false)
-    expect(JSON.parse(window.localStorage.getItem('prisme.editor.layout.1')!).consoleFolded).toBe(
-      true,
+    await vi.waitFor(() =>
+      expect(saveEditorDisplay).toHaveBeenLastCalledWith(
+        1,
+        expect.objectContaining({
+          panels: expect.objectContaining({ console: { open: false, size: null } }),
+        }),
+        expect.anything(),
+      ),
     )
     await wrapper.find('nav button[aria-label="Console"]').trigger('click')
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucun message pour le moment'))

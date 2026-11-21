@@ -5,7 +5,7 @@ import { nextTick } from 'vue'
 
 import { syncState } from '@/api/sync'
 import { useEditorsStore } from '../editors'
-import { useNavigatorStore } from '../navigator'
+import { useEditorDisplaysStore } from '../editorDisplays'
 
 /**
  * Answers the next save with `status` (204 accepted, 500 refused).
@@ -20,7 +20,7 @@ beforeEach(() => {
     vi.fn(async (_path: string, init: RequestInit) => {
       if (init.method === 'POST') {
         return new Response(
-          JSON.stringify({ id: 1, name: '', connection_id: null, sql: '', navigator: null }),
+          JSON.stringify({ id: 1, name: '', connection_id: null, sql: '', display: null }),
         )
       }
       if (saveStatus === 204) {
@@ -62,40 +62,16 @@ describe('synchronisation state of the editors', () => {
 })
 
 describe('closing an editor', () => {
-  it('forgets the layout of its cell', async () => {
+  it('saves its display before closing, which keeps it for a reopening', async () => {
     const editors = useEditorsStore()
     await editors.create(null)
-    window.localStorage.setItem('prisme.editor.layout.1', '{}')
-    window.localStorage.setItem('prisme.editor.layout.2', '{}')
-
-    await editors.close(1)
-
-    expect(window.localStorage.getItem('prisme.editor.layout.1')).toBeNull()
-    expect(window.localStorage.getItem('prisme.editor.layout.2')).toBe('{}')
-    window.localStorage.clear()
-  })
-
-  it('forgets its explorer', async () => {
-    const editors = useEditorsStore()
-    await editors.create(null)
-    window.localStorage.setItem('prisme.explorer.layout.1', '{}')
-
-    await editors.close(1)
-
-    expect(window.localStorage.getItem('prisme.explorer.layout.1')).toBeNull()
-    window.localStorage.clear()
-  })
-
-  it('saves its navigator before closing, which keeps it for a reopening', async () => {
-    const editors = useEditorsStore()
-    await editors.create(null)
-    useNavigatorStore().layoutOf(1).width = 320
+    useEditorDisplaysStore().displayOf(1).panels.navigator.size = 320
     await nextTick()
 
     await editors.close(1)
 
     const calls = vi.mocked(fetch).mock.calls.map(([path, init]) => `${init!.method} ${path}`)
-    const saved = calls.indexOf('PUT /api/editors/1/navigator')
+    const saved = calls.indexOf('PUT /api/editors/1/display')
     expect(saved).toBeGreaterThanOrEqual(0)
     expect(saved).toBeLessThan(calls.indexOf('DELETE /api/editors/1'))
   })

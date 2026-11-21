@@ -1,20 +1,15 @@
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useEditorLayoutsStore } from '@/stores/editorLayouts'
-import { useExplorerStore } from '@/stores/explorer'
-import { useNavigatorStore } from '@/stores/navigator'
+import { useEditorDisplaysStore } from '@/stores/editorDisplays'
 
 import PanelActivityBar from '../PanelActivityBar.vue'
 
-beforeEach(() => {
-  window.localStorage.clear()
-  setActivePinia(createPinia())
-})
+vi.mock('@/api/editors', () => ({ saveEditorDisplay: async () => {} }))
 
-afterEach(() => {
-  window.localStorage.clear()
+beforeEach(() => {
+  setActivePinia(createPinia())
 })
 
 /**
@@ -22,6 +17,13 @@ afterEach(() => {
  */
 function mountBar() {
   return mount(PanelActivityBar, { props: { editorId: 1, active: true } })
+}
+
+/**
+ * Panels of the editor 1.
+ */
+function panels() {
+  return useEditorDisplaysStore().displayOf(1).panels
 }
 
 describe('PanelActivityBar', () => {
@@ -47,16 +49,16 @@ describe('PanelActivityBar', () => {
     expect(results().attributes('data-tooltip')).toBe('Résultat')
     expect(results().attributes('data-tooltip-shortcut')).toBe('Ctrl-K puis R')
     await results().trigger('click')
-    expect(useEditorLayoutsStore().layoutOf(1).resultsFolded).toBe(false)
+    expect(panels().results.open).toBe(true)
     expect(results().attributes('aria-pressed')).toBe('true')
     expect(results().attributes('data-tooltip')).toBe('Résultat')
 
     await wrapper.find('button[aria-label="Navigateur d’objets"]').trigger('click')
-    expect(useNavigatorStore().layoutOf(1).open).toBe(false)
+    expect(panels().navigator.open).toBe(false)
     await wrapper.find('button[aria-label="Explorateur de données"]').trigger('click')
-    expect(useExplorerStore().layoutOf(1).open).toBe(true)
+    expect(panels().explorer.open).toBe(true)
     await wrapper.find('button[aria-label="Console"]').trigger('click')
-    expect(useEditorLayoutsStore().layoutOf(1).consoleFolded).toBe(true)
+    expect(panels().console.open).toBe(false)
     wrapper.unmount()
   })
 
@@ -67,31 +69,41 @@ describe('PanelActivityBar', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key }))
     }
     chord('p')
-    expect(useEditorLayoutsStore().layoutOf(1).pivotFolded).toBe(false)
+    expect(panels().pivot.open).toBe(true)
     chord('c')
-    expect(useEditorLayoutsStore().layoutOf(1).consoleFolded).toBe(true)
+    expect(panels().console.open).toBe(false)
 
     await wrapper.setProps({ active: false })
     chord('c')
-    expect(useEditorLayoutsStore().layoutOf(1).consoleFolded).toBe(true)
+    expect(panels().console.open).toBe(false)
     wrapper.unmount()
   })
 
   it('shares the room again: equal heights, default sizes on the sides', async () => {
     const wrapper = mountBar()
-    const view = useEditorLayoutsStore().layoutOf(1)
-    view.results = 300
-    view.pivot = 200
-    view.console = 400
-    useNavigatorStore().layoutOf(1).width = 500
-    useExplorerStore().layoutOf(1).width = 600
+    panels().results.size = 300
+    panels().pivot.size = 200
+    panels().console.size = 400
+    panels().navigator.size = 500
+    panels().explorer.size = 600
 
     await wrapper.find('button[aria-label="Répartir les volets"]').trigger('click')
-    expect(view.results).toBeNull()
-    expect(view.pivot).toBeNull()
-    expect(useNavigatorStore().layoutOf(1).width).toBeNull()
-    expect(useExplorerStore().layoutOf(1).width).toBeNull()
-    expect(view.console).toBeNull()
+    for (const name of ['results', 'pivot', 'console', 'navigator', 'explorer'] as const) {
+      expect(panels()[name].size).toBeNull()
+    }
+    wrapper.unmount()
+  })
+
+  it('resets the display of its editor, with its shortcut', async () => {
+    const wrapper = mountBar()
+    const button = wrapper.find('button[aria-label="Réinitialiser l’affichage"]')
+    expect(button.attributes('data-tooltip-shortcut')).toBe('Ctrl-K puis 0')
+    panels().navigator.open = false
+    panels().results = { open: true, size: 300 }
+
+    await button.trigger('click')
+    expect(panels().navigator).toEqual({ open: true, size: null })
+    expect(panels().results).toEqual({ open: false, size: null })
     wrapper.unmount()
   })
 })

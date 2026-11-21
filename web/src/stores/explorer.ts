@@ -9,22 +9,21 @@
  * (`release`). While the explorer of an editor is closed, its grids publish
  * nothing.
  *
- * The layout of the explorer of each editor (open or closed, its width) is a
- * display preference specific to this machine, kept in the browser's local
- * storage (`prisme.explorer.layout.<editor>`), forgotten when the editor
- * closes (`forget`): closed by default, at the width of the theme, which an
- * editor without a layout of its own, a new one for example, takes; the
- * wrapping of long lines (`wrap`, `prisme.explorer.wrap`) is common to all
- * the explorers, off by default. When storage is unavailable, the defaults
- * apply.
+ * The panel of the explorer of each editor (open or closed, its width) is
+ * part of the display of the editor, saved with it on the server side
+ * (`editorDisplays` store): closed by default, at the width of the theme.
+ * The wrapping of long lines (`wrap`) is common to all the explorers, off by
+ * default, saved with the display settings of the user (`userDisplay`
+ * store).
  */
 
 import { defineStore } from 'pinia'
-import { type EffectScope, effectScope, ref, shallowReactive, watch } from 'vue'
+import { computed, shallowReactive } from 'vue'
 
+import type { Panel } from '@/api/generated/Panel'
 import type { DataCell } from '@/components/explorer/dataFormat'
-import { forgetStoredLayout, useStoredLayout } from '@/components/split/storedLayout'
-import { loadFlag, saveFlag } from '@/utils/storedValues'
+import { useEditorDisplaysStore } from '@/stores/editorDisplays'
+import { useUserDisplayStore } from '@/stores/userDisplay'
 
 /**
  * What the grid on screen gives the explorer.
@@ -65,68 +64,29 @@ export function sameContent(a: ExplorerContent, b: ExplorerContent): boolean {
 }
 
 /**
- * Key of the layout of an editor's explorer in local storage.
- *
- * @param editorId Id of the editor.
- */
-export function explorerLayoutKey(editorId: number): string {
-  return `prisme.explorer.layout.${editorId}`
-}
-
-/**
- * Layout of an editor's explorer.
- */
-export type ExplorerLayout = {
-  /**
-   * Is the explorer open?
-   */
-  open: boolean
-  /**
-   * Width given by the user, in CSS pixels; `null`: the default width of the
-   * theme.
-   */
-  width: number | null
-}
-
-/**
  * Content of an explorer without a grid that publishes.
  */
 const NOTHING: ExplorerContent = { state: 'none' }
-
-/**
- * Key of the wrapping preference in local storage.
- */
-const WRAP_KEY = 'prisme.explorer.wrap'
 
 export const useExplorerStore = defineStore('explorer', () => {
   /**
    * Are long lines wrapped to the width of the panel?
    */
-  const wrap = ref(loadFlag(WRAP_KEY, false))
-  watch(wrap, (value) => saveFlag(WRAP_KEY, value))
+  const user = useUserDisplayStore()
+  const wrap = computed({
+    get: () => user.display.explorer.wrap,
+    set: (value: boolean) => (user.display.explorer.wrap = value),
+  })
+
+  const displays = useEditorDisplaysStore()
 
   /**
-   * Layouts read so far, by editor, with the scope of the watchers that save
-   * them.
-   */
-  const layouts = new Map<number, { layout: ExplorerLayout; scope: EffectScope }>()
-
-  /**
-   * Layout of an editor's explorer, read from local storage the first time.
+   * Panel of an editor's explorer: open or closed, and its width.
    *
    * @param editorId Id of the editor.
    */
-  function layoutOf(editorId: number): ExplorerLayout {
-    const known = layouts.get(editorId)
-    if (known) {
-      return known.layout
-    }
-    const scope = effectScope(true)
-    const layout = scope.run(() =>
-      useStoredLayout<ExplorerLayout>(explorerLayoutKey(editorId), { open: false, width: null }),
-    )!
-    layouts.set(editorId, { layout, scope })
-    return layout
+  function layoutOf(editorId: number): Panel {
+    return displays.displayOf(editorId).panels.explorer
   }
 
   /**
@@ -177,17 +137,14 @@ export const useExplorerStore = defineStore('explorer', () => {
   }
 
   /**
-   * Forgets the explorer of a closed editor: a reopened editor starts
-   * closed, at the last width given.
+   * Forgets the content of the explorer of a closed editor; its panel stays
+   * saved with the editor, which finds it again when reopened.
    *
    * @param editorId Id of the editor.
    */
   function forget(editorId: number): void {
-    layouts.get(editorId)?.scope.stop()
-    layouts.delete(editorId)
     owners.delete(editorId)
     contents.delete(editorId)
-    forgetStoredLayout(explorerLayoutKey(editorId))
   }
 
   return { wrap, layoutOf, contentOf, show, release, forget }

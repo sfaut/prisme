@@ -22,16 +22,18 @@
   (`editorIndent.ts`). Ctrl+Up and Ctrl+Down scroll the text by one line
   without moving the cursor (`editorScroll.ts`). The blanks at the end
   of a line go when the cursor leaves it, except inside a string
-  (`editorTrim.ts`). The text binds with `v-model`. The editor view writes
+  (`editorTrim.ts`). The text binds with `v-model`, the position in it
+  (selection, first line shown, folded passages) with `v-model:position`:
+  the editor opens where it was left (`editorPosition.ts`). The editor view writes
   generated text through `changeText` (queries of the navigator, CTE) and
   `insertText` (`IN` clause of a selection, at the cursor).
 -->
 <script setup lang="ts">
 import { autocompletion } from '@codemirror/autocomplete'
-import { LanguageSupport } from '@codemirror/language'
+import { LanguageSupport, codeFolding, foldedRanges } from '@codemirror/language'
 import { type Diagnostic, setDiagnostics } from '@codemirror/lint'
 import { MariaSQL, MySQL, schemaCompletionSource } from '@codemirror/lang-sql'
-import { type ChangeSpec, Compartment } from '@codemirror/state'
+import { type ChangeSpec, Compartment, EditorSelection } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
 import { EditorView } from 'codemirror'
 import { computed, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue'
@@ -40,6 +42,7 @@ import { analyzeSql } from '@/api/analyze'
 import type { DialectKeywords } from '@/api/generated/DialectKeywords'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { SelectionRange } from '@/api/generated/SelectionRange'
+import type { SqlPosition } from '@/api/generated/SqlPosition'
 import { fetchKeywords } from '@/api/keywords'
 import { describe } from '@/api/messages'
 import type { CatalogSchema } from '@/stores/catalog'
@@ -51,6 +54,7 @@ import {
   indentOrInsertSpaces,
   insertNewlineKeepingIndentation,
 } from './editorIndent'
+import { positionOf, restoringEffects, withinText } from './editorPosition'
 import { scrollKeymap } from './editorScroll'
 import { editorTheme } from './editorTheme'
 import { trimTrailingBlanks } from './editorTrim'
@@ -91,6 +95,12 @@ const props = defineProps<{
  * Text of the editor.
  */
 const text = defineModel<string>({ required: true })
+
+/**
+ * Position in the text: selection, first line shown, folded passages. Read
+ * when the editor opens, then kept up to date.
+ */
+const position = defineModel<SqlPosition>('position')
 
 const emit = defineEmits<{
   /**
@@ -236,10 +246,24 @@ function currentLanguage(): LanguageSupport {
   return new LanguageSupport(dialect.language, [dialect.language.data.of({ autocomplete: names })])
 }
 
+/**
+ * Gives the position of the editor to its model, if it changed.
+ *
+ * @param editor View of the editor.
+ */
+function notePosition(editor: EditorView): void {
+  const next = positionOf(editor)
+  if (JSON.stringify(next) !== JSON.stringify(position.value)) {
+    position.value = next
+  }
+}
+
 onMounted(() => {
+  const start = position.value ? withinText(position.value, text.value.length) : null
   view = new EditorView({
     parent: host.value!,
     doc: text.value,
+    selection: start ? EditorSelection.single(start.anchor, start.head) : undefined,
     extensions: [
       // Before sqlSetup, to take precedence over its own shortcuts.
       keymap.of([
@@ -276,10 +300,19 @@ onMounted(() => {
       language.of(currentLanguage()),
       currentStatement(),
       trimTrailingBlanks(),
+      codeFolding(),
+      EditorView.domEventHandlers({ scroll: (_event, editor) => notePosition(editor) }),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           text.value = update.state.doc.toString()
           scheduleAnalysis()
+        }
+        if (
+          update.docChanged ||
+          update.selectionSet ||
+          foldedRanges(update.startState) !== foldedRanges(update.state)
+        ) {
+          notePosition(update.view)
         }
         const selecting = update.state.selection.ranges.some((range) => !range.empty)
         if (selecting !== selected) {
@@ -289,6 +322,9 @@ onMounted(() => {
       }),
     ],
   })
+  if (start) {
+    view.dispatch({ effects: restoringEffects(start) })
+  }
   scheduleAnalysis()
 })
 

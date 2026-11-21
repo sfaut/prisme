@@ -18,8 +18,8 @@ import { computed, ref } from 'vue'
 import { clearPending, markPending } from '@/api/sync'
 import type { BatchProgress } from '@/api/querySession'
 import { useExplorerStore } from '@/stores/explorer'
-import { useEditorLayoutsStore } from '@/stores/editorLayouts'
-import { useNavigatorStore } from '@/stores/navigator'
+import { useEditorDisplaysStore } from '@/stores/editorDisplays'
+import { useUserDisplayStore } from '@/stores/userDisplay'
 
 import {
   closeEditor,
@@ -70,11 +70,6 @@ function editorKey(id: number): string {
 }
 
 /**
- * Key of the active editor in local storage.
- */
-const ACTIVE_KEY = 'prisme.editor.active'
-
-/**
  * Interface editor built from the server's.
  *
  * @param editor Editor received from the server.
@@ -85,18 +80,6 @@ function entryOf(editor: Editor): EditorEntry {
     name: editor.name,
     connectionId: editor.connection_id,
     sql: editor.sql,
-  }
-}
-
-/**
- * Remembered active editor, `null` if none is readable.
- */
-function storedActive(): number | null {
-  try {
-    const id = Number(localStorage.getItem(ACTIVE_KEY))
-    return Number.isInteger(id) && id > 0 ? id : null
-  } catch {
-    return null
   }
 }
 
@@ -151,28 +134,25 @@ export const useEditorsStore = defineStore('editors', () => {
   )
 
   /**
-   * Interface editor built from the server's, its navigator handed over to
-   * the navigator store.
+   * Interface editor built from the server's, its display handed over to
+   * the displays store.
    *
    * @param editor Editor received from the server.
    */
   function received(editor: Editor): EditorEntry {
-    useNavigatorStore().seed(editor.id, editor.navigator)
+    useEditorDisplaysStore().seed(editor.id, editor.display)
     return entryOf(editor)
   }
 
   /**
-   * Makes an editor active, and remembers it.
+   * Makes an editor active, and remembers it with the display settings of
+   * the user.
    *
    * @param id Id of the editor.
    */
   function activate(id: number): void {
     activeId.value = id
-    try {
-      localStorage.setItem(ACTIVE_KEY, String(id))
-    } catch {
-      // Display preference only.
-    }
+    useUserDisplayStore().display.active_editor = id
   }
 
   /**
@@ -184,7 +164,7 @@ export const useEditorsStore = defineStore('editors', () => {
       await create(null)
       return
     }
-    const remembered = storedActive()
+    const remembered = useUserDisplayStore().display.active_editor
     const first = editors.value[0]!.id
     activate(editors.value.some((editor) => editor.id === remembered) ? remembered! : first)
   }
@@ -299,10 +279,9 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
-   * Closes an editor (can be reopened for 24 hours) and forgets the layout of
-   * its view and its explorer; its navigator, saved with it, comes back when
-   * it is reopened. Its neighbour becomes active. The last editor closed is
-   * replaced by an empty editor.
+   * Closes an editor (can be reopened for 24 hours); its display, saved with
+   * it, comes back when it is reopened. Its neighbour becomes active. The
+   * last editor closed is replaced by an empty editor.
    *
    * @param id Id of the editor.
    */
@@ -310,11 +289,10 @@ export const useEditorsStore = defineStore('editors', () => {
     if (timers.has(id)) {
       await save(id)
     }
-    await useNavigatorStore().flush(id)
+    await useEditorDisplaysStore().flush(id)
     await closeEditor(id)
-    useEditorLayoutsStore().forget(id)
     delete progress.value[id]
-    useNavigatorStore().forget(id)
+    useEditorDisplaysStore().forget(id)
     useExplorerStore().forget(id)
     const index = editors.value.findIndex((editor) => editor.id === id)
     editors.value = editors.value.filter((editor) => editor.id !== id)

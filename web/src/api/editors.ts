@@ -7,8 +7,9 @@ import { type RequestOptions, request } from './http'
 import type { Cell } from './querySession'
 import type { ClosedEditor } from './generated/ClosedEditor'
 import type { Editor } from './generated/Editor'
+import type { EditorDisplay } from './generated/EditorDisplay'
 import type { EditorUpdate } from './generated/EditorUpdate'
-import type { NavigatorState } from './generated/NavigatorState'
+import type { GridDisplay } from './generated/GridDisplay'
 import type { ResultTab } from './generated/ResultTab'
 import type { ResultTabUpdate } from './generated/ResultTabUpdate'
 import type { TabPivot } from './generated/TabPivot'
@@ -45,18 +46,18 @@ export async function updateEditor(
 }
 
 /**
- * Saves the state of the object navigator of an editor.
+ * Saves the display of an editor: its panels, the tree of its navigator.
  *
  * @param id Id of the editor.
- * @param state Whole state of the navigator.
+ * @param display Whole display of the editor.
  * @param options Options of the request, such as `keepalive` for a save made as the page closes.
  */
-export async function saveNavigator(
+export async function saveEditorDisplay(
   id: number,
-  state: NavigatorState,
+  display: EditorDisplay,
   options: RequestOptions = {},
 ): Promise<void> {
-  await request('PUT', `/api/editors/${id}/navigator`, state, options)
+  await request('PUT', `/api/editors/${id}/display`, display, options)
 }
 
 /**
@@ -142,6 +143,21 @@ export async function reorderResults(editorId: number, ids: number[]): Promise<v
  */
 export async function updateResult(id: number, tab: ResultTabUpdate): Promise<void> {
   await request('PUT', `/api/results/${id}`, tab)
+}
+
+/**
+ * Saves the display of the grid of a result tab.
+ *
+ * @param id Id of the tab.
+ * @param grid Display, with the columns it was made on.
+ * @param options Options of the request (`keepalive` as the page closes).
+ */
+export async function saveResultGrid(
+  id: number,
+  grid: GridDisplay,
+  options: RequestOptions = {},
+): Promise<void> {
+  await request('PUT', `/api/results/${id}/grid`, grid, options)
 }
 
 /**

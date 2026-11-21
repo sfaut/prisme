@@ -19,6 +19,7 @@ use crate::error_detail::ErrorDetail;
 use crate::exports::ExportsError;
 use crate::profile::ProfileError;
 use crate::settings::SettingsError;
+use crate::user_display::UserDisplayError;
 
 /// JSON body of an error response.
 #[derive(Serialize, TS)]
@@ -108,6 +109,14 @@ impl From<SettingsError> for ApiError {
                 Self::Internal
             }
         }
+    }
+}
+
+impl From<UserDisplayError> for ApiError {
+    /// Translates an error of the display settings into an HTTP error.
+    fn from(error: UserDisplayError) -> Self {
+        tracing::error!("{error}");
+        Self::Internal
     }
 }
 

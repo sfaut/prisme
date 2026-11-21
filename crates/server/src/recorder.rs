@@ -317,7 +317,8 @@ impl Recorder {
     }
 
     /// New batch: the editor's unpinned tabs disappear, and each query gets a
-    /// new tab, whose id and configuration of the Pivoteur it takes.
+    /// new tab, whose id, configuration of the Pivoteur and display of the
+    /// grid it takes.
     async fn create_tabs(&self, records: &mut HashMap<u32, Record>, queries: &mut [BatchQuery]) {
         let editor_id = self.editor_id;
         let wanted: Vec<_> = queries.iter().map(|q| (q.query, q.sql.clone())).collect();
@@ -327,9 +328,10 @@ impl Recorder {
             .await;
         match created {
             Ok(tabs) => {
-                for (query, (tab_id, pivot)) in queries.iter_mut().zip(tabs) {
+                for (query, (tab_id, pivot, grid)) in queries.iter_mut().zip(tabs) {
                     query.tab = tab_id;
                     query.pivot = Some(pivot);
+                    query.grid = grid;
                     records.insert(query.query, Record::new(tab_id, &query.sql, 0, false));
                 }
             }
@@ -604,6 +606,7 @@ mod tests {
                     start: 0,
                     end: 8,
                     pivot: None,
+                    grid: None,
                 })
                 .collect(),
         };
@@ -762,6 +765,7 @@ mod tests {
                 start: 0,
                 end: 8,
                 pivot: None,
+                grid: None,
             }],
         }
     }
