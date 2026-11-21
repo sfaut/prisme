@@ -11,10 +11,13 @@
 //! that an upsert updates (`docs/SQL-COMPARISON.md`, section "Outcome of a
 //! write"). This module turns all of it into the neutral counts of
 //! `StatementOutcome`, and leaves empty what the packet does not tell.
+//!
+//! The packet only counts the warnings: their text is read by
+//! `SHOW WARNINGS` (`notice`), before the next statement clears them.
 
 use prisme_dialects::verb::StatementVerb;
 
-use crate::outcome::{OutcomeCounts, StatementOutcome};
+use crate::outcome::{Notice, NoticeLevel, OutcomeCounts, StatementOutcome};
 
 /// What the OK packet of a statement holds.
 #[derive(Debug, Default)]
@@ -76,6 +79,23 @@ pub(super) fn outcome(verb: StatementVerb, packet: &OkPacket) -> StatementOutcom
             .filter(|id| *id > 0)
             .map(|id| id.to_string()),
         warnings: Some(u64::from(packet.warnings)),
+        notices: Vec::new(),
+    }
+}
+
+/// Notice of a row of `SHOW WARNINGS`: its level (`Note`, `Warning`,
+/// `Error`), its code and its message. An unknown level counts as a
+/// warning.
+pub(super) fn notice(level: &str, code: u32, message: String) -> Notice {
+    let level = match level {
+        "Note" => NoticeLevel::Note,
+        "Error" => NoticeLevel::Error,
+        _ => NoticeLevel::Warning,
+    };
+    Notice {
+        level,
+        code: code.to_string(),
+        message,
     }
 }
 
@@ -265,6 +285,22 @@ mod tests {
                 "Records: 6  Duplicates: 0  Warnings: 0"
             ),
             OutcomeCounts::default()
+        );
+    }
+
+    #[test]
+    fn reads_the_levels_of_the_warnings() {
+        let truncated = notice("Warning", 1265, "Data truncated".to_string());
+        assert_eq!(truncated.level, NoticeLevel::Warning);
+        assert_eq!(truncated.code, "1265");
+        assert_eq!(notice("Note", 1051, String::new()).level, NoticeLevel::Note);
+        assert_eq!(
+            notice("Error", 1062, String::new()).level,
+            NoticeLevel::Error
+        );
+        assert_eq!(
+            notice("Other", 1, String::new()).level,
+            NoticeLevel::Warning
         );
     }
 

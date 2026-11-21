@@ -7,6 +7,11 @@
 //! empty rather than guess it. The interface draws only the fields present,
 //! without knowing the engine. The meaning of each counter, per engine, is
 //! recorded in `docs/SQL-COMPARISON.md`.
+//!
+//! The warnings of a statement (`notices`) come with it when its engine
+//! sends them along; when the engine only counts them (`warnings`), the
+//! session asks the connector for them right after the statement, before
+//! the next one clears them (`StatementOutcome::lacks_notices`).
 
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -29,6 +34,44 @@ pub struct StatementOutcome {
     /// Number of warnings and notes the statement raised; absent when the
     /// engine does not count them.
     pub warnings: Option<u64>,
+    /// Warnings and notes the statement raised, as far as the engine keeps
+    /// them (MySQL keeps 64 by default): fewer than `warnings` then.
+    pub notices: Vec<Notice>,
+}
+
+impl StatementOutcome {
+    /// Did the engine count warnings without sending them? They are then
+    /// to read from the connection before its next statement.
+    pub fn lacks_notices(&self) -> bool {
+        self.warnings.is_some_and(|count| count > 0) && self.notices.is_empty()
+    }
+}
+
+/// Warning or note raised by a statement.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Notice {
+    /// Seriousness of the notice.
+    pub level: NoticeLevel,
+    /// Code of the notice in the engine (`1265` for MySQL, `01000` for a
+    /// SQLSTATE); empty when the engine gives none.
+    pub code: String,
+    /// Message of the engine, in its language.
+    pub message: String,
+}
+
+/// Seriousness of a notice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
+pub enum NoticeLevel {
+    /// Information: nothing went wrong (a table to drop was missing).
+    Note,
+    /// Something was not done as written (a value truncated, a duplicate
+    /// skipped).
+    Warning,
+    /// An error the statement went past (under `IGNORE`).
+    Error,
 }
 
 /// Rows of a statement, counted by what happened to them. Each count has a

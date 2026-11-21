@@ -23,7 +23,10 @@
   trouvées"), from its verb and from what its engine reported, repeated at
   the start of the status bar, with the id it generated under it. Its
   warnings, when the engine counted some, turn its icon into a warning and
-  show as a badge in the status bar ("2 avertissements").
+  show as a badge in the status bar ("2 avertissements"); their text follows
+  the summary, one line each, level and code first ("Avertissement 1265"),
+  then how many the engine did not keep. The free room scrolls when they do
+  not fit.
 
   The user filter belongs to the tab (`filter`, `v-model:filter`): its form
   (`ResultFilter.vue`) shows above the grid while its button, right of the
@@ -80,6 +83,7 @@ import { computed, ref, useTemplateRef, watch } from 'vue'
 import { errorMessage } from '@/api/errorMessage'
 import { FLAVOR_NAMES } from '@/api/flavors'
 import type { Flavor } from '@/api/generated/Flavor'
+import type { NoticeLevel } from '@/api/generated/NoticeLevel'
 import type { ServerInfo } from '@/api/generated/ServerInfo'
 import { fetchKeywords } from '@/api/keywords'
 import {
@@ -91,6 +95,8 @@ import {
   formatDuration,
   formatInstant,
   formatRowCount,
+  NOTICE_LABELS,
+  droppedNotices,
   formatWarnings,
   generatedIdLabel,
   outcomeSummary,
@@ -206,6 +212,31 @@ const generatedId = computed(() =>
 const warningCount = computed(() =>
   summary.value === null ? 0 : (shown.value?.outcome.warnings ?? 0),
 )
+
+/**
+ * Warnings and notes of a statement without columns, as the engine sent
+ * them; empty without a summary.
+ */
+const notices = computed(() =>
+  summary.value === null || shown.value === null ? [] : shown.value.outcome.notices,
+)
+
+/**
+ * Number of warnings the engine counted without keeping them.
+ */
+const dropped = computed(() =>
+  summary.value === null || shown.value === null ? 0 : droppedNotices(shown.value.outcome),
+)
+
+/**
+ * Color of the level of a notice, the classes written out so that Tailwind
+ * finds them.
+ */
+const NOTICE_TONES: Record<NoticeLevel, string> = {
+  note: 'text-info',
+  warning: 'text-warning',
+  error: 'text-error',
+}
 
 /**
  * Was the reception of the rows stopped by the user? The grid then holds
@@ -709,7 +740,7 @@ defineExpose({ exportGroups })
     <div
       v-else
       role="status"
-      class="flex flex-1 items-center justify-center gap-3 text-base text-fg-secondary"
+      class="flex min-h-0 flex-1 items-center-safe justify-center gap-3 overflow-auto text-base text-fg-secondary"
     >
       <template v-if="!tab.done">
         <LoaderCircle class="size-5 animate-spin" aria-hidden="true" />
@@ -718,9 +749,20 @@ defineExpose({ exportGroups })
       <template v-else-if="summary !== null">
         <TriangleAlert v-if="warningCount > 0" class="size-5 text-warning" aria-hidden="true" />
         <CircleCheck v-else class="size-5 text-success" aria-hidden="true" />
-        <div class="flex flex-col gap-1">
+        <div class="flex min-w-0 flex-col gap-1">
           <span class="text-fg">{{ summary }}</span>
           <span v-if="generatedId !== null">{{ generatedId }}</span>
+          <ul v-if="notices.length > 0" class="flex flex-col gap-1">
+            <li v-for="(notice, index) in notices" :key="index" class="flex gap-2">
+              <span class="shrink-0 font-medium" :class="NOTICE_TONES[notice.level]">
+                {{ NOTICE_LABELS[notice.level] }} {{ notice.code }}
+              </span>
+              <span class="wrap-break-word text-fg">{{ notice.message }}</span>
+            </li>
+          </ul>
+          <span v-if="dropped > 0">
+            {{ formatWarnings(dropped) }} de plus, non conservés par le serveur
+          </span>
         </div>
       </template>
     </div>

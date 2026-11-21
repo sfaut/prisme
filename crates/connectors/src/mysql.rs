@@ -21,7 +21,7 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::outcome::StatementOutcome;
+use crate::outcome::{Notice, StatementOutcome};
 
 /// Open connection to a MySQL or MariaDB server.
 pub use mysql_async::Conn as Connection;
@@ -243,6 +243,23 @@ pub async fn current_database(connection: &mut Conn) -> Result<Option<String>, M
     let database: Option<Option<String>> =
         sql_log::traced(sql, connection.query_first(sql), first_row).await?;
     Ok(database.flatten())
+}
+
+/// Warnings and notes of the last statement of the connection
+/// (`SHOW WARNINGS`), which its OK packet only counts: to read before the
+/// next statement, which clears them. The server keeps `max_error_count`
+/// of them (64 by default).
+pub async fn read_warnings(connection: &mut Conn) -> Result<Vec<Notice>, MysqlError> {
+    let sql = "SHOW WARNINGS";
+    let rows: Vec<(String, u32, String)> =
+        sql_log::traced(sql, connection.query(sql), |rows: &Vec<_>| {
+            Some(rows.len() as u64)
+        })
+        .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(level, code, message)| outcome::notice(&level, code, message))
+        .collect())
 }
 
 /// Changes the current database (`USE`), for example so that an extra

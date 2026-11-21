@@ -360,9 +360,18 @@ impl Session<'_> {
         }
 
         let verb = kind.verb();
-        let outcome = stream.outcome(verb);
+        let mut outcome = stream.outcome(verb);
         stream.discard().await;
         trace(row_count, truncated, outcome.affected.unwrap_or(0), None);
+        if !returns_rows && outcome.lacks_notices() {
+            // The next statement would clear them: they are read at once.
+            let reading = mysql::read_warnings(connection)
+                .instrument(console::action_span(Action::Diagnostics));
+            match reading.await {
+                Ok(notices) => outcome.notices = notices,
+                Err(error) => tracing::warn!("cannot read the warnings of the query: {error}"),
+            }
+        }
         Ok(Some(Summary {
             row_count,
             truncated,

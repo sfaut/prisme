@@ -10,9 +10,9 @@ use std::time::{Duration, Instant};
 
 use prisme_connectors::mysql::catalog::{self, RoutineKind, TableKind};
 use prisme_connectors::mysql::{
-    Connection, Flavor, connect, execute, in_transaction, kill_query, probe,
+    Connection, Flavor, connect, execute, in_transaction, kill_query, probe, read_warnings,
 };
-use prisme_connectors::outcome::{OutcomeCounts, StatementOutcome};
+use prisme_connectors::outcome::{NoticeLevel, OutcomeCounts, StatementOutcome};
 use prisme_connectors::test_servers::SERVERS;
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::classify;
@@ -220,10 +220,22 @@ async fn reports_the_outcome_of_writes() {
                 )
                 .await;
                 assert_eq!(truncated.warnings, Some(1), "{name}");
+                assert!(truncated.lacks_notices(), "{name}");
+                let notices = read_warnings(&mut connection).await.unwrap();
+                assert_eq!(notices.len(), 1, "{name}");
+                assert_eq!(notices[0].level, NoticeLevel::Warning, "{name}");
+                assert_eq!(notices[0].code, "1265", "{name}");
+                assert!(notices[0].message.contains("'s'"), "{name}");
 
                 let note = outcome_of(&mut connection, "DROP TABLE IF EXISTS missing").await;
                 assert_eq!(note.warnings, Some(1), "{name}");
                 assert_eq!(note.counts, OutcomeCounts::default(), "{name}");
+                let notices = read_warnings(&mut connection).await.unwrap();
+                assert_eq!(notices[0].level, NoticeLevel::Note, "{name}");
+                assert_eq!(notices[0].code, "1051", "{name}");
+                // A statement without warnings clears them.
+                outcome_of(&mut connection, "DELETE FROM t WHERE id = 0").await;
+                assert_eq!(read_warnings(&mut connection).await.unwrap(), [], "{name}");
             })
             .await;
     }

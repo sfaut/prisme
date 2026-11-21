@@ -459,6 +459,22 @@ async fn runs_the_writes_the_settings_allow() {
             assert_eq!(result.end["type"], "done", "{sql}: {:?}", result.end);
         }
 
+        // The end of a write says what it did, and the warnings are read
+        // right after it, for its result.
+        let result = run_one(&mut socket, "INSERT INTO w VALUES (3)", None).await;
+        assert_eq!(result.end["verb"], "insert", "{:?}", result.end);
+        assert_eq!(result.end["outcome"]["counts"]["inserted"], 1, "{:?}", result.end);
+        assert_eq!(result.end["outcome"]["notices"], json!([]), "{:?}", result.end);
+        let result = run_one(&mut socket, "INSERT IGNORE INTO w VALUES ('x')", None).await;
+        assert_eq!(result.end["outcome"]["warnings"], 1, "{:?}", result.end);
+        assert_eq!(
+            result.end["outcome"]["notices"][0]["level"],
+            "warning",
+            "{:?}",
+            result.end
+        );
+        assert_eq!(result.end["outcome"]["notices"][0]["code"], "1366", "{:?}", result.end);
+
         // A procedure created after DELIMITER, its body kept whole.
         let text =
             "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT COUNT(*) FROM w; END//\nDELIMITER ;";

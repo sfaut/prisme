@@ -72,6 +72,9 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         )),
         M::up(include_str!("../migrations/0028_console_editor.sql")),
         M::up(include_str!("../migrations/0029_result_tabs_outcome.sql")),
+        M::up(include_str!(
+            "../migrations/0030_query_history_diagnostics.sql"
+        )),
     ])
 });
 
@@ -341,6 +344,42 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         assert_eq!(results, [r#"{"done":true,"outcome":{"affected":3}}"#, "{}"]);
+    }
+
+    #[test]
+    fn keeps_the_history_when_adding_the_diagnostics() {
+        // Schema before the diagnostics action (migration 0030).
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", "ON")
+            .unwrap();
+        MIGRATIONS.to_version(&mut connection, 29).unwrap();
+        let user = ensure_user(&connection, "owner@example.com").unwrap();
+        connection
+            .execute(
+                "INSERT INTO query_history (user_id, started_at, action, sql, affected_rows, \
+                 interrupted, editor_id) \
+                 VALUES (?1, '2026-11-21T10:00:00Z', 'run', 'DELETE FROM t', 3, 1, 7)",
+                params![user],
+            )
+            .unwrap();
+
+        MIGRATIONS.to_latest(&mut connection).unwrap();
+        let row: (String, i64, bool, i64) = connection
+            .query_row(
+                "SELECT action, affected_rows, interrupted, editor_id FROM query_history",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(row, ("run".to_owned(), 3, true, 7));
+        connection
+            .execute(
+                "INSERT INTO query_history (user_id, started_at, action, sql) \
+                 VALUES (?1, '2026-11-21T10:00:01Z', 'diagnostics', 'SHOW WARNINGS')",
+                params![user],
+            )
+            .unwrap();
     }
 
     #[test]

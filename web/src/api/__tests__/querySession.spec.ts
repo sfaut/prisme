@@ -16,6 +16,7 @@ import {
   formatDuration,
   formatInstant,
   formatRowCount,
+  droppedNotices,
   formatWarnings,
   generatedIdLabel,
   initialState,
@@ -96,6 +97,7 @@ function reported(affected: number | null, counts: Partial<OutcomeCounts> = {}):
     },
     generated_id: null,
     warnings: null,
+    notices: [],
   }
 }
 
@@ -701,6 +703,14 @@ describe('durations', () => {
     expect(generatedIdLabel(reported(1))).toBeNull()
     expect(formatWarnings(1)).toBe('1 avertissement')
     expect(formatWarnings(3)).toBe('3 avertissements')
+  })
+
+  it('counts the warnings the engine did not keep', () => {
+    const notice = { level: 'warning' as const, code: '1265', message: 'Data truncated' }
+    // Counted, not read yet.
+    expect(droppedNotices({ ...reported(1), warnings: 1 })).toBe(0)
+    expect(droppedNotices({ ...reported(1), warnings: 1, notices: [notice] })).toBe(0)
+    expect(droppedNotices({ ...reported(70), warnings: 70, notices: [notice, notice] })).toBe(68)
   })
 
   it('formats the volumes', () => {

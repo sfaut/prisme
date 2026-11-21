@@ -57,6 +57,7 @@ import type { ResumedQuery } from './generated/ResumedQuery'
 import type { SelectionRange } from './generated/SelectionRange'
 import type { ServerInfo } from './generated/ServerInfo'
 import type { ServerMessage } from './generated/ServerMessage'
+import type { NoticeLevel } from './generated/NoticeLevel'
 import type { OutcomeCounts } from './generated/OutcomeCounts'
 import type { StatementOutcome } from './generated/StatementOutcome'
 import type { StatementVerb } from './generated/StatementVerb'
@@ -212,6 +213,7 @@ export const NO_OUTCOME: Readonly<StatementOutcome> = Object.freeze({
   }),
   generated_id: null,
   warnings: null,
+  notices: Object.freeze([]) as unknown as StatementOutcome['notices'],
 })
 
 /**
@@ -1068,6 +1070,26 @@ export function generatedIdLabel(outcome: StatementOutcome): string | null {
   }
   const several = (outcome.counts.inserted ?? 1) > 1
   return `${several ? 'Premier id généré' : 'Id généré'} : ${outcome.generated_id}`
+}
+
+/**
+ * Name of each level of a notice of the engine, before its code.
+ */
+export const NOTICE_LABELS: Record<NoticeLevel, string> = {
+  note: 'Note',
+  warning: 'Avertissement',
+  error: 'Erreur',
+}
+
+/**
+ * Number of warnings the engine counted beyond those it kept and sent: 0
+ * when it sent them all, or none.
+ *
+ * @param outcome What the engine reported.
+ */
+export function droppedNotices(outcome: StatementOutcome): number {
+  const counted = outcome.warnings ?? 0
+  return outcome.notices.length === 0 ? 0 : Math.max(counted - outcome.notices.length, 0)
 }
 
 /**

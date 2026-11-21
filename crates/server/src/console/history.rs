@@ -53,6 +53,9 @@ pub enum Action {
     Probe,
     /// Export of a full result to a CSV file (`exports.rs`).
     Export,
+    /// Reading of the warnings a statement raised, right after it
+    /// (`SHOW WARNINGS` for MySQL and MariaDB).
+    Diagnostics,
 }
 
 impl Action {
@@ -69,6 +72,7 @@ impl Action {
             Self::Navigator => "navigator",
             Self::Probe => "probe",
             Self::Export => "export",
+            Self::Diagnostics => "diagnostics",
         }
     }
 
@@ -85,6 +89,7 @@ impl Action {
             Self::Navigator,
             Self::Probe,
             Self::Export,
+            Self::Diagnostics,
         ]
         .into_iter()
         .find(|action| action.as_str() == name)
