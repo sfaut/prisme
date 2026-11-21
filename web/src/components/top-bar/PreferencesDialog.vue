@@ -293,17 +293,17 @@ async function save(): Promise<void> {
 
 <template>
   <ui-dialog v-model:open="open" title="Préférences" wide>
-    <form id="preferences-form" class="flex min-h-0 flex-1 flex-col gap-4" @submit.prevent="save">
-      <tabs-root v-model="section" orientation="vertical" class="flex min-h-0 flex-1 gap-6">
+    <form id="preferences-form" class="flex min-h-0 flex-1" @submit.prevent="save">
+      <tabs-root v-model="section" orientation="vertical" class="flex min-h-0 flex-1">
         <tabs-list
-          class="flex w-45 shrink-0 flex-col gap-1 border-e border-line pe-3"
+          class="flex w-60 shrink-0 flex-col gap-1 border-e border-line bg-surface-sunken p-3"
           aria-label="Sections des préférences"
         >
           <tabs-trigger
             v-for="item in SECTIONS"
             :key="item.value"
             :value="item.value"
-            class="group flex h-9 cursor-pointer items-center gap-3 rounded-lg px-3 text-fg hover:bg-surface-raised data-[state=active]:bg-primary/10 data-[state=active]:font-medium data-[state=active]:text-fg-strong"
+            class="group flex h-9 cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 text-fg hover:bg-surface-strong hover:text-fg-strong data-[state=active]:border-line data-[state=active]:bg-surface data-[state=active]:font-medium data-[state=active]:text-fg-strong"
           >
             <component
               :is="item.icon"
@@ -318,7 +318,7 @@ async function save(): Promise<void> {
           v-for="item in SECTIONS"
           :key="item.value"
           :value="item.value"
-          class="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto pe-1"
+          class="flex min-h-0 min-w-0 flex-1 flex-col gap-6 overflow-y-auto px-8 py-6"
         >
           <div class="flex flex-col gap-1">
             <h3 class="text-lg font-semibold text-fg-strong">{{ item.label }}</h3>
@@ -509,9 +509,9 @@ async function save(): Promise<void> {
               <span class="w-18 text-fg-secondary">jours</span>
             </ui-setting-row>
           </ui-setting-list>
+          <ui-alert v-if="error" tone="error" :title="error" />
         </tabs-content>
       </tabs-root>
-      <ui-alert v-if="error" tone="error" :title="error" />
     </form>
     <template #footer>
       <ui-button label="Annuler" @click="open = false" />
@@ -522,7 +522,6 @@ async function save(): Promise<void> {
         variant="solid"
         tone="primary"
         :loading="saving"
-        class="flex-1"
       />
     </template>
   </ui-dialog>
