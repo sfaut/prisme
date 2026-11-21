@@ -76,16 +76,7 @@ Each area has its folder in `web/src/components/` (see "Repository layout"), wit
 
 ### Local storage
 
-The display preferences of a machine stay in the browser's local storage, under keys `prisme.<area>.<setting>`: the area is that of the folders of the components (`navigator`, `editor`, `console`, `explorer`), `app` for the whole application, the setting in camelCase. Each area keeps them in its store, read and written by `web/src/utils/storedValues.ts`. A missing or unreadable value gives its default. The display of an editor is an exception: its panels (open or closed, their size) and the tree of its object navigator are saved with the editor on the server side (`editors.display`, `PUT /api/editors/{id}/display`, `editorDisplays` store), so that they come back when a closed editor is reopened; the keys `prisme.navigator.*`, `prisme.editor.layout.*` and `prisme.explorer.layout.*` that held them before are removed.
-
-| Key | Value |
-|---|---|
-| `prisme.app.colorMode` | `system`, `light` or `dark` |
-| `prisme.editor.active` | id of the active editor |
-| `prisme.console.allEditors` | the consoles show the elements of all the editors (`true`), or those of their editor |
-| `prisme.console.tab` | tab shown: `history` or `debug` |
-| `prisme.console.filtersShown`, `prisme.console.historyFilter`, `prisme.console.debugFilter` | the filters shown, and those of each tab (JSON) |
-| `prisme.explorer.wrap` | long lines of the data explorers wrapped |
+The settings and adjustments of the user are saved on the server side: the display settings of the user (theme, active editor, console, data explorer: `users.theme` and `users.display`, `GET` / `PUT /api/display`, `userDisplay` store, read before the interface is mounted), and the display of each editor (panels, tree of the object navigator: `editors.display`, `PUT /api/editors/{id}/display`, `editorDisplays` store), which comes back when a closed editor is reopened. The browser's local storage keeps one key only, `prisme.app.colorMode`: a copy of the theme (`system`, `light` or `dark`), read before the settings, so that the first paint has the right theme (`web/src/utils/colorMode.ts`). The other keys `prisme.*` that held settings before are removed.
 
 ### Icons and actions
 

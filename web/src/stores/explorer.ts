@@ -12,18 +12,18 @@
  * The panel of the explorer of each editor (open or closed, its width) is
  * part of the display of the editor, saved with it on the server side
  * (`editorDisplays` store): closed by default, at the width of the theme.
- * The wrapping of long lines (`wrap`, kept in the browser's local storage
- * under `prisme.explorer.wrap`) is common to all the explorers, off by
- * default; when storage is unavailable, it is off.
+ * The wrapping of long lines (`wrap`) is common to all the explorers, off by
+ * default, saved with the display settings of the user (`userDisplay`
+ * store).
  */
 
 import { defineStore } from 'pinia'
-import { ref, shallowReactive, watch } from 'vue'
+import { computed, shallowReactive } from 'vue'
 
 import type { Panel } from '@/api/generated/Panel'
 import type { DataCell } from '@/components/explorer/dataFormat'
 import { useEditorDisplaysStore } from '@/stores/editorDisplays'
-import { loadFlag, saveFlag } from '@/utils/storedValues'
+import { useUserDisplayStore } from '@/stores/userDisplay'
 
 /**
  * What the grid on screen gives the explorer.
@@ -68,17 +68,15 @@ export function sameContent(a: ExplorerContent, b: ExplorerContent): boolean {
  */
 const NOTHING: ExplorerContent = { state: 'none' }
 
-/**
- * Key of the wrapping preference in local storage.
- */
-const WRAP_KEY = 'prisme.explorer.wrap'
-
 export const useExplorerStore = defineStore('explorer', () => {
   /**
    * Are long lines wrapped to the width of the panel?
    */
-  const wrap = ref(loadFlag(WRAP_KEY, false))
-  watch(wrap, (value) => saveFlag(WRAP_KEY, value))
+  const user = useUserDisplayStore()
+  const wrap = computed({
+    get: () => user.display.explorer.wrap,
+    set: (value: boolean) => (user.display.explorer.wrap = value),
+  })
 
   const displays = useEditorDisplaysStore()
 

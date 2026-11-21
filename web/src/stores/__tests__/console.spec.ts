@@ -7,6 +7,7 @@ import type { Action } from '@/api/generated/Action'
 import type { QueryEntry } from '@/api/generated/QueryEntry'
 
 import { MAX_ENTRIES, matches, useConsoleStore } from '../console'
+import { useUserDisplayStore } from '../userDisplay'
 
 const listHistory =
   vi.fn<
@@ -123,7 +124,7 @@ describe('console store', () => {
     store.history.add(entry(3, 'run'))
     store.history.add(entry(4, 'navigator'))
     expect(store.history.entries.map((e) => e.id)).toEqual([2, 4])
-    expect(JSON.parse(window.localStorage.getItem('prisme.console.historyFilter')!)).toEqual({
+    expect(useUserDisplayStore().display.console.history_filter).toEqual({
       action: ['navigator'],
     })
   })
@@ -162,7 +163,7 @@ describe('console store', () => {
     store.allEditors = true
     await nextTick()
     expect(listHistory).toHaveBeenLastCalledWith({ action: [] }, null, undefined, 500)
-    expect(window.localStorage.getItem('prisme.console.allEditors')).toBe('true')
+    expect(useUserDisplayStore().display.console.all_editors).toBe(true)
     store.history.add(entry(3, 'run', 4))
     expect(store.history.entries.map((e) => e.id)).toEqual([2, 3])
     // Another editor on screen: the lists of all the editors stay as they are.
@@ -195,10 +196,7 @@ describe('console store', () => {
   })
 
   it('forgets the remembered actions that no longer exist', () => {
-    window.localStorage.setItem(
-      'prisme.console.historyFilter',
-      JSON.stringify({ action: ['run', 'explorer', 3] }),
-    )
+    useUserDisplayStore().display.console.history_filter = { action: ['run', 'explorer'] }
     expect(useConsoleStore().historyFilter).toEqual({ action: ['run'] })
   })
 

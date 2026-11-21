@@ -19,6 +19,7 @@ import { clearPending, markPending } from '@/api/sync'
 import type { BatchProgress } from '@/api/querySession'
 import { useExplorerStore } from '@/stores/explorer'
 import { useEditorDisplaysStore } from '@/stores/editorDisplays'
+import { useUserDisplayStore } from '@/stores/userDisplay'
 
 import {
   closeEditor,
@@ -69,11 +70,6 @@ function editorKey(id: number): string {
 }
 
 /**
- * Key of the active editor in local storage.
- */
-const ACTIVE_KEY = 'prisme.editor.active'
-
-/**
  * Interface editor built from the server's.
  *
  * @param editor Editor received from the server.
@@ -84,18 +80,6 @@ function entryOf(editor: Editor): EditorEntry {
     name: editor.name,
     connectionId: editor.connection_id,
     sql: editor.sql,
-  }
-}
-
-/**
- * Remembered active editor, `null` if none is readable.
- */
-function storedActive(): number | null {
-  try {
-    const id = Number(localStorage.getItem(ACTIVE_KEY))
-    return Number.isInteger(id) && id > 0 ? id : null
-  } catch {
-    return null
   }
 }
 
@@ -161,17 +145,14 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
-   * Makes an editor active, and remembers it.
+   * Makes an editor active, and remembers it with the display settings of
+   * the user.
    *
    * @param id Id of the editor.
    */
   function activate(id: number): void {
     activeId.value = id
-    try {
-      localStorage.setItem(ACTIVE_KEY, String(id))
-    } catch {
-      // Display preference only.
-    }
+    useUserDisplayStore().display.active_editor = id
   }
 
   /**
@@ -183,7 +164,7 @@ export const useEditorsStore = defineStore('editors', () => {
       await create(null)
       return
     }
-    const remembered = storedActive()
+    const remembered = useUserDisplayStore().display.active_editor
     const first = editors.value[0]!.id
     activate(editors.value.some((editor) => editor.id === remembered) ? remembered! : first)
   }

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { mount } from '@vue/test-utils'
 import App from '../App.vue'
+import { useUserDisplayStore } from '../stores/userDisplay'
 
 vi.mock('@/api/connections', () => ({
   listConnections: async () => [],
@@ -157,7 +158,7 @@ describe('App', () => {
     await toggle().trigger('click')
     expect(toggle().attributes('aria-pressed')).toBe('true')
     expect(wrapper.find('[aria-label="Action"]').exists()).toBe(true)
-    expect(window.localStorage.getItem('prisme.console.filtersShown')).toBe('true')
+    expect(useUserDisplayStore().display.console.filters_open).toBe(true)
     const debugTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text() === 'Debug')!
     await debugTab.trigger('mousedown', { button: 0 })
     await vi.waitFor(() => expect(wrapper.find('[aria-label="Niveau"]').exists()).toBe(true))
@@ -183,7 +184,7 @@ describe('App', () => {
     await debugTab.trigger('mousedown', { button: 0 })
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucun message pour le moment'))
     expect(wrapper.find('[aria-label="Effacer le debug de l’éditeur"]').exists()).toBe(true)
-    expect(window.localStorage.getItem('prisme.console.tab')).toBe('debug')
+    expect(useUserDisplayStore().display.console.tab).toBe('debug')
     const button = wrapper.find('nav button[aria-label="Console"]')
     expect(button.attributes('aria-pressed')).toBe('true')
     await button.trigger('click')

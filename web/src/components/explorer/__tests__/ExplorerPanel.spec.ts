@@ -6,6 +6,7 @@ import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 
 import { useExplorerStore } from '@/stores/explorer'
+import { useUserDisplayStore } from '@/stores/userDisplay'
 
 import ExplorerPanel from '../ExplorerPanel.vue'
 
@@ -113,10 +114,8 @@ describe('ExplorerPanel', () => {
     await button.trigger('click')
     expect(editor.classes()).toContain('cm-lineWrapping')
     expect(button.attributes('aria-pressed')).toBe('true')
-    expect(localStorage.getItem('prisme.explorer.wrap')).toBe('true')
+    expect(useUserDisplayStore().display.explorer.wrap).toBe(true)
     wrapper.unmount()
-    setActivePinia(createPinia())
-    expect(useExplorerStore().wrap).toBe(true)
   })
 
   it('searches as the expression is typed, highlights then filters the results', async () => {

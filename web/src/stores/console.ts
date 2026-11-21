@@ -12,15 +12,15 @@
  * is on screen only.
  *
  * The console opens on its History tab by default; the tab shown, the
- * filters and `allEditors` are common to all the consoles, display
- * preferences specific to this machine, kept in the browser's local storage
- * (`prisme.console.*`). The interface keeps the last
+ * filters and `allEditors` are common to all the consoles, saved with the
+ * display settings of the user (`userDisplay` store). The interface keeps
+ * the last
  * `MAX_ENTRIES` elements of each list; the older ones are read again on
  * request (`loadOlder`). Each list is cleared on request (`clear`), in every
  * window.
  *
- * Each list has its filter (`historyFilter`, `debugFilter`), kept in local
- * storage too: the server reads only the elements it keeps, and the
+ * Each list has its filter (`historyFilter`, `debugFilter`), saved there
+ * too: the server reads only the elements it keeps, and the
  * elements received meanwhile go through it. A change of filter reads the
  * list again (`refilter`). The buttons of the filters show on request
  * (`filtersShown`, hidden by default); hidden, the filters still apply.
@@ -41,28 +41,7 @@ import {
 import { errorMessage } from '@/api/errorMessage'
 import { ACTION_LABELS, LEVEL_LABELS, SOURCE_LABELS } from '@/components/console/consoleFormat'
 
-import { loadFlag, saveFlag } from '@/utils/storedValues'
-
-/**
- * Key of the choice of all the editors' elements in local storage.
- */
-const ALL_EDITORS_KEY = 'prisme.console.allEditors'
-
-/**
- * Key of the tab shown in local storage.
- */
-const TAB_KEY = 'prisme.console.tab'
-
-/**
- * Key of the display of the filters in local storage.
- */
-const FILTERS_SHOWN_KEY = 'prisme.console.filtersShown'
-
-/**
- * Keys of the filters of the history and of the debug log in local storage.
- */
-const HISTORY_FILTER_KEY = 'prisme.console.historyFilter'
-const DEBUG_FILTER_KEY = 'prisme.console.debugFilter'
+import { useUserDisplayStore } from '@/stores/userDisplay'
 
 /**
  * Most elements kept by the interface, per list.
@@ -80,58 +59,21 @@ const PAGE = 500
 export type ConsoleTab = 'history' | 'debug'
 
 /**
- * Tab remembered, the history when none is readable.
- */
-function loadTab(): ConsoleTab {
-  try {
-    return window.localStorage.getItem(TAB_KEY) === 'debug' ? 'debug' : 'history'
-  } catch {
-    return 'history'
-  }
-}
-
-/**
- * Filter remembered under `key`: for each of its fields, the values
- * remembered that still exist, none when unreadable. A value that no longer
- * exists would make the server refuse the page.
+ * Removes from a saved filter, in place, the values that no longer exist: a
+ * value that no longer exists would make the server refuse the page.
  *
- * @param key Key in local storage.
+ * @param filter Saved filter, its fields lists of values.
  * @param known Values of each field, as the keys of their labels.
  */
-function loadFilter<F extends { [K in keyof F]: string[] }>(
-  key: string,
-  known: Record<keyof F, Record<string, string>>,
-): F {
-  let saved: unknown = null
-  try {
-    saved = JSON.parse(window.localStorage.getItem(key) ?? 'null')
-  } catch {
-    // Unreadable: no filter.
-  }
-  const filter: Record<string, string[]> = {}
-  for (const [field, labels] of Object.entries<Record<string, string>>(known)) {
-    const values: unknown = (saved as Record<string, unknown> | null)?.[field]
-    filter[field] = Array.isArray(values)
-      ? values.filter(
-          (value): value is string =>
-            typeof value === 'string' && Object.keys(labels).includes(value),
-        )
-      : []
-  }
-  return filter as F
-}
-
-/**
- * Remembers a filter under `key`.
- *
- * @param key Key in local storage.
- * @param filter Filter to remember.
- */
-function saveFilter(key: string, filter: HistoryFilter | DebugFilter): void {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(filter))
-  } catch {
-    // Display preference only: losing it harms nothing.
+function dropUnknown(
+  filter: Record<string, string[]>,
+  known: Record<string, Record<string, string>>,
+): void {
+  for (const [field, labels] of Object.entries(known)) {
+    const values = filter[field] ?? []
+    if (values.some((value) => !(value in labels))) {
+      filter[field] = values.filter((value) => value in labels)
+    }
   }
 }
 
@@ -325,10 +267,18 @@ export const useConsoleStore = defineStore('console', () => {
   const editorId = ref<number | null>(null)
 
   /**
+   * Display settings of the user, which hold those of the console.
+   */
+  const user = useUserDisplayStore()
+
+  /**
    * Do the lists show the elements of all the editors, and those written
    * outside an editor?
    */
-  const allEditors = ref(loadFlag(ALL_EDITORS_KEY, false))
+  const allEditors = computed({
+    get: () => user.display.console.all_editors,
+    set: (value: boolean) => (user.display.console.all_editors = value),
+  })
 
   /**
    * Editor whose elements the lists show; `null`, all of them.
@@ -347,36 +297,37 @@ export const useConsoleStore = defineStore('console', () => {
   /**
    * Tab shown.
    */
-  const tab = ref<ConsoleTab>(loadTab())
-
-  watch(tab, (value) => {
-    try {
-      window.localStorage.setItem(TAB_KEY, value)
-    } catch {
-      // Display preference only: losing it harms nothing.
-    }
+  const tab = computed({
+    get: (): ConsoleTab => user.display.console.tab,
+    set: (value: ConsoleTab) => (user.display.console.tab = value),
   })
 
   /**
    * Are the buttons of the filters shown, in both tabs?
    */
-  const filtersShown = ref(loadFlag(FILTERS_SHOWN_KEY, false))
+  const filtersShown = computed({
+    get: () => user.display.console.filters_open,
+    set: (value: boolean) => (user.display.console.filters_open = value),
+  })
 
-  watch(filtersShown, (value) => saveFlag(FILTERS_SHOWN_KEY, value))
-
-  /**
-   * Queries kept by the history.
-   */
-  const historyFilter = ref(
-    loadFilter<HistoryFilter>(HISTORY_FILTER_KEY, { action: ACTION_LABELS }),
-  )
+  dropUnknown(user.display.console.history_filter, { action: ACTION_LABELS })
+  dropUnknown(user.display.console.debug_filter, { level: LEVEL_LABELS, source: SOURCE_LABELS })
 
   /**
-   * Lines kept by the debug log.
+   * Queries kept by the history, its values known (`dropUnknown`).
    */
-  const debugFilter = ref(
-    loadFilter<DebugFilter>(DEBUG_FILTER_KEY, { level: LEVEL_LABELS, source: SOURCE_LABELS }),
-  )
+  const historyFilter = computed({
+    get: () => user.display.console.history_filter as HistoryFilter,
+    set: (filter: HistoryFilter) => (user.display.console.history_filter = filter),
+  })
+
+  /**
+   * Lines kept by the debug log, its values known (`dropUnknown`).
+   */
+  const debugFilter = computed({
+    get: () => user.display.console.debug_filter as DebugFilter,
+    set: (filter: DebugFilter) => (user.display.console.debug_filter = filter),
+  })
 
   /**
    * History of the queries.
@@ -396,23 +347,9 @@ export const useConsoleStore = defineStore('console', () => {
     (entry) => inScope(entry) && matches(debugFilter.value, entry),
   )
 
-  watch(
-    historyFilter,
-    (filter) => {
-      saveFilter(HISTORY_FILTER_KEY, filter)
-      void history.refilter()
-    },
-    { deep: true },
-  )
+  watch(historyFilter, () => void history.refilter(), { deep: true })
 
-  watch(
-    debugFilter,
-    (filter) => {
-      saveFilter(DEBUG_FILTER_KEY, filter)
-      void debug.refilter()
-    },
-    { deep: true },
-  )
+  watch(debugFilter, () => void debug.refilter(), { deep: true })
 
   /**
    * Stops following the console's events, `null` while they are not.
@@ -427,8 +364,7 @@ export const useConsoleStore = defineStore('console', () => {
     void debug.refilter()
   }
 
-  watch(allEditors, (value) => {
-    saveFlag(ALL_EDITORS_KEY, value)
+  watch(allEditors, () => {
     if (stop !== null) {
       refilterAll()
     }
