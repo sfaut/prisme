@@ -74,9 +74,65 @@ A component is named after its area of the interface, as the README calls it, th
 
 Each area has its folder in `web/src/components/` (see "Repository layout"), with its components, the modules that carry its notions (`pivot/pivotConfig.ts`, `result/csv.ts`) and its tests (`__tests__/`); another area imports them from there (`@/components/result/typeIcons`). Inside a folder, imports are relative. A module of no area goes to `web/src/utils/`.
 
-### Local storage
+### Saved display
 
-The settings and adjustments of the user are saved on the server side: the display settings of the user (theme, active editor, console, data explorer: `users.theme` and `users.display`, `GET` / `PUT /api/display`, `userDisplay` store, read before the interface is mounted), and the display of each editor (panels, tree of the object navigator, result tab shown, position in the SQL text: `editors.display`, `PUT /api/editors/{id}/display`, `editorDisplays` store), which comes back when a closed editor is reopened, and the display of the grid of each result tab (widths and order of the columns, sort, filter, scroll: `result_tabs.grid`, `PUT /api/results/{id}/grid`, `gridDisplay.ts`), carried over by a new run to the tab that replaces it, as the configuration of the Pivoteur. The browser's local storage keeps one key only, `prisme.app.colorMode`: a copy of the theme (`system`, `light` or `dark`), read before the settings, so that the first paint has the right theme (`web/src/utils/colorMode.ts`). The other keys `prisme.*` that held settings before are removed.
+Every setting and every adjustment of the user is saved on the server side, in the internal database, and comes back after a page reload, on another browser, and when a closed editor is reopened. A new setting or adjustment joins one of the documents below, and its row in the tables of this section, in the same change. The browser's local storage keeps one key only, `prisme.app.colorMode`: a copy of the theme (`system`, `light` or `dark`), read before the settings so that the first paint has the right theme, then rewritten with the value of the database and kept in sync with it (`web/src/utils/colorMode.ts`). The keys `prisme.*` that held settings before are removed as the interface starts, without migration.
+
+Common rules:
+
+- One JSON document per owner: the user (`users.display`, plus the column `users.theme`), the editor (`editors.display`), the result tab (`result_tabs.grid`). The types are defined in Rust (`user_display.rs`, `editor_display.rs`, `grid_display.rs`) and generated for TypeScript by `ts-rs`; keys in `snake_case`.
+- A field added later takes `#[serde(default)]`: an older or partial document is still read, its missing fields at their default. In the database, an empty string means nothing saved: the interface then starts from its defaults (`defaultUserDisplay`, `defaultEditorDisplay`, `startingLayout`).
+- Each panel has the same shape: `{ open, size }`, `size` in CSS pixels, `null` for the default size of the theme or a share of the room.
+- The page sends the whole document on each change, shortly after the last one (300 ms, `utils/deferredSave.ts`); a save waiting for its delay goes out at once, with `keepalive`, when the page is hidden or closed, and before an editor closes.
+
+**User** (`GET` / `PUT /api/display`, `userDisplay` store, read before the interface is mounted):
+
+| Field | Type | Default | Role |
+|---|---|---|---|
+| `theme` | `system` / `light` / `dark` | `system` | Theme of the interface; column `users.theme`, with its `CHECK` |
+| `active_editor` | id or `null` | `null` | Editor shown; `null`, or an editor no longer open: the first one |
+| `console.tab` | `history` / `debug` | `history` | Tab of the console |
+| `console.all_editors` | boolean | `false` | The lists show the elements of all the editors |
+| `console.filters_open` | boolean | `false` | The buttons of the filters are shown |
+| `console.history_filter.action` | strings | `[]` | Actions kept by the history; all of them when empty |
+| `console.debug_filter.level`, `.source` | strings | `[]` | Levels and sources kept by the debug log; all of them when empty |
+| `explorer.wrap` | boolean | `false` | The data explorers wrap long lines |
+
+**Editor** (`editors.display`, `PUT /api/editors/{id}/display`, `editorDisplays` store, received with the editors):
+
+| Field | Type | Default | Role |
+|---|---|---|---|
+| `panels.navigator` | panel | open | Object navigator; its size is a width |
+| `panels.explorer` | panel | closed | Data explorer; its size is a width |
+| `panels.editor` | panel | open | SQL editor; it fills the height the others leave, without a size of its own |
+| `panels.results` | panel | closed | Results; its size is a height |
+| `panels.pivot` | panel | closed | Pivoteur; its size is a height |
+| `panels.console` | panel | open | Console; its size is a height |
+| `navigator.expanded` | keys | `["sources"]` | Open nodes of the tree (`navigatorNodes.ts`) |
+| `navigator.scroll_top` | number | `0` | Scroll of the tree, in CSS pixels |
+| `navigator.tables_by_rows` | keys | `[]` | "Tables" folders sorted by row count; the others by name |
+| `active_result` | id or `null` | `null` | Result tab shown; `null`, or a tab no longer there: the first one |
+| `sql.anchor`, `sql.head` | numbers | `0` | Selection in the SQL text, in UTF-16 code units; `head` is the cursor |
+| `sql.top` | number | `0` | Start of the first line shown at the top of the editor |
+| `sql.folds` | `[from, to]` pairs | `[]` | Folded passages of the SQL text |
+
+The positions in the SQL text are brought back within the text when it is shorter (`withinText`, `editorPosition.ts`).
+
+**Result tab** (`result_tabs.grid`, `PUT /api/results/{id}/grid`, `gridDisplay.ts`, read with the tabs of the editor):
+
+| Field | Type | Default | Role |
+|---|---|---|---|
+| `columns` | names | — | Columns of the result the display was made on, in the order of the `SELECT` |
+| `widths` | lengths or `null` | `[]` | Width given to each column, by index in the `SELECT`, a CSS length relative to the root; `null`: estimated |
+| `order` | indexes | `[]` | Index in the `SELECT` of each column shown, from left to right; empty: the order of the `SELECT` |
+| `sort` | `{ column, direction }` or `null` | `null` | Sort of the rows, `direction` `asc` or `desc` |
+| `filter` | `{ text, column }` | `{ "text": "", "column": null }` | User filter; `column` `null`: all the columns |
+| `filter_open` | boolean | `false` | The form of the filter is open |
+| `scroll_top`, `scroll_left` | numbers | `0` | Scroll of the grid, in CSS pixels; given back once the rows that reach it are there |
+
+The widths, the order, the sort and the scroll apply only to a result with the same `columns`; the filter applies to any result, on all the columns if they changed. A new run gives each new tab the display of the tab it replaces, with the configuration of the Pivoteur (`carry_over`, see "Pivoteur"). The configuration of the Pivoteur, the widths of its sections (`fields_px`, `zones_px`) and of its table are saved in `result_tabs.pivot` (see "Pivoteur"), the preferences in `users` (`GET` / `PUT /api/settings`).
+
+**Reset.** The button **Réinitialiser l’affichage** of the activity bar (Ctrl-K then 0) brings the display of its editor back to the defaults (`editorDisplays.reset`): the panels, the navigator (the source of the editor open, at the top), the layout of the grid of each result tab (its filter kept) and the widths of the sections of their Pivoteur. The position in the SQL text, the result tab shown, the configuration of the Pivoteur, the documents of the user and of the other editors stay. The objects of the display are reset in place, so that the components that hold them follow.
 
 ### Icons and actions
 
@@ -220,7 +276,7 @@ The panels of the layout (object navigator, editors, console, data explorer), of
 - **Drag**: the line follows the pointer (pointer events captured by the handle), and its position is kept as it is at the release, in CSS pixels, without rounding. Below its smallest size, a panel folds past half the way to its folded size (a panel of the layout then closes, its folded size being `0px`); it takes its room from the panel that fills, down to that one's smallest size.
 - **Keyboard** (pattern "window splitter" of WAI-ARIA, role `separator` with its `aria-value*` in pixels): the arrows move the line by four steps of `--spacing`, Home and End to the smallest and largest size, Enter does what a double click does (give back the default width of a section of the Pivoteur; the lines of the panels have no action of their own).
 - **Animation**: a panel that folds or unfolds, and those that take or give its room, change size in a transition of the three parts of `flex`, with Tailwind's default duration and curve (`--default-transition-duration`, `--default-transition-timing-function`); the room marked `data-split-room` follows it, always mounted, its growth going from 0 to 1 while the last panel's goes from 1 to 0. The content shows or hides at once. During the drag of a line, the group is marked `data-resizing` and nothing animates, so that the line stays under the pointer; with reduced motion asked (`prefers-reduced-motion`), nothing animates either.
-- **Saved**: the sizes and folds of the layout in the local storage (see "Local storage": in the stores of the navigator and the explorer, and `prisme.editor.layout.<editor>` for the view and the console, forgotten when the editor closes), the widths of the sections in the configuration of the Pivoteur of the tab (`fields_px`, `zones_px`; a width saved in steps before, `fields_width`, `zones_width`, is read in pixels and replaced by the next one set). The layouts saved by the splitters of Reka UI (keys `reka:`) are removed as the interface starts (`migrateStorage`, see "Local storage").
+- **Saved**: the sizes and folds of the layout in the display of the editor (`panels`, see "Saved display"), the widths of the sections in the configuration of the Pivoteur of the tab (`fields_px`, `zones_px`; a width saved in steps before, `fields_width`, `zones_width`, is read in pixels and replaced by the next one set).
 
 Measured on 2026-11-11 in Chrome 156 started with `--force-device-scale-factor` at 1, 1.25 and 1.5 (method at the end of "Lines"), on the lines of the navigator, the console and the explorer: each line one pixel of a single color at rest, after each of 40 steps of a drag by one device pixel, after the release (no jump) and after 12 resizes of the window; the band of the hover and the grip symmetric on the line (3 + 1 + 3 pixels and 2 + 3 + 2 at 1.25, 4 + 1 + 4 and 2 + 5 + 2 at 1.5).
 

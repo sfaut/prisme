@@ -479,7 +479,7 @@ Prisme keeps its data in a folder of your user account:
 
 It holds two files that go together:
 
-- **`prisme.db`**: the internal database (settings, connections, editors, results, history of the queries, debug log).
+- **`prisme.db`**: the internal database (settings, connections, editors, results, history of the queries, debug log). It also keeps the display: the theme, the panels and their sizes, the object navigator, the position in the SQL text, the columns, sort, filter and scroll of each result grid, the console. Opening Prisme from another browser or another computer finds them as you left them; the browser itself only keeps a copy of the theme, for the first paint.
 - **`prisme.key`**: the master key, created on first launch. It encrypts the passwords of your connections.
 
 The **`exports`** folder holds the files of the full exports, until you remove them from the exports manager.
