@@ -80,7 +80,7 @@ function commit(): void {
   <span
     v-else
     class="truncate text-trim"
-    v-tooltip="'Double-cliquer pour renommer'"
+    v-tooltip="{ title: 'Renommer', description: 'Double clic sur le nom' }"
     @dblclick="startEditing"
   >
     {{ name ?? defaultLabel }}

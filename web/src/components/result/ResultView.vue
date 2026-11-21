@@ -103,7 +103,7 @@ import type { MenuGroup, MenuItem } from '@/components/ui/menuItem'
 import { notify } from '@/components/ui/toasts'
 import UiAlert from '@/components/ui/UiAlert.vue'
 import UiStatusBar from '@/components/ui/UiStatusBar.vue'
-import { vTooltip } from '@/components/ui/tooltip'
+import { type Tooltip, vTooltip } from '@/components/ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -273,9 +273,9 @@ const fileLabel = computed(() => props.tab.name ?? `requête-${props.tab.number 
 /**
  * What each dialect of the CTE reads, in the tooltip of its choice.
  */
-const CTE_HINTS: Record<Flavor, string> = {
-  mysql: 'Lignes en VALUES ROW (…), que lit MySQL 8.0.19 et suivants.',
-  mariadb: 'Lignes en VALUES (…), que lit MariaDB.',
+const CTE_HINTS: Record<Flavor, Tooltip> = {
+  mysql: { title: 'Lignes en VALUES ROW (…)', description: 'Lu par MySQL 8.0.19 et suivants' },
+  mariadb: { title: 'Lignes en VALUES (…)', description: 'Lu par MariaDB' },
 }
 
 /**
@@ -318,12 +318,15 @@ const exportGroups = computed<MenuGroup[]>(() => {
       onSelect: () => void action(flavor),
     }))
   const server = props.server
-  const inReason =
+  const inReason: Tooltip | null =
     size === null
-      ? 'Sélectionnez une ou plusieurs colonnes.'
+      ? { title: 'Sélectionnez une ou plusieurs colonnes' }
       : grid.value?.selectedFull
         ? null
-        : 'Sélection malformée : chaque ligne sélectionnée doit l’être sur les mêmes colonnes.'
+        : {
+            title: 'Sélection malformée',
+            description: 'Chaque ligne sélectionnée doit l’être sur les mêmes colonnes',
+          }
   const inOff = inReason !== null || server === null
   return [
     {
@@ -344,7 +347,11 @@ const exportGroups = computed<MenuGroup[]>(() => {
         {
           label: 'Résultat complet en CSV (requête relancée)',
           icon: DatabaseZap,
-          hint: 'Relance la requête sans la limite de Prisme et suit l’export dans le gestionnaire d’exports, en haut à droite. Les colonnes gardent leur ordre affiché ; le tri et le filtre de la grille ne s’appliquent pas.',
+          hint: {
+            title: 'Relancer la requête sans la limite de Prisme',
+            description:
+              'L’export se suit dans le gestionnaire d’exports, en haut à droite. Les colonnes gardent leur ordre affiché ; le tri et le filtre de la grille ne s’appliquent pas.',
+          },
           onSelect: () => void exportFull(),
         },
       ],
@@ -362,9 +369,11 @@ const exportGroups = computed<MenuGroup[]>(() => {
           label: 'Sélection en clause IN',
           icon: ClipboardCopy,
           disabled: inOff,
-          hint:
-            inReason ??
-            'Copie les valeurs distinctes de la sélection en clause IN, dans le dialecte du serveur de l’éditeur. Une colonne seule omet NULL, qui ne correspond jamais.',
+          hint: inReason ?? {
+            title: 'Copier les valeurs distinctes en clause IN',
+            description:
+              'Dans le dialecte du serveur de l’éditeur ; une colonne seule omet NULL, qui ne correspond jamais',
+          },
           onSelect: () => void copyIn(),
         },
       ],
@@ -378,17 +387,24 @@ const exportGroups = computed<MenuGroup[]>(() => {
           disabled: cteOff || !readsCte.value,
           hint:
             server !== null && !readsCte.value
-              ? `MySQL ${server.version} ne lit pas VALUES ROW (…) : il faut MySQL 8.0.19 ou suivant.`
-              : 'Ajoute la CTE après la dernière requête de l’éditeur, sans l’exécuter, dans le dialecte de son serveur.',
+              ? {
+                  title: `Indisponible avec MySQL ${server.version}`,
+                  description: 'VALUES ROW (…) demande MySQL 8.0.19 ou suivant',
+                }
+              : {
+                  title: 'Ajouter la CTE après la dernière requête',
+                  description: 'Sans l’exécuter, dans le dialecte du serveur de l’éditeur',
+                },
           onSelect: () => void insertCte(),
         },
         {
           label: 'Sélection en clause IN',
           icon: TextCursorInput,
           disabled: inOff,
-          hint:
-            inReason ??
-            'Écrit les valeurs distinctes de la sélection en clause IN au curseur de l’éditeur, ou à la place du texte sélectionné.',
+          hint: inReason ?? {
+            title: 'Écrire les valeurs distinctes en clause IN',
+            description: 'Au curseur de l’éditeur, ou à la place du texte sélectionné',
+          },
           onSelect: () => void insertIn(),
         },
       ],
@@ -662,7 +678,10 @@ defineExpose({ exportGroups })
       <span
         v-if="cut"
         class="rounded-full bg-warning/14 px-2 font-medium text-warning"
-        v-tooltip="`Réception arrêtée : ${formatRowCount(shown?.rowCount ?? 0, null)} reçues`"
+        v-tooltip="{
+          title: 'Réception arrêtée',
+          description: `${formatRowCount(shown?.rowCount ?? 0, null)} reçues`,
+        }"
       >
         Résultat tronqué
       </span>

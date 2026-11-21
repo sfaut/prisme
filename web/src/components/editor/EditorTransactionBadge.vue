@@ -18,8 +18,10 @@ defineProps<{
 /**
  * Tooltip of the badge.
  */
-const TIP =
-  'Une transaction est ouverte sur la session : COMMIT la valide, ROLLBACK l’annule. Fermer la session l’annule.'
+const TIP = {
+  title: 'Valider par COMMIT, annuler par ROLLBACK',
+  description: 'Fermer la session annule aussi la transaction',
+}
 </script>
 
 <template>

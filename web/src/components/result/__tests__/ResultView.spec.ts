@@ -300,7 +300,7 @@ describe('ResultView', () => {
     await nextTick()
     const item = () => menuItem(wrapper, 'Presse-papiers', 'Sélection en clause IN')
     expect(item()?.disabled).toBe(true)
-    expect(item()?.hint).toBe('Sélectionnez une ou plusieurs colonnes.')
+    expect(item()?.hint).toEqual({ title: 'Sélectionnez une ou plusieurs colonnes' })
 
     // Cell (1, id), then Ctrl+click on cell (2, name): a diagonal.
     const cell = (row: number, column: number) =>
@@ -308,7 +308,7 @@ describe('ResultView', () => {
     await cell(0, 0).trigger('mousedown')
     await cell(1, 1).trigger('mousedown', { ctrlKey: true })
     expect(item()?.disabled).toBe(true)
-    expect(item()?.hint).toMatch(/^Sélection malformée/)
+    expect(item()?.hint).toMatchObject({ title: 'Sélection malformée' })
     expect(menuItem(wrapper, 'Éditeur', 'Sélection en clause IN')?.disabled).toBe(true)
 
     await cell(1, 0).trigger('mousedown', { ctrlKey: true })
@@ -359,9 +359,7 @@ describe('ResultView', () => {
     await nextTick()
     const insert = menuItem(old, 'Éditeur', 'Résultat affiché')
     expect(insert?.disabled).toBe(true)
-    expect(insert?.hint).toBe(
-      'MySQL 8.0.18 ne lit pas VALUES ROW (…) : il faut MySQL 8.0.19 ou suivant.',
-    )
+    expect(insert?.hint).toMatchObject({ title: 'Indisponible avec MySQL 8.0.18' })
     expect(menuItem(old, 'Fichier', 'Résultat affiché en CTE')?.disabled).toBe(false)
   })
 

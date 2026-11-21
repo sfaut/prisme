@@ -10,9 +10,12 @@ describe('kinds of write', () => {
   })
 
   it('tells in the tooltip what else a kind allows', () => {
-    expect(writeKindTooltip('alter_table')).toBe('ALTER TABLE. Aussi CREATE INDEX et DROP INDEX.')
-    expect(writeKindTooltip('drop_view')).toBe('DROP VIEW')
-    expect(writeKindTooltip('rename_temporary_table')).toBe(
+    expect(writeKindTooltip('alter_table')).toEqual({
+      title: 'ALTER TABLE',
+      description: 'Aussi CREATE INDEX et DROP INDEX',
+    })
+    expect(writeKindTooltip('drop_view')).toEqual({ title: 'DROP VIEW', description: undefined })
+    expect(writeKindTooltip('rename_temporary_table').title).toBe(
       'RENAME TABLE sur des tables temporaires',
     )
   })

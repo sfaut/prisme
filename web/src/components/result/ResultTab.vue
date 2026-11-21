@@ -80,7 +80,7 @@ const emit = defineEmits<{
     :progress="tabProgress(tab)"
     :fraction="tabFraction(tab)"
     close-label="Fermer l’onglet"
-    close-tooltip="Fermer l’onglet (arrête sa requête si elle tourne)"
+    :close-tooltip="{ title: 'Fermer l’onglet', description: 'Arrête sa requête si elle tourne' }"
     @close="emit('close')"
   >
     <document-tab-label
@@ -96,7 +96,7 @@ const emit = defineEmits<{
         tone="error"
         small
         aria-label="Arrêter la requête"
-        v-tooltip="'Arrêter la requête : les lignes reçues restent'"
+        v-tooltip="{ title: 'Arrêter la requête', description: 'Les lignes reçues restent' }"
         @mousedown.stop
         @click.stop="emit('stop')"
       />
@@ -109,8 +109,11 @@ const emit = defineEmits<{
         :aria-label="tab.pinned ? 'Désépingler l’onglet' : 'Épingler l’onglet'"
         v-tooltip="
           tab.pinned
-            ? 'Désépingler : l’onglet sera remplacé à la prochaine exécution'
-            : 'Épingler : l’onglet reste quand la requête est relancée'
+            ? {
+                title: 'Désépingler l’onglet',
+                description: 'Il sera remplacé à la prochaine exécution',
+              }
+            : { title: 'Épingler l’onglet', description: 'Il reste quand la requête est relancée' }
         "
         :class="
           tab.pinned ? 'visible' : 'invisible group-hover:visible group-data-[state=active]:visible'

@@ -100,7 +100,7 @@ const reopenItems = computed<MenuItem[]>(() => {
         :progress="editors.progress[editor.id]?.progress"
         :fraction="editors.progress[editor.id]?.fraction"
         close-label="Fermer l’éditeur"
-        close-tooltip="Fermer l’éditeur (rouvrable pendant 24 heures)"
+        :close-tooltip="{ title: 'Fermer l’éditeur', description: 'Rouvrable pendant 24 heures' }"
         @close="emit('close', editor.id)"
       >
         <document-tab-label
@@ -117,7 +117,10 @@ const reopenItems = computed<MenuItem[]>(() => {
           variant="ghost"
           small
           aria-label="Rouvrir un éditeur fermé"
-          v-tooltip="'Rouvrir un éditeur fermé depuis moins de 24 heures'"
+          v-tooltip="{
+            title: 'Rouvrir un éditeur fermé',
+            description: 'Fermé depuis moins de 24 heures',
+          }"
           @click="editors.loadClosed()"
         />
       </ui-dropdown-menu>

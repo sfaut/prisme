@@ -107,7 +107,7 @@ import UiAlert from '@/components/ui/UiAlert.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiSelect from '@/components/ui/UiSelect.vue'
 import { notify } from '@/components/ui/toasts'
-import { vTooltip } from '@/components/ui/tooltip'
+import { type Tooltip, vTooltip } from '@/components/ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -341,7 +341,10 @@ function closeTab(tab: QueryTab): void {
 /**
  * Tooltip of the run buttons while queries run: a click stops them.
  */
-const STOP_TIP = 'Arrête toutes les requêtes et tous les chargements en cours'
+const STOP_TIP: Tooltip = {
+  title: 'Arrêter',
+  description: 'Toutes les requêtes et tous les chargements en cours',
+}
 
 /**
  * Do queries run?
@@ -389,14 +392,21 @@ const textSelected = ref(false)
 /**
  * Tooltip of "Exécuter précisément".
  */
-const exactTip = computed(() => {
+const exactTip = computed((): Tooltip => {
   if (stopsExact.value) {
     return STOP_TIP
   }
   if (!textSelected.value) {
-    return 'Sélectionnez le texte à exécuter'
+    return {
+      title: 'Exécuter le texte sélectionné',
+      description: 'Sélectionnez d’abord le texte à exécuter',
+    }
   }
-  return 'Le texte sélectionné seulement, tel quel : en parallèle si les requêtes ne font que lire, l’une après l’autre dès qu’une écrit (INSERT, UPDATE, DELETE…)'
+  return {
+    title: 'Exécuter le texte sélectionné',
+    description:
+      'Tel quel : en parallèle si les requêtes ne font que lire, l’une après l’autre dès qu’une écrit (INSERT, UPDATE, DELETE…)',
+  }
 })
 
 /**
@@ -761,7 +771,11 @@ defineExpose({
           <template #inline>
             <div class="flex min-w-0 items-center gap-3">
               <ui-button
-                v-tooltip="stopsOne ? STOP_TIP : 'La requête sous le curseur (Ctrl-Entrée)'"
+                v-tooltip="
+                  stopsOne
+                    ? STOP_TIP
+                    : { title: 'Exécuter la requête sous le curseur', shortcut: 'Ctrl-Entrée' }
+                "
                 label="Exécuter"
                 :icon="stopsOne ? Square : Play"
                 variant="solid"
@@ -781,7 +795,12 @@ defineExpose({
                 v-tooltip="
                   stopsAll
                     ? STOP_TIP
-                    : 'Toutes les requêtes, ou celles que touche le texte sélectionné (Ctrl-Maj-Entrée) : en parallèle si elles ne font que lire, l’une après l’autre dès qu’une écrit (INSERT, UPDATE, DELETE…) ou qu’une transaction est ouverte'
+                    : {
+                        title: 'Exécuter toutes les requêtes',
+                        description:
+                          'Ou celles que touche le texte sélectionné ; en parallèle si elles ne font que lire, l’une après l’autre dès qu’une écrit (INSERT, UPDATE, DELETE…) ou qu’une transaction est ouverte',
+                        shortcut: 'Ctrl-Maj-Entrée',
+                      }
                 "
                 label="Exécuter tout"
                 :icon="stopsAll ? Square : FastForward"
@@ -795,8 +814,14 @@ defineExpose({
                 :disabled="sql.trim() === '' || !catalogReady"
                 v-tooltip="
                   catalogReady
-                    ? 'Réécrit les requêtes en « beau SQL » : mots-clefs en capitales (Ctrl-Z annule)'
-                    : 'Disponible une fois le catalogue de la connexion chargé'
+                    ? {
+                        title: 'Enjoliver les requêtes',
+                        description: 'Mots-clefs en capitales ; Ctrl-Z annule',
+                      }
+                    : {
+                        title: 'Enjoliver les requêtes',
+                        description: 'Disponible une fois le catalogue de la connexion chargé',
+                      }
                 "
                 @click="prettify"
               />

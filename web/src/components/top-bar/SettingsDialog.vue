@@ -98,8 +98,10 @@ const REFRESH_STEP_SECONDS = 0.1
 /**
  * Why the writes cannot be chosen while the sessions are read-only.
  */
-const READ_ONLY_WRITES =
-  'Sans effet en lecture seule : décocher « Sessions en lecture seule » pour autoriser des écritures'
+const READ_ONLY_WRITES = {
+  title: 'Sans effet en lecture seule',
+  description: 'Décocher « Sessions en lecture seule » pour autoriser des écritures',
+}
 
 /**
  * Current input: the row limit, the read-only mode, the allowed writes, the

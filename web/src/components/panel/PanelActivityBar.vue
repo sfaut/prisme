@@ -223,7 +223,12 @@ const BUTTON =
       type="button"
       :class="BUTTON"
       aria-label="Répartir les volets"
-      v-tooltip:right="{ title: 'Répartir les volets', shortcut: chordLabel(DISTRIBUTE_KEY) }"
+      v-tooltip:right="{
+        title: 'Répartir les volets',
+        description:
+          'Hauteurs égales pour les volets ouverts, taille par défaut pour les côtés et la console',
+        shortcut: chordLabel(DISTRIBUTE_KEY),
+      }"
       @click="distribute"
     >
       <LayoutDashboard class="size-5" aria-hidden="true" />

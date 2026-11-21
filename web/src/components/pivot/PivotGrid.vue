@@ -226,8 +226,10 @@ const ESTIMATE_BOUNDS: WidthBounds = {
 /**
  * Tooltip of a resize handle.
  */
-const RESIZE_TIP =
-  'Glisser pour changer la largeur, double clic pour l’ajuster au contenu ou revenir à la largeur par défaut'
+const RESIZE_TIP = {
+  title: 'Changer la largeur',
+  description: 'Glisser ; double clic : ajuster au contenu ou revenir à la largeur par défaut',
+}
 
 /**
  * Lines and columns drawn beyond each edge of the visible area.
