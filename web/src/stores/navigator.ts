@@ -1,8 +1,9 @@
 /**
  * Object navigators, the panels on the left of the editors
  * (`NavigatorPanel.vue`): each editor has its own, with its layout (open or
- * closed, its width) and its tree (open nodes, scroll), so that going from
- * one editor to another finds each navigator as it was left.
+ * closed, its width) and its tree (open nodes, scroll, "Tables" folders
+ * sorted by row count), so that going from one editor to another finds each
+ * navigator as it was left.
  *
  * The state of each navigator is saved on the server side, with its editor
  * (`PUT /api/editors/{id}/navigator`, `crates/server/src/navigator_state.rs`),
@@ -64,7 +65,18 @@ export interface NavigatorTree {
    * itself; a saved one stays as the user left it.
    */
   known: boolean
+  /**
+   * Keys of the "Tables" folders sorted by row count, the largest first; the
+   * other folders are sorted by name.
+   */
+  tablesByRows: string[]
 }
+
+/**
+ * Order of the tables of a "Tables" folder: by name, or by row count, the
+ * largest first.
+ */
+export type TableSort = 'name' | 'rows'
 
 /**
  * Navigator of an editor: its layout, its tree, the scope of the watcher
@@ -103,6 +115,7 @@ function stateOf(entry: NavigatorEntry): NavigatorState {
     width: entry.layout.width,
     expanded: [...entry.tree.expanded],
     scroll_top: entry.tree.scrollTop,
+    tables_by_rows: [...entry.tree.tablesByRows],
   }
 }
 
@@ -179,13 +192,20 @@ export const useNavigatorStore = defineStore('navigator', () => {
         expanded: saved?.expanded ?? [SOURCES_KEY],
         scrollTop: saved?.scroll_top ?? 0,
         known: saved !== null,
+        tablesByRows: saved?.tables_by_rows ?? [],
       }),
       scope,
       timer: undefined,
     }
     scope.run(() =>
-      watch([() => entry.layout.open, () => entry.layout.width, () => entry.tree.expanded], () =>
-        schedule(editorId, entry),
+      watch(
+        [
+          () => entry.layout.open,
+          () => entry.layout.width,
+          () => entry.tree.expanded,
+          () => entry.tree.tablesByRows,
+        ],
+        () => schedule(editorId, entry),
       ),
     )
     entries.set(editorId, entry)
@@ -221,6 +241,24 @@ export const useNavigatorStore = defineStore('navigator', () => {
     const entry = entryOf(editorId)
     entry.tree.scrollTop = scrollTop
     schedule(editorId, entry)
+  }
+
+  /**
+   * Sorts the tables of a "Tables" folder of an editor's navigator.
+   *
+   * @param editorId Id of the editor.
+   * @param folderKey Key of the "Tables" folder.
+   * @param sort By name, or by row count.
+   */
+  function sortTables(editorId: number, folderKey: string, sort: TableSort): void {
+    const tree = entryOf(editorId).tree
+    if (tree.tablesByRows.includes(folderKey) === (sort === 'rows')) {
+      return
+    }
+    tree.tablesByRows =
+      sort === 'rows'
+        ? [...tree.tablesByRows, folderKey]
+        : tree.tablesByRows.filter((key) => key !== folderKey)
   }
 
   /**
@@ -265,7 +303,8 @@ export const useNavigatorStore = defineStore('navigator', () => {
   }
 
   /**
-   * Closes a deleted source, and the nodes under it, in every navigator.
+   * Closes a deleted source, and the nodes under it, and forgets the sorts of
+   * its "Tables" folders, in every navigator.
    *
    * @param connectionId Id of the source's connection.
    */
@@ -273,6 +312,9 @@ export const useNavigatorStore = defineStore('navigator', () => {
     for (const { tree } of entries.values()) {
       if (tree.expanded.some((key) => belongsToSource(key, connectionId))) {
         tree.expanded = tree.expanded.filter((key) => !belongsToSource(key, connectionId))
+      }
+      if (tree.tablesByRows.some((key) => belongsToSource(key, connectionId))) {
+        tree.tablesByRows = tree.tablesByRows.filter((key) => !belongsToSource(key, connectionId))
       }
     }
   }
@@ -285,5 +327,5 @@ export const useNavigatorStore = defineStore('navigator', () => {
   })
   window.addEventListener('pagehide', flushPending)
 
-  return { seed, layoutOf, treeOf, scrollTo, flush, forget, forgetSource }
+  return { seed, layoutOf, treeOf, scrollTo, sortTables, flush, forget, forgetSource }
 })

@@ -23,9 +23,11 @@
  * their connection, to stay unique from one source to the other.
  *
  * The tree is built from the catalog, even incomplete: a part not received
- * yet shows "chargement…" (loading). The folder "Références" of a table
- * turns around the foreign keys of the databases received that point to it.
- * The functions of this module do not depend on the display.
+ * yet shows "chargement…" (loading). The tables of a "Tables" folder come
+ * by name, or by row count, the largest first, as chosen for that folder.
+ * The folder "Références" of a table turns around the foreign keys of the
+ * databases received that point to it. The functions of this module do not
+ * depend on the display.
  */
 
 import type { ColumnInfo } from '@/api/generated/ColumnInfo'
@@ -39,6 +41,7 @@ import type { TableDetails } from '@/api/generated/TableDetails'
 import type { TableKind } from '@/api/generated/TableKind'
 import type { TriggerInfo } from '@/api/generated/TriggerInfo'
 import type { Catalog, CatalogSchema, CatalogTable } from '@/stores/catalog'
+import type { TableSort } from '@/stores/navigator'
 import { compactCount } from '@/utils/compactCount'
 
 /**
@@ -176,6 +179,11 @@ export interface NavigatorNode extends Place {
    */
   badgeTooltip?: string
   /**
+   * Order of the tables, on a "Tables" folder of two tables or more: by name,
+   * or by row count.
+   */
+  tableSort?: TableSort
+  /**
    * Note shown after the label, smaller and lighter: `PRIMARY KEY` for the
    * primary key, `UNIQUE` for a unique index, the estimated row count of a
    * table (`345`, `1,3 k`).
@@ -248,8 +256,13 @@ export const NOTEBOOKS_KEY = 'notebooks'
  *
  * @param sources Sources, in display order.
  * @param receiving Is a catalog being received ("chargement…" note)?
+ * @param tablesByRows Keys of the "Tables" folders sorted by row count.
  */
-export function navigatorTree(sources: Source[], receiving: boolean): NavigatorNode[] {
+export function navigatorTree(
+  sources: Source[],
+  receiving: boolean,
+  tablesByRows: ReadonlySet<string> = new Set(),
+): NavigatorNode[] {
   return [
     {
       key: SOURCES_KEY,
@@ -259,7 +272,7 @@ export function navigatorTree(sources: Source[], receiving: boolean): NavigatorN
       schema: '',
       role: 'sources',
       note: receiving ? 'chargement…' : undefined,
-      children: sourceNodes(sources),
+      children: sourceNodes(sources, tablesByRows),
     },
     {
       key: NOTEBOOKS_KEY,
@@ -298,8 +311,12 @@ export function belongsToSource(key: string, connectionId: number): boolean {
  * "chargement…": it is read when the source is opened.
  *
  * @param sources Sources, in display order.
+ * @param tablesByRows Keys of the "Tables" folders sorted by row count.
  */
-export function sourceNodes(sources: Source[]): NavigatorNode[] {
+export function sourceNodes(
+  sources: Source[],
+  tablesByRows: ReadonlySet<string> = new Set(),
+): NavigatorNode[] {
   return sources.map((source) => {
     const place = { connectionId: source.connectionId, schema: '' }
     const key = sourceKey(source.connectionId)
@@ -322,6 +339,7 @@ export function sourceNodes(sources: Source[]): NavigatorNode[] {
                 ? catalog.schemas
                 : catalog.schemas.filter((schema) => !SYSTEM_SCHEMAS.includes(schema.name)),
               source.currentDatabase,
+              tablesByRows,
             ),
     }
   })
@@ -333,11 +351,13 @@ export function sourceNodes(sources: Source[]): NavigatorNode[] {
  * @param connectionId Id of the connection.
  * @param schemas Catalog of the server, possibly incomplete.
  * @param currentDatabase Current database of the query session, `null` if none.
+ * @param tablesByRows Keys of the "Tables" folders sorted by row count.
  */
 export function catalogNodes(
   connectionId: number,
   schemas: CatalogSchema[],
   currentDatabase: string | null = null,
+  tablesByRows: ReadonlySet<string> = new Set(),
 ): NavigatorNode[] {
   const references = referencesByTable(schemas)
   return schemas.map((schema) => {
@@ -359,6 +379,7 @@ export function catalogNodes(
               schema.routines,
               schema.events,
               references.get(schema.name) ?? new Map(),
+              tablesByRows,
             ),
     }
   })
@@ -437,6 +458,7 @@ function placeKey(place: Place): string {
  * @param routines Procedures and functions of the database.
  * @param events Scheduled events of the database.
  * @param references Foreign keys that reference the tables of the database, by table.
+ * @param tablesByRows Keys of the "Tables" folders sorted by row count.
  */
 function schemaFolders(
   place: Place,
@@ -444,6 +466,7 @@ function schemaFolders(
   routines: RoutineInfo[],
   events: EventInfo[],
   references: Map<string, Reference[]>,
+  tablesByRows: ReadonlySet<string>,
 ): NavigatorNode[] {
   const base = placeKey(place)
   const routineNode = (routine: RoutineInfo): NavigatorNode => ({
@@ -461,14 +484,7 @@ function schemaFolders(
     ...place,
   })
   return [
-    folder(
-      `tables:${base}`,
-      'Tables',
-      place,
-      tables
-        .filter((table) => table.kind === 'table')
-        .map((table) => tableNode(place, table, references.get(table.name) ?? [])),
-    ),
+    tablesFolder(place, tables, references, tablesByRows),
     folder(
       `views:${base}`,
       'Vues',
@@ -489,6 +505,37 @@ function schemaFolders(
     ),
     folder(`events:${base}`, 'Événements', place, events.map(eventNode)),
   ]
+}
+
+/**
+ * Folder of the tables of a database (views apart), by name as received, or
+ * by row count, the largest first, the tables without an estimate last, the
+ * ties by name. A folder of two tables or more carries its order, which its
+ * line lets change.
+ *
+ * @param place Connection and database.
+ * @param tables Tables and views of the database, by name.
+ * @param references Foreign keys that reference the tables of the database, by table.
+ * @param tablesByRows Keys of the "Tables" folders sorted by row count.
+ */
+function tablesFolder(
+  place: Place,
+  tables: CatalogTable[],
+  references: Map<string, Reference[]>,
+  tablesByRows: ReadonlySet<string>,
+): NavigatorNode {
+  const key = `tables:${placeKey(place)}`
+  const sort: TableSort = tablesByRows.has(`folder:${key}`) ? 'rows' : 'name'
+  const kept = tables.filter((table) => table.kind === 'table')
+  // The sort is stable: equal counts keep the order of the names.
+  const sorted = sort === 'rows' ? kept.sort((a, b) => (b.rows ?? -1) - (a.rows ?? -1)) : kept
+  const node = folder(
+    key,
+    'Tables',
+    place,
+    sorted.map((table) => tableNode(place, table, references.get(table.name) ?? [])),
+  )
+  return sorted.length < 2 ? node : { ...node, tableSort: sort }
 }
 
 /**

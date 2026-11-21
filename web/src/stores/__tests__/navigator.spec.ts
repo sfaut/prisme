@@ -33,6 +33,7 @@ const SAVED = {
   width: 320,
   expanded: ['sources', 'source:2'],
   scroll_top: 48,
+  tables_by_rows: ['folder:tables:2/shop'],
 }
 
 describe('state of a navigator', () => {
@@ -44,6 +45,7 @@ describe('state of a navigator', () => {
       expanded: ['sources'],
       scrollTop: 0,
       known: false,
+      tablesByRows: [],
     })
     expect({ ...navigator.layoutOf(2) }).toEqual({ open: true, width: null })
   })
@@ -56,6 +58,7 @@ describe('state of a navigator', () => {
       expanded: ['sources', 'source:2'],
       scrollTop: 48,
       known: true,
+      tablesByRows: ['folder:tables:2/shop'],
     })
   })
 
@@ -64,6 +67,7 @@ describe('state of a navigator', () => {
     navigator.layoutOf(1).open = false
     navigator.layoutOf(1).width = 320
     navigator.treeOf(1).expanded = ['sources', 'source:2']
+    navigator.sortTables(1, 'folder:tables:2/shop', 'rows')
     await nextTick()
     navigator.scrollTo(1, 48)
     expect(saveNavigator).not.toHaveBeenCalled()
@@ -99,14 +103,31 @@ describe('state of a navigator', () => {
     expect(Object.keys(window.localStorage)).toEqual(['prisme.editor.active'])
   })
 
-  it('closes a deleted source and the nodes under it, in every navigator', () => {
+  it('sorts a "Tables" folder by row count, then by name again', () => {
+    const navigator = useNavigatorStore()
+    navigator.sortTables(1, 'folder:tables:1/shop', 'rows')
+    navigator.sortTables(1, 'folder:tables:1/crm', 'rows')
+    navigator.sortTables(1, 'folder:tables:1/shop', 'rows')
+    expect(navigator.treeOf(1).tablesByRows).toEqual([
+      'folder:tables:1/shop',
+      'folder:tables:1/crm',
+    ])
+
+    navigator.sortTables(1, 'folder:tables:1/shop', 'name')
+    expect(navigator.treeOf(1).tablesByRows).toEqual(['folder:tables:1/crm'])
+  })
+
+  it('closes a deleted source and the nodes under it, and forgets its sorts, in every navigator', () => {
     const navigator = useNavigatorStore()
     navigator.treeOf(1).expanded = ['sources', 'source:1', 'schema:1/shop', 'source:11']
     navigator.treeOf(2).expanded = ['sources', 'table:1/shop.customer', 'schema:2/crm']
+    navigator.sortTables(2, 'folder:tables:1/shop', 'rows')
+    navigator.sortTables(2, 'folder:tables:2/crm', 'rows')
 
     navigator.forgetSource(1)
 
     expect(navigator.treeOf(1).expanded).toEqual(['sources', 'source:11'])
     expect(navigator.treeOf(2).expanded).toEqual(['sources', 'schema:2/crm'])
+    expect(navigator.treeOf(2).tablesByRows).toEqual(['folder:tables:2/crm'])
   })
 })

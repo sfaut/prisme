@@ -1,7 +1,7 @@
 //! State of the object navigator of an editor, saved with the editor: the
-//! panel open or folded and its width, the open nodes and the scroll. It
-//! survives a page reload, and the closing of the editor followed by its
-//! reopening ("Rouvrir").
+//! panel open or folded and its width, the open nodes, the scroll, and the
+//! "Tables" folders sorted by row count. It survives a page reload, and the
+//! closing of the editor followed by its reopening ("Rouvrir").
 //!
 //! The page makes the state and sends it whole on each change
 //! (`PUT /api/editors/{id}/navigator`, `editors.rs`); the server stores it as
@@ -23,4 +23,22 @@ pub struct NavigatorState {
     pub expanded: Vec<String>,
     /// Position of the tree's scroll, in CSS pixels.
     pub scroll_top: f64,
+    /// Keys of the "Tables" folders sorted by row count, the largest first;
+    /// the other folders are sorted by name. Empty in a state saved before
+    /// the sort existed.
+    #[serde(default)]
+    pub tables_by_rows: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_a_state_saved_before_the_sort_of_the_tables() {
+        let state: NavigatorState =
+            serde_json::from_str(r#"{"open":true,"width":null,"expanded":[],"scroll_top":0}"#)
+                .unwrap();
+        assert!(state.tables_by_rows.is_empty());
+    }
 }

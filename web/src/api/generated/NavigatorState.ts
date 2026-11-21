@@ -21,4 +21,10 @@ export type NavigatorState = {
    * Position of the tree's scroll, in CSS pixels.
    */
   scroll_top: number;
+  /**
+   * Keys of the "Tables" folders sorted by row count, the largest first;
+   * the other folders are sorted by name. Empty in a state saved before
+   * the sort existed.
+   */
+  tables_by_rows: Array<string>;
 };

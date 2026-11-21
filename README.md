@@ -164,6 +164,7 @@ How it behaves:
 - The catalog loads progressively, and the source of the editor opens by itself, in a new navigator and when the editor changes its connection. **Tout rafraîchir** (Refresh all) in the root menu reloads the catalogs already read.
 - The current database is in **bold**.
 - Each table shows, after its name, its row count as estimated by the server: exact below 1,000 (`345`), shortened above (`1,3 k`, `4,5 M`). The estimate can differ from the real count, and on MySQL can be up to a day old. Views show none.
+- On hovering a **Tables** folder of two tables or more, two buttons sort its tables: by name (A to Z, the default), or by row count, the largest first, tables without an estimate last. Sorted by row count, its button stays shown. Each folder keeps its order, with the editor.
 - While the tree scrolls, the source, the database and the table of the rows on screen stay pinned at the top; they open, close and act like the rows of the tree.
 
 Columns show, on three aligned columns: a symbol, the name, then the type, nullability and `AUTO_INCREMENT`.

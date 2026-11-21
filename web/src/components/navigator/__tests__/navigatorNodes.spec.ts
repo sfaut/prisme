@@ -223,6 +223,43 @@ describe('catalogNodes', () => {
     expect(views?.children?.[0]?.note).toBeUndefined()
   })
 
+  it('sorts the tables of a folder by name, or by row count when chosen', () => {
+    const schemas: CatalogSchema[] = [
+      {
+        name: 'shop',
+        tables: [
+          { name: 'a', kind: 'table', rows: 10, details: null },
+          { name: 'b', kind: 'table', rows: null, details: null },
+          { name: 'c', kind: 'table', rows: 500, details: null },
+          { name: 'd', kind: 'table', rows: 10, details: null },
+        ],
+        routines: [],
+        events: [],
+      },
+    ]
+    const byName = catalogNodes(1, schemas)[0]?.children?.[0]
+    expect(byName?.tableSort).toBe('name')
+    expect(byName?.children?.map((node) => node.table)).toEqual(['a', 'b', 'c', 'd'])
+
+    const byRows = catalogNodes(1, schemas, null, new Set([byName!.key]))[0]?.children?.[0]
+    expect(byRows?.tableSort).toBe('rows')
+    // The largest first, ties by name, without an estimate last.
+    expect(byRows?.children?.map((node) => node.table)).toEqual(['c', 'a', 'd', 'b'])
+    expect(byRows?.key).toBe('folder:tables:1/shop')
+  })
+
+  it('gives no order to a folder of less than two tables', () => {
+    const schemas: CatalogSchema[] = [
+      {
+        name: 'shop',
+        tables: [{ name: 'a', kind: 'table', rows: 10, details: null }],
+        routines: [],
+        events: [],
+      },
+    ]
+    expect(catalogNodes(1, schemas)[0]?.children?.[0]?.tableSort).toBeUndefined()
+  })
+
   it('marks the current database', () => {
     const [shop, pending] = catalogNodes(1, catalog, 'shop')
     expect(shop?.current).toBe(true)

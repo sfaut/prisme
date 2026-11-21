@@ -45,6 +45,46 @@ describe('NavigatorLine', () => {
     expect(wrapper.emitted('act')).toHaveLength(1)
   })
 
+  it('gives a "Tables" folder its two orders, the chosen one pressed', async () => {
+    const wrapper = mountLine({
+      key: 'folder:tables:1/shop',
+      label: 'Tables (2)',
+      isLeaf: false,
+      entry: 'folder',
+      tableSort: 'name',
+      ...place,
+    })
+    const byName = wrapper.find('[aria-label="Trier par nom"]')
+    const byRows = wrapper.find('[aria-label="Trier par nombre de lignes"]')
+    expect(byName.attributes('aria-pressed')).toBe('true')
+    expect(byRows.attributes('aria-pressed')).toBe('false')
+    // Sorted by name, both wait for the hover.
+    expect(byRows.classes()).toContain('invisible')
+
+    await byName.trigger('click')
+    expect(wrapper.emitted('sort-tables')).toBeUndefined()
+    await byRows.trigger('click')
+    expect(wrapper.emitted('sort-tables')).toEqual([['rows']])
+
+    // Sorted by row count, its button stays shown; the other waits for the hover.
+    await wrapper.setProps({ node: { ...wrapper.props('node'), tableSort: 'rows' } })
+    expect(byRows.classes()).not.toContain('invisible')
+    expect(byName.classes()).toContain('invisible')
+    await byName.trigger('click')
+    expect(wrapper.emitted('sort-tables')).toEqual([['rows'], ['name']])
+  })
+
+  it('gives no order to another folder', () => {
+    const wrapper = mountLine({
+      key: 'folder:views:1/shop',
+      label: 'Vues (2)',
+      isLeaf: false,
+      entry: 'folder',
+      ...place,
+    })
+    expect(wrapper.find('[role="group"]').exists()).toBe(false)
+  })
+
   it('gives an index a button that writes the operations on it', async () => {
     const wrapper = mountLine({
       key: 'index',

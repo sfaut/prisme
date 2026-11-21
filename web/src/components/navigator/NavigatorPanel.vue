@@ -39,7 +39,9 @@
   Each source carries as a badge the flavor of its server (`mysql`,
   `mariadb`), seen on the last connection or when reading the catalog. Each
   table shows after its name its row count estimated by the server, in short
-  form (`345`, `1,3 k`); a view has none.
+  form (`345`, `1,3 k`); a view has none. Each "Tables" folder sorts its
+  tables by name (by default) or by row count, the largest first, with the
+  two buttons of its line; the choice is kept per folder with the tree.
 
   Each line carries the icon of its level: roots, source, database, folder
   (open or closed), table, view, procedure, function, column, index, foreign
@@ -258,6 +260,7 @@ const nodes = computed(() => {
         showSystemSchemas: connection.show_system_schemas,
       })),
       receiving.value,
+      new Set(tree.tablesByRows),
     )
   }
   return built
@@ -736,6 +739,9 @@ watch(() => visible.value.rows.length, retryScroll)
               :session="sessionOf((item.value as NavigatorNode).connectionId)"
               @act="activate(item.value as NavigatorNode)"
               @disconnect="emit('disconnect')"
+              @sort-tables="
+                navigatorStore.sortTables(editorId, (item.value as NavigatorNode).key, $event)
+              "
             />
           </tree-item>
         </tree-virtualizer>
@@ -761,6 +767,7 @@ watch(() => visible.value.rows.length, retryScroll)
             :session="sessionOf(row.node.connectionId)"
             @act="activate(row.node)"
             @disconnect="emit('disconnect')"
+            @sort-tables="navigatorStore.sortTables(editorId, row.node.key, $event)"
           />
         </div>
       </div>

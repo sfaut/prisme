@@ -6,12 +6,16 @@
   index (writes the operations on it), as Ctrl+click does (emits `act`). On
   a source, and on the current database instead of its plug, the button
   closes the session of the active editor (emits `disconnect`), enabled once
-  that session is ready on this source. Shared by the lines of the
-  tree and by the lines pinned at the top of the tree while it scrolls
-  (`NavigatorPanel.vue`), which only differ by their container.
+  that session is ready on this source. A "Tables" folder of two tables or
+  more has two buttons instead, which sort its tables by name or by row
+  count (emits `sort-tables`), the one pressed showing the order. Shared by
+  the lines of the tree and by the lines pinned at the top of the tree while
+  it scrolls (`NavigatorPanel.vue`), which only differ by their container.
 -->
 <script setup lang="ts">
 import {
+  ArrowDownAZ,
+  ArrowDownWideNarrow,
   Cable,
   CalendarClock,
   ChevronDown,
@@ -42,6 +46,7 @@ import { type Component, computed } from 'vue'
 import type { SessionStatus } from '@/api/querySession'
 
 import type { EntryKind, NavigatorNode } from './navigatorNodes'
+import type { TableSort } from '@/stores/navigator'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiDropdownMenu from '@/components/ui/UiDropdownMenu.vue'
 import type { MenuItem } from '@/components/ui/menuItem'
@@ -76,7 +81,19 @@ const emit = defineEmits<{
    * The button of the line asks to close the session of the active editor.
    */
   disconnect: []
+  /**
+   * A button of a "Tables" folder asks to sort its tables.
+   */
+  'sort-tables': [sort: TableSort]
 }>()
+
+/**
+ * Buttons of a "Tables" folder, one per order of its tables.
+ */
+const TABLE_SORTS = [
+  { sort: 'name', icon: ArrowDownAZ, label: 'Trier par nom' },
+  { sort: 'rows', icon: ArrowDownWideNarrow, label: 'Trier par nombre de lignes' },
+] as const
 
 /**
  * Tooltip of the disconnect button, by stage of the active editor's session.
@@ -272,6 +289,34 @@ function iconLabel(node: NavigatorNode): string | undefined {
     >
       <span class="text-trim">{{ node.badge }}</span>
     </span>
+  </span>
+
+  <!--
+    "Tables" folder: its two orders, shown on hovering; the order by row
+    count stays shown when chosen, as it explains the order of the list.
+  -->
+  <span
+    v-if="node.tableSort"
+    role="group"
+    aria-label="Trier les tables"
+    class="flex shrink-0 items-center"
+  >
+    <ui-button
+      v-for="choice in TABLE_SORTS"
+      :key="choice.sort"
+      :icon="choice.icon"
+      variant="ghost"
+      small
+      :tone="node.tableSort === choice.sort ? 'primary' : 'neutral'"
+      :aria-pressed="node.tableSort === choice.sort"
+      :aria-label="choice.label"
+      :class="{
+        'invisible group-hover:visible group-focus-visible:visible':
+          choice.sort === 'name' || node.tableSort !== 'rows',
+      }"
+      @click.stop="node.tableSort !== choice.sort && emit('sort-tables', choice.sort)"
+      @keydown.stop
+    />
   </span>
 
   <!--

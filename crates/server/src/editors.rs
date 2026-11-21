@@ -1004,6 +1004,7 @@ mod tests {
             width: Some(320.5),
             expanded: vec!["sources".to_string(), "source:1".to_string()],
             scroll_top: 48.0,
+            tables_by_rows: vec!["folder:tables:1/shop".to_string()],
         };
         assert!(update_navigator(&db, user_id, editor.id, &state).unwrap());
         let other = store::ensure_user(&db, "other@example.com").unwrap();
