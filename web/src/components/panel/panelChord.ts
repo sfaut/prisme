@@ -2,7 +2,8 @@
  * Keyboard shortcuts of the activity bar (`PanelActivityBar.vue`): chords of
  * two keys, as in VS Code. Ctrl-K (Cmd-K under macOS) arms the chord, then
  * a single key, without modifier, chooses the action: a letter opens or
- * closes a panel, `=` shares the room again. Any other key, Escape
+ * closes a panel, `0` resets the display of the editor, `=` shares the room
+ * again. Any other key, Escape
  * included, or a delay without a key, disarms it. The second key of an
  * armed chord goes to the chord alone: it reaches neither the SQL editor nor
  * the browser.

@@ -14,6 +14,12 @@
  * an editor without a saved display, a new one for example, starts from the
  * defaults (`defaultEditorDisplay`). The schema is documented in
  * `docs/DEVELOPER.md`, section "Saved display".
+ *
+ * The reset of an editor (`reset`, button of its activity bar) brings its
+ * panels and its navigator back to the defaults, in place, so that the
+ * components that hold them follow; the position in the SQL text and the
+ * result tab shown stay, as the text itself. The view of the editor resets
+ * what its result tabs hold (`onReset`).
  */
 
 import { defineStore } from 'pinia'
@@ -21,8 +27,9 @@ import { type EffectScope, effectScope, reactive, watch } from 'vue'
 
 import { saveEditorDisplay } from '@/api/editors'
 import type { EditorDisplay } from '@/api/generated/EditorDisplay'
+import type { Panels } from '@/api/generated/Panels'
 import { startPosition } from '@/components/editor/editorPosition'
-import { SOURCES_KEY } from '@/components/navigator/navigatorNodes'
+import { SOURCES_KEY, sourceKey } from '@/components/navigator/navigatorNodes'
 import { deferredSave, removeStoredKeys } from '@/utils/deferredSave'
 
 /**
@@ -176,6 +183,49 @@ export const useEditorDisplaysStore = defineStore('editorDisplays', () => {
   }
 
   /**
+   * What each editor does on its reset, besides its display: its view resets
+   * its result tabs.
+   */
+  const resetListeners = new Map<number, Set<() => void>>()
+
+  /**
+   * Brings the display of an editor back to the defaults: its panels, and
+   * its navigator, the source of the editor open. The position in the SQL
+   * text and the result tab shown stay.
+   *
+   * @param editorId Id of the editor.
+   * @param connectionId Connection of the editor, `null` if none.
+   */
+  function reset(editorId: number, connectionId: number | null): void {
+    const display = displayOf(editorId)
+    const fresh = defaultEditorDisplay()
+    for (const name of Object.keys(fresh.panels) as (keyof Panels)[]) {
+      Object.assign(display.panels[name], fresh.panels[name])
+    }
+    if (connectionId !== null) {
+      fresh.navigator.expanded.push(sourceKey(connectionId))
+    }
+    Object.assign(display.navigator, fresh.navigator)
+    for (const listener of resetListeners.get(editorId) ?? []) {
+      listener()
+    }
+  }
+
+  /**
+   * Follows the resets of an editor.
+   *
+   * @param editorId Id of the editor.
+   * @param listener What to do on each reset.
+   * @returns The function that stops following them.
+   */
+  function onReset(editorId: number, listener: () => void): () => void {
+    const listeners = resetListeners.get(editorId) ?? new Set()
+    listeners.add(listener)
+    resetListeners.set(editorId, listeners)
+    return () => listeners.delete(listener)
+  }
+
+  /**
    * Leaves the display of a closed editor: it stays saved with the editor,
    * which finds it again when reopened.
    *
@@ -188,5 +238,5 @@ export const useEditorDisplaysStore = defineStore('editorDisplays', () => {
     seeds.delete(editorId)
   }
 
-  return { seed, displayOf, isSaved, loaded, flush, forget }
+  return { seed, displayOf, isSaved, loaded, flush, forget, reset, onReset }
 })

@@ -575,6 +575,19 @@ const drawnRows = computed(() => {
   return Array.from({ length: end - start }, (_, offset) => start + offset)
 })
 
+// Layout dropped by the reset of the editor: the defaults come back, at the
+// top left. The grid itself always gives a layout.
+watch(layout, (value) => {
+  if (value === null) {
+    const next = startingLayout(null, props.columns)
+    resized.value = next.widths
+    order.value = next.order
+    sort.value = next.sort
+    awaitedScroll = null
+    scroller.value?.scrollTo({ top: 0, left: 0 })
+  }
+})
+
 // Rows arrived, grid shown or widened: the saved scroll may be reached.
 watch([() => view.value.length, viewportHeight, template], restoreScroll, { flush: 'post' })
 

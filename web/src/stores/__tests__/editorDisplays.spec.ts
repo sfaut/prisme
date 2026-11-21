@@ -102,4 +102,27 @@ describe('display of an editor', () => {
     useEditorDisplaysStore()
     expect(Object.keys(window.localStorage)).toEqual(['prisme.editor.active'])
   })
+
+  it('resets the panels and the navigator in place, the SQL position kept', () => {
+    const store = useEditorDisplaysStore()
+    store.seed(1, saved())
+    const display = store.displayOf(1)
+    const tree = display.navigator
+    display.sql = { anchor: 4, head: 4, top: 0, folds: [] }
+    const listener = vi.fn<() => void>()
+    const stop = store.onReset(1, listener)
+
+    store.reset(1, 2)
+    const fresh = defaultEditorDisplay()
+    expect(display.panels).toEqual(fresh.panels)
+    expect(display.navigator).toEqual({ ...fresh.navigator, expanded: ['sources', 'source:2'] })
+    expect(display.navigator).toBe(tree)
+    expect(display.sql.anchor).toBe(4)
+    expect(listener).toHaveBeenCalledOnce()
+
+    stop()
+    store.reset(1, null)
+    expect(display.navigator.expanded).toEqual(['sources'])
+    expect(listener).toHaveBeenCalledOnce()
+  })
 })

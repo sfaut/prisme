@@ -660,6 +660,18 @@ function openSources(connectionId: number | null): void {
   }
 }
 
+// Scroll changed by the reset of the editor: the tree follows.
+watch(
+  () => tree.scroll_top,
+  (top) => {
+    const element = treeElement()
+    if (element !== null && Math.abs(element.scrollTop - top) >= 1) {
+      pendingScroll = top
+      retryScroll()
+    }
+  },
+)
+
 // While the editor is active: its source opens, its open sources are read,
 // and so are they again when the list of connections arrives; its kept
 // scroll comes back.

@@ -54,7 +54,16 @@
 import { errorMessage } from '@/api/errorMessage'
 import { FastForward, LoaderCircle, Play, ScanText, Square, WandSparkles } from '@lucide/vue'
 import { TabsContent, TabsList, TabsRoot } from 'reka-ui'
-import { computed, onMounted, provide, ref, shallowReactive, useTemplateRef, watch } from 'vue'
+import {
+  computed,
+  onMounted,
+  onScopeDispose,
+  provide,
+  ref,
+  shallowReactive,
+  useTemplateRef,
+  watch,
+} from 'vue'
 
 import { analyzeSql } from '@/api/analyze'
 import { beautify } from '@/api/beautify'
@@ -87,6 +96,9 @@ import EditorTransactionBadge from '@/components/editor/EditorTransactionBadge.v
 import PanelHeader from '@/components/panel/PanelHeader.vue'
 import PivotPanel from '@/components/pivot/PivotPanel.vue'
 import ResultView from '@/components/result/ResultView.vue'
+import { keepGridLayout } from '@/components/result/gridDisplay'
+import { withSectionWidth } from '@/components/pivot/pivotConfig'
+import { updateResultPivot } from '@/api/editors'
 import { EDITOR_ID } from './editorId'
 import { useEditorDisplaysStore } from '@/stores/editorDisplays'
 import { type ViewPanel, fillingPanel } from './editorLayout'
@@ -162,7 +174,8 @@ const sql = defineModel<string>('sql', { required: true })
 /**
  * Display of the editor, saved with it (`editorDisplays` store).
  */
-const display = useEditorDisplaysStore().displayOf(props.editorId)
+const displays = useEditorDisplaysStore()
+const display = displays.displayOf(props.editorId)
 
 /**
  * Displayed tab: its id; at first, the one shown when the editor was left.
@@ -186,6 +199,27 @@ const session = useQuerySession(
 )
 const catalog = useCatalogStore()
 const state = session.state
+
+/**
+ * Reset of the display of the editor (`editorDisplays.reset`): the grid of
+ * each result tab takes its default layout back, its filter kept, and the
+ * sections of its Pivoteur their default widths.
+ */
+function resetTabs(): void {
+  for (const tab of state.tabs) {
+    keepGridLayout(tab, null)
+    const { config } = tab.pivot
+    if (config.fields_px != null || config.zones_px != null) {
+      tab.pivot = {
+        ...tab.pivot,
+        config: withSectionWidth(withSectionWidth(config, 'fields', null), 'zones', null),
+      }
+      updateResultPivot(tab.id, tab.pivot).catch(() => {})
+    }
+  }
+}
+
+onScopeDispose(displays.onReset(props.editorId, resetTabs))
 const settings = useSettingsStore()
 
 /**

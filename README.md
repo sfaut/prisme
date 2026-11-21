@@ -116,7 +116,7 @@ The screen has these areas:
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
 - **Console**, at the bottom of the tab, under the side panels: the history of the queries sent to the servers by the editor, and its debug log (see [Console](#console)).
 
-On the left of each editor's tab, a dark **activity bar** opens and closes its panels, one button each: the object navigator; the editor, the results and the Pivoteur; the data explorer and the console. A lit button, marked in blue on the edge of the bar, is an open panel; its tooltip says what a click does. A closed panel leaves no trace: its button is the way back. Dragging the line of a panel below its smallest size closes it too. At the bottom of the bar, **Répartir les volets** (Share the panels) gives the open panels of the editor equal heights, and the side panels and the console their default size.
+On the left of each editor's tab, a dark **activity bar** opens and closes its panels, one button each: the object navigator; the editor, the results and the Pivoteur; the data explorer and the console. A lit button, marked in blue on the edge of the bar, is an open panel; its tooltip says what a click does. A closed panel leaves no trace: its button is the way back. Dragging the line of a panel below its smallest size closes it too. At the bottom of the bar, **Réinitialiser l’affichage** (Reset the display) brings the display of the editor back to its defaults: its panels, its object navigator (the source of the editor open, at the top), the widths, order, sort and scroll of the grid of each of its result tabs, and the widths of the sections of their Pivoteur. The SQL text and the position in it, the result tab shown, the filters of the grids and the configuration of the Pivoteur stay; the other editors are left as they are. Under it, **Répartir les volets** (Share the panels) gives the open panels of the editor equal heights, and the side panels and the console their default size.
 
 Each button has its shortcut: **Ctrl+K** (**Cmd+K** on macOS), then a key, as in VS Code. The tooltips recall them.
 
@@ -128,6 +128,7 @@ Each button has its shortcut: **Ctrl+K** (**Cmd+K** on macOS), then a key, as in
 | Pivoteur | Ctrl+K then P |
 | Data explorer | Ctrl+K then X |
 | Console | Ctrl+K then C |
+| Reset the display | Ctrl+K then 0 |
 | Share the panels again | Ctrl+K then = |
 
 The side panels go from the editor tabs down to the console, and the activity bar down to the bottom of the tab. The object navigator and the console are open by default, the data explorer closed; your choice is remembered for each editor, even once closed and reopened, and a new editor starts from these defaults.

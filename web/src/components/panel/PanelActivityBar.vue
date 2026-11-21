@@ -8,9 +8,11 @@
   bar's edge. The tooltip, on the right of the button, names the panel,
   then its shortcut, smaller: the state of the button says what the click
   does.
-  At the bottom of the bar, a button shares the room again: the open panels
-  of the view take equal heights, the side panels and the console their
-  default size.
+  At the bottom of the bar, a button resets the display of the editor (its
+  panels, its navigator, the grids and the sections of the Pivoteur of its
+  result tabs: `editorDisplays.reset`), and the last one shares the room
+  again: the open panels of the view take equal heights, the side panels
+  and the console their default size.
   Each button has its shortcut, Ctrl-K then a key (`panelChord.ts`), given
   in its tooltip; the bar of the active editor alone follows them.
 
@@ -23,6 +25,7 @@ import {
   Code,
   LayoutDashboard,
   ListTree,
+  RotateCcw,
   SquareTerminal,
   Table,
   TableProperties,
@@ -32,6 +35,7 @@ import { type Component, computed, watchEffect } from 'vue'
 import type { Panels } from '@/api/generated/Panels'
 
 import { useEditorDisplaysStore } from '@/stores/editorDisplays'
+import { useEditorsStore } from '@/stores/editors'
 import { type Tooltip, vTooltip } from '@/components/ui/tooltip'
 
 import { chordLabel, followChords } from './panelChord'
@@ -48,6 +52,7 @@ const props = defineProps<{
 }>()
 
 const displays = useEditorDisplaysStore()
+const editors = useEditorsStore()
 
 /**
  * Button of a panel.
@@ -160,6 +165,19 @@ function distribute(): void {
 const DISTRIBUTE_KEY = '='
 
 /**
+ * Brings the display of the editor back to the defaults.
+ */
+function reset(): void {
+  const editor = editors.editors.find((candidate) => candidate.id === props.editorId)
+  displays.reset(props.editorId, editor?.connectionId ?? null)
+}
+
+/**
+ * Second key of the shortcut that resets the display.
+ */
+const RESET_KEY = '0'
+
+/**
  * Runs the action of the second key of a shortcut.
  *
  * @param key Second key, lowercased.
@@ -168,6 +186,10 @@ const DISTRIBUTE_KEY = '='
 function runChord(key: string): boolean {
   if (key === DISTRIBUTE_KEY) {
     distribute()
+    return true
+  }
+  if (key === RESET_KEY) {
+    reset()
     return true
   }
   const button = groups.value.flat().find((candidate) => candidate.key === key)
@@ -213,20 +235,36 @@ const BUTTON =
         </div>
       </template>
     </div>
-    <button
-      type="button"
-      :class="BUTTON"
-      aria-label="Répartir les volets"
-      v-tooltip:right="{
-        title: 'Répartir les volets',
-        description:
-          'Hauteurs égales pour les volets ouverts, taille par défaut pour les côtés et la console',
-        shortcut: chordLabel(DISTRIBUTE_KEY),
-      }"
-      @click="distribute"
-    >
-      <LayoutDashboard class="size-5" aria-hidden="true" />
-    </button>
+    <div class="flex flex-col gap-1">
+      <button
+        type="button"
+        :class="BUTTON"
+        aria-label="Réinitialiser l’affichage"
+        v-tooltip:right="{
+          title: 'Réinitialiser l’affichage',
+          description:
+            'Volets, navigateur, grilles et Pivoteur de cet éditeur reviennent à leur état par défaut',
+          shortcut: chordLabel(RESET_KEY),
+        }"
+        @click="reset"
+      >
+        <RotateCcw class="size-5" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        :class="BUTTON"
+        aria-label="Répartir les volets"
+        v-tooltip:right="{
+          title: 'Répartir les volets',
+          description:
+            'Hauteurs égales pour les volets ouverts, taille par défaut pour les côtés et la console',
+          shortcut: chordLabel(DISTRIBUTE_KEY),
+        }"
+        @click="distribute"
+      >
+        <LayoutDashboard class="size-5" aria-hidden="true" />
+      </button>
+    </div>
   </nav>
 </template>
 

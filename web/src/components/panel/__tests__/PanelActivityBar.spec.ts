@@ -93,4 +93,17 @@ describe('PanelActivityBar', () => {
     }
     wrapper.unmount()
   })
+
+  it('resets the display of its editor, with its shortcut', async () => {
+    const wrapper = mountBar()
+    const button = wrapper.find('button[aria-label="Réinitialiser l’affichage"]')
+    expect(button.attributes('data-tooltip-shortcut')).toBe('Ctrl-K puis 0')
+    panels().navigator.open = false
+    panels().results = { open: true, size: 300 }
+
+    await button.trigger('click')
+    expect(panels().navigator).toEqual({ open: true, size: null })
+    expect(panels().results).toEqual({ open: false, size: null })
+    wrapper.unmount()
+  })
 })
