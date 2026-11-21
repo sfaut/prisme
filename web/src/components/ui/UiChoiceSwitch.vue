@@ -2,7 +2,7 @@
   Switch between two or three choices, on Reka UI's `RadioGroup` (arrow keys,
   roving focus, radio semantics): a pill-shaped track whose thumb slides
   under the checked choice. Each choice shows its Lucide icon alone; its
-  label is its accessible name and its tooltip.
+  label is its accessible name.
 
   The choices are squares of one size, the thumb's: the thumb is a circle,
   one step inside the track all around, and moves by whole widths, placed
@@ -12,8 +12,6 @@
 <script setup lang="ts" generic="T extends string">
 import { RadioGroupItem, RadioGroupRoot } from 'reka-ui'
 import { type Component, computed } from 'vue'
-
-import { vTooltip } from './tooltip'
 
 const props = defineProps<{
   /**
@@ -56,7 +54,6 @@ const index = computed(() => props.items.findIndex((item) => item.value === mode
       :value="item.value"
       :aria-label="item.label"
       class="relative grid size-6 cursor-pointer place-items-center rounded-full text-fg-secondary hover:text-fg-strong data-[state=checked]:text-primary"
-      v-tooltip="item.label"
     >
       <component :is="item.icon" class="size-4" aria-hidden="true" />
     </radio-group-item>
