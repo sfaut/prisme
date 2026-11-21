@@ -873,6 +873,7 @@ defineExpose({
         <sql-editor
           ref="editor"
           v-model="sql"
+          v-model:position="display.sql"
           :flavor="state.server?.flavor ?? 'mysql'"
           :version="state.server?.version ?? null"
           :ansi-quotes="state.server?.ansi_quotes ?? false"

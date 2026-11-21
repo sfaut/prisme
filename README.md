@@ -225,6 +225,8 @@ A transaction lives on the session of its editor: its queries run on the session
 - When the cursor leaves a line, the spaces at its end are removed, except inside a string or a quoted identifier that goes on to the next line.
 - **Ctrl+Up** / **Ctrl+Down** scroll the editor by one line, without moving the cursor.
 - To leave the editor with the keyboard: **Esc** then **Tab**, or **Ctrl+M** (Tab then moves the focus again).
+- **Ctrl+Shift+[** folds the block at the cursor, **Ctrl+Shift+]** unfolds it.
+- The editor opens where you left it, after a page reload or a reopening: cursor and selection, scroll, folded passages.
 - **Enjoliver** (Beautify) rewrites the query in a consistent style: keywords and function names in capitals, table and column names as written in the catalog, `AS` before aliases, one clause per line, indented by the **Indentation** of the preferences, spaces around operators. Stored procedures and `DELIMITER` blocks are supported. Ctrl+Z undoes it. The button is active once the connection's catalog is loaded.
 
 The editor, the results and the Pivoteur each stand under a header, its title on the left, and open and close from the activity bar. At first, the editor takes the whole height, and the results and the Pivoteur are closed. When all three are closed, the room left is grey; a panel opened again takes back the height it had when it was closed, or else shares the height with the panels already open. Running queries opens the results, which show their tabs. Drag the line between two panels to share the height between them, or use the arrow keys once the line has the focus; dragged below its smallest height, the panel under the line closes. Your layout is remembered for each editor.

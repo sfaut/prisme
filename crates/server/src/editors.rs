@@ -927,7 +927,7 @@ async fn delete_result(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::editor_display::{NavigatorTree, Panel, Panels};
+    use crate::editor_display::{NavigatorTree, Panel, Panels, SqlPosition};
     use crate::store;
     use crate::tab_pivot::{DatePrecision, PivotConfig, PivotForm, PivotLevel, PivotValueSort};
 
@@ -1015,6 +1015,12 @@ mod tests {
                 tables_by_rows: vec!["folder:tables:1/shop".to_string()],
             },
             active_result: Some(12),
+            sql: SqlPosition {
+                anchor: 3,
+                head: 9,
+                top: 40,
+                folds: vec![(12, 30)],
+            },
         };
         assert!(update_display(&db, user_id, editor.id, &display).unwrap());
         let other = store::ensure_user(&db, "other@example.com").unwrap();

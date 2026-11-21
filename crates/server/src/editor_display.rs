@@ -1,6 +1,7 @@
 //! Display of an editor, saved with it: its panels (open or closed, their
 //! size), the tree of its object navigator (open nodes, scroll, "Tables"
-//! folders sorted by row count) and its result tab shown. It survives a page reload, and the closing
+//! folders sorted by row count), its result tab shown and its position in
+//! the SQL text (cursor, scroll, folded passages). It survives a page reload, and the closing
 //! of the editor followed by its reopening ("Rouvrir").
 //!
 //! The page makes the display and sends it whole on each change
@@ -24,6 +25,26 @@ pub struct EditorDisplay {
     /// first one. Absent from a display saved before it existed.
     #[serde(default)]
     pub active_result: Option<i64>,
+    /// Position in the SQL text. Absent from a display saved before it
+    /// existed: the start of the text.
+    #[serde(default)]
+    pub sql: SqlPosition,
+}
+
+/// Position in the SQL text of an editor, in UTF-16 code units from the
+/// start of the text, as the editor counts them. A position beyond the text,
+/// changed elsewhere since, is brought back to its end.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct SqlPosition {
+    /// Start of the selection; the cursor when it is empty.
+    pub anchor: u32,
+    /// End of the selection, where the cursor stands.
+    pub head: u32,
+    /// Start of the first line shown at the top of the editor.
+    pub top: u32,
+    /// Folded passages, each from its start to its end.
+    pub folds: Vec<(u32, u32)>,
 }
 
 /// Panels of an editor's tab, each open or closed, with its size.
@@ -74,7 +95,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reads_a_display_saved_before_the_result_tab_shown() {
+    fn reads_a_display_saved_before_the_result_tab_and_the_position() {
         let panel = r#"{"open":true,"size":null}"#;
         let display: EditorDisplay = serde_json::from_str(&format!(
             r#"{{"panels":{{"navigator":{panel},"explorer":{panel},"editor":{panel},
@@ -83,5 +104,6 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(display.active_result, None);
+        assert_eq!(display.sql, SqlPosition::default());
     }
 }
