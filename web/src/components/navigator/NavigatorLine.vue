@@ -45,7 +45,7 @@ import type { EntryKind, NavigatorNode } from './navigatorNodes'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiDropdownMenu from '@/components/ui/UiDropdownMenu.vue'
 import type { MenuItem } from '@/components/ui/menuItem'
-import { vTooltip } from '@/components/ui/tooltip'
+import { type Tooltip, vTooltip } from '@/components/ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -83,14 +83,23 @@ const emit = defineEmits<{
  *
  * @param session Stage of the session on the line's source, `null` without one.
  */
-function disconnectTip(session: SessionStatus | null): string {
+function disconnectTip(session: SessionStatus | null): Tooltip {
   if (session === 'ready') {
-    return 'Ferme la session de l’éditeur actif sur ce serveur'
+    return {
+      title: 'Déconnecter',
+      description: 'Ferme la session de l’éditeur actif sur ce serveur',
+    }
   }
   if (session === 'running') {
-    return 'Déconnexion impossible pour le moment : arrêtez d’abord les requêtes en cours sur cette connexion'
+    return {
+      title: 'Déconnecter',
+      description: 'Arrêtez d’abord les requêtes en cours sur cette connexion',
+    }
   }
-  return 'Aucune session ouverte sur cette source par l’éditeur actif'
+  return {
+    title: 'Déconnecter',
+    description: 'Aucune session ouverte sur cette source par l’éditeur actif',
+  }
 }
 
 /**
@@ -114,17 +123,24 @@ const action = computed(() => {
     return {
       icon: DatabaseZap,
       label: 'Utiliser cette base',
-      tooltip: 'Utiliser cette base (USE)',
+      tooltip: { title: 'Utiliser cette base', description: 'Base courante de la session (USE)' },
     }
   }
   if (props.node.table !== undefined) {
-    return { icon: Rows3, label: 'Afficher le contenu', tooltip: 'Afficher le contenu (SELECT)' }
+    return {
+      icon: Rows3,
+      label: 'Afficher le contenu',
+      tooltip: { title: 'Afficher le contenu', description: 'Par une requête SELECT' },
+    }
   }
   if (props.node.index !== undefined) {
     return {
       icon: PencilRuler,
       label: 'Opérations sur l’index',
-      tooltip: 'Écrire les opérations sur l’index (ALTER TABLE), en commentaire',
+      tooltip: {
+        title: 'Écrire les opérations sur l’index',
+        description: 'ALTER TABLE, en commentaire',
+      },
     }
   }
   return null

@@ -39,16 +39,16 @@ export const WRITE_KIND_STATEMENTS: Record<WriteKind, string> = {
 export const WRITE_KIND_NOTES: Partial<Record<WriteKind, string>> = {
   insert:
     'Tables temporaires comprises. Avec DELETE : REPLACE. Avec UPDATE : INSERT … ON DUPLICATE KEY UPDATE.',
-  update: 'Sur une table ou plusieurs (jointure), tables temporaires comprises.',
+  update: 'Sur une table ou plusieurs (jointure), tables temporaires comprises',
   delete:
     'Sur une table ou plusieurs (jointure), tables temporaires comprises. Avec INSERT : REPLACE.',
-  truncate_table: 'Tables temporaires comprises.',
-  alter_table: 'Aussi CREATE INDEX et DROP INDEX.',
+  truncate_table: 'Tables temporaires comprises',
+  alter_table: 'Aussi CREATE INDEX et DROP INDEX',
   create_temporary_table:
-    'Prisme suit les tables temporaires créées par la session : les changements qui ne portent que sur elles relèvent de ce groupe, leurs données du groupe Données.',
-  alter_temporary_table: 'Aussi CREATE INDEX et DROP INDEX.',
-  drop_temporary_table: 'Aussi DROP TABLE, quand toutes les tables nommées sont temporaires.',
-  create_view: 'Aussi ALTER VIEW.',
+    'Prisme suit les tables temporaires créées par la session : les changements qui ne portent que sur elles relèvent de ce groupe, leurs données du groupe Données',
+  alter_temporary_table: 'Aussi CREATE INDEX et DROP INDEX',
+  drop_temporary_table: 'Aussi DROP TABLE, quand toutes les tables nommées sont temporaires',
+  create_view: 'Aussi ALTER VIEW',
 }
 
 /**
@@ -131,11 +131,8 @@ export const WRITE_KIND_GROUPS: WriteKindGroup[] = [
  * Tooltip of a kind in the settings: its statement, then what else it allows.
  *
  * @param kind Kind of write.
- * @returns The statement, followed by its note if it has one.
+ * @returns The statement as title, its note if it has one as description.
  */
-export function writeKindTooltip(kind: WriteKind): string {
-  const note = WRITE_KIND_NOTES[kind]
-  return note === undefined
-    ? WRITE_KIND_STATEMENTS[kind]
-    : `${WRITE_KIND_STATEMENTS[kind]}. ${note}`
+export function writeKindTooltip(kind: WriteKind): { title: string; description?: string } {
+  return { title: WRITE_KIND_STATEMENTS[kind], description: WRITE_KIND_NOTES[kind] }
 }

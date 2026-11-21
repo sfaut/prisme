@@ -29,7 +29,7 @@ import { useClock } from '@/utils/clock'
 import UiProgressDot from '@/components/ui/UiProgressDot.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiStatusBar from '@/components/ui/UiStatusBar.vue'
-import { vTooltip } from '@/components/ui/tooltip'
+import { type Tooltip, vTooltip } from '@/components/ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -54,9 +54,9 @@ interface Badge {
    */
   tone: string
   /**
-   * Explanation, in its tooltip.
+   * Its tooltip: what the badge means.
    */
-  title: string
+  tooltip: Tooltip
 }
 
 /**
@@ -66,23 +66,27 @@ const STATES = {
   running: {
     label: 'en cours',
     tone: 'bg-primary/14 text-primary',
-    title: 'Écriture du fichier en cours',
+    tooltip: { title: 'Écriture du fichier en cours' },
   },
-  ready: { label: 'prêt', tone: 'bg-success/14 text-success', title: 'Fichier complet' },
+  ready: {
+    label: 'prêt',
+    tone: 'bg-success/14 text-success',
+    tooltip: { title: 'Fichier complet' },
+  },
   failed: {
     label: 'échoué',
     tone: 'bg-error/14 text-error',
-    title: 'Fichier partiel : l’export a échoué',
+    tooltip: { title: 'Fichier partiel', description: 'L’export a échoué' },
   },
   cancelled: {
     label: 'arrêté',
     tone: 'bg-fg-secondary/14 text-fg-secondary',
-    title: 'Fichier partiel : arrêté',
+    tooltip: { title: 'Fichier partiel', description: 'L’export a été arrêté' },
   },
   interrupted: {
     label: 'interrompu',
     tone: 'bg-warning/14 text-warning',
-    title: 'Fichier partiel : Prisme s’est arrêté pendant l’export',
+    tooltip: { title: 'Fichier partiel', description: 'Prisme s’est arrêté pendant l’export' },
   },
 } as const satisfies Record<ExportState, Badge>
 
@@ -92,7 +96,7 @@ const STATES = {
 const MISSING: Badge = {
   label: 'fichier manquant',
   tone: 'bg-error/14 text-error',
-  title: 'Fichier supprimé ou déplacé hors de Prisme',
+  tooltip: { title: 'Fichier manquant', description: 'Supprimé ou déplacé hors de Prisme' },
 }
 
 /**
@@ -154,7 +158,7 @@ const rows = computed(() => {
         :key="badge.label"
         class="inline-flex shrink-0 items-center gap-1 rounded-full px-2 text-sm font-medium whitespace-nowrap"
         :class="badge.tone"
-        v-tooltip="badge.title"
+        v-tooltip="badge.tooltip"
       >
         <ui-progress-dot v-if="badge === STATES.running" progress="loading" />
         <span class="text-trim">{{ badge.label }}</span>
@@ -165,7 +169,7 @@ const rows = computed(() => {
         variant="ghost"
         small
         aria-label="Arrêter l’export"
-        v-tooltip="'Arrêter l’export (le fichier partiel reste)'"
+        v-tooltip="{ title: 'Arrêter l’export', description: 'Le fichier partiel reste' }"
         @click="store.cancel(entry.id)"
       />
       <ui-button
@@ -186,8 +190,8 @@ const rows = computed(() => {
         aria-label="Retirer"
         v-tooltip="
           entry.state === 'running'
-            ? 'Retirer : arrête l’export et supprime le fichier'
-            : 'Retirer : supprime le fichier'
+            ? { title: 'Retirer l’export', description: 'Arrête l’export et supprime le fichier' }
+            : { title: 'Retirer l’export', description: 'Supprime le fichier' }
         "
         @click="store.remove(entry.id)"
       />

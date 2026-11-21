@@ -114,7 +114,7 @@ import { rememberWidths, rememberedWidths } from './gridWidths'
 import { type ContentKind, detectContent, isWebAddress } from './contentKind'
 import { columnIcon } from './typeIcons'
 import { notify } from '@/components/ui/toasts'
-import { vTooltip } from '@/components/ui/tooltip'
+import { type Tooltip, vTooltip } from '@/components/ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -351,12 +351,17 @@ const CONTENT_LABELS: Record<ContentKind, string> = {
  *
  * @param column Index of the column.
  */
-function headerTitle(column: number): string {
+function headerTitle(column: number): Tooltip {
   const type = props.columnTypes[column]
   const content = contentKinds.value[column]
   const details = [type?.name, content ? CONTENT_LABELS[content] : undefined].filter(Boolean)
-  const name = props.columns[column] ?? ''
-  return `${details.length > 0 ? `${name} ${details.join(', ')}` : name} (glisser pour déplacer)`
+  return {
+    title: props.columns[column] ?? '',
+    description:
+      details.length > 0
+        ? `${details.join(', ')} · glisser pour déplacer`
+        : 'Glisser pour déplacer',
+  }
 }
 
 /**
@@ -843,7 +848,7 @@ defineExpose({ keptCount, selectedSize, selectedFull, exportFrame, order })
     <div class="grid-row grid-header" :style="{ gridTemplateColumns: template }">
       <div
         class="grid-corner"
-        v-tooltip="'Tout sélectionner, Alt+clic pour inverser la sélection'"
+        v-tooltip="{ title: 'Tout sélectionner', description: 'Alt-clic : inverser la sélection' }"
         @mousedown.prevent="onCornerDown"
       />
       <div
@@ -886,9 +891,11 @@ defineExpose({ keptCount, selectedSize, selectedFull, exportFrame, order })
         </button>
         <div
           class="grid-resizer"
-          v-tooltip="
-            'Glisser pour changer la largeur, double clic pour l’ajuster au contenu ou revenir à la largeur estimée'
-          "
+          v-tooltip="{
+            title: 'Changer la largeur',
+            description:
+              'Glisser ; double clic : ajuster au contenu ou revenir à la largeur estimée',
+          }"
           @pointerdown.stop.prevent="onResizeStart($event, column)"
           @pointermove="onResizeMove"
           @pointerup="onResizeEnd"

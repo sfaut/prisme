@@ -22,7 +22,7 @@ import { type Component, computed } from 'vue'
 
 import { cssPixels } from '@/utils/cssLength'
 
-import { vTooltip } from './tooltip'
+import { type Tooltip, vTooltip } from './tooltip'
 
 defineOptions({ inheritAttrs: false })
 
@@ -38,7 +38,13 @@ const props = defineProps<{
   /**
    * Offered choices.
    */
-  items: { label: string; value: T; icon?: Component; disabled?: boolean; hint?: string }[]
+  items: {
+    label: string
+    value: T
+    icon?: Component
+    disabled?: boolean
+    hint?: string | Tooltip
+  }[]
   /**
    * Name of the field, read by screen readers (`aria-label`).
    */

@@ -61,16 +61,19 @@ const emit = defineEmits<{
 const refreshing = computed(() => props.refresh === 'running' || props.refresh === 'queued')
 
 /**
- * Hover text of the refresh button.
+ * Tooltip of the refresh button: what a click does, by the state of the refresh.
  */
-const refreshTitle = computed(() => {
+const refreshTooltip = computed(() => {
   switch (props.refresh) {
     case 'running':
-      return 'Arrêter le rafraîchissement : le résultat actuel est gardé'
+      return { title: 'Arrêter le rafraîchissement', description: 'Le résultat actuel est gardé' }
     case 'queued':
-      return 'Annuler le rafraîchissement, en attente de la fin des requêtes en cours'
+      return {
+        title: 'Annuler le rafraîchissement',
+        description: 'En attente de la fin des requêtes en cours',
+      }
     default:
-      return 'Rafraîchir : relance la requête'
+      return { title: 'Rafraîchir', description: 'Relance la requête' }
   }
 })
 
@@ -92,7 +95,7 @@ const filterLabel = computed(
     small
     :disabled="refresh === 'unavailable'"
     :aria-label="refreshing ? 'Arrêter le rafraîchissement' : 'Rafraîchir'"
-    v-tooltip="refreshTitle"
+    v-tooltip="refreshTooltip"
     @click="refreshing ? emit('stop-refresh') : emit('refresh')"
   />
   <ui-button
@@ -104,7 +107,10 @@ const filterLabel = computed(
     :class="{ 'bg-surface-raised': tab.filterOpen }"
     :aria-pressed="tab.filterOpen"
     :aria-label="filterLabel"
-    v-tooltip="filterLabel"
+    v-tooltip="{
+      title: tab.filterOpen ? 'Masquer le filtre' : 'Filtrer',
+      description: tab.filter.text === '' ? '' : 'Filtre actif',
+    }"
     @click="emit('toggle-filter')"
   />
   <ui-dropdown-menu v-if="showsGrid(tab) && exportGroups" :groups="exportGroups">

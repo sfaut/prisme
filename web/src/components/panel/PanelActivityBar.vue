@@ -33,7 +33,7 @@ import { type Component, computed, watchEffect } from 'vue'
 import { useEditorLayoutsStore } from '@/stores/editorLayouts'
 import { useExplorerStore } from '@/stores/explorer'
 import { useNavigatorStore } from '@/stores/navigator'
-import { vTooltip } from '@/components/ui/tooltip'
+import { type Tooltip, vTooltip } from '@/components/ui/tooltip'
 
 import { chordLabel, followChords } from './panelChord'
 
@@ -142,8 +142,8 @@ const groups = computed<PanelButton[][]>(() => {
  *
  * @param button Button of a panel.
  */
-function tooltip(button: PanelButton): { text: string; shortcut: string } {
-  return { text: button.label, shortcut: chordLabel(button.key) }
+function tooltip(button: PanelButton): Tooltip {
+  return { title: button.label, shortcut: chordLabel(button.key) }
 }
 
 /**
@@ -223,7 +223,12 @@ const BUTTON =
       type="button"
       :class="BUTTON"
       aria-label="Répartir les volets"
-      v-tooltip:right="{ text: 'Répartir les volets', shortcut: chordLabel(DISTRIBUTE_KEY) }"
+      v-tooltip:right="{
+        title: 'Répartir les volets',
+        description:
+          'Hauteurs égales pour les volets ouverts, taille par défaut pour les côtés et la console',
+        shortcut: chordLabel(DISTRIBUTE_KEY),
+      }"
       @click="distribute"
     >
       <LayoutDashboard class="size-5" aria-hidden="true" />

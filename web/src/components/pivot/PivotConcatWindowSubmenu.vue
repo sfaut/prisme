@@ -138,7 +138,7 @@ const { confirm, onKeydown } = useSubmenuDrafts(() => {
           :placeholder="name === 'limit' ? 'Toutes' : '0'"
           v-tooltip="
             name === 'offset' && limit === undefined
-              ? 'OFFSET suit un LIMIT, comme dans MariaDB'
+              ? { title: 'OFFSET demande un LIMIT', description: 'Comme dans MariaDB' }
               : undefined
           "
           @blur="confirm"

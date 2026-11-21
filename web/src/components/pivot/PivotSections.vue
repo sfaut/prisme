@@ -896,7 +896,10 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
     </split-panel>
     <split-handle
       :controls="`${sectionsId}-fields`"
-      tooltip="Glisser pour redimensionner les colonnes du résultat, double clic pour leur rendre leur largeur par défaut"
+      :tooltip="{
+        title: 'Redimensionner les colonnes du résultat',
+        description: 'Glisser ; double clic : largeur par défaut',
+      }"
       @activate="resetWidth('fields')"
     />
     <split-panel
@@ -982,8 +985,11 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
                     :aria-label="`${element.hidden ? 'Afficher' : 'Masquer'} : ${element.label}`"
                     v-tooltip="
                       element.hidden
-                        ? 'Afficher : l’élément revient dans le calcul'
-                        : 'Masquer : l’élément sort du calcul et garde ses réglages'
+                        ? { title: 'Afficher l’élément', description: 'Il revient dans le calcul' }
+                        : {
+                            title: 'Masquer l’élément',
+                            description: 'Il sort du calcul et garde ses réglages',
+                          }
                     "
                     @click="toggleHidden({ zone, index })"
                   />
@@ -1013,7 +1019,10 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
     </split-panel>
     <split-handle
       :controls="`${sectionsId}-zones`"
-      tooltip="Glisser pour redimensionner les zones, double clic pour leur rendre leur largeur par défaut"
+      :tooltip="{
+        title: 'Redimensionner les zones',
+        description: 'Glisser ; double clic : largeur par défaut',
+      }"
       @activate="resetWidth('zones')"
     />
     <!-- The table, given by the panel. -->

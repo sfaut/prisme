@@ -43,7 +43,7 @@ function mountGrid(
 }
 
 describe('ResultGrid', () => {
-  it('shows the type of each column with an icon, its name on hover', () => {
+  it('shows the type of each column with an icon, its name and type on hover', () => {
     const wrapper = mountGrid(['id', 'name'], [['1', 'a']], 'SELECT id, name FROM t', [
       { family: 'integer', name: 'INT UNSIGNED' },
       { family: 'text', name: 'VARCHAR(20)' },
@@ -52,10 +52,9 @@ describe('ResultGrid', () => {
     expect(wrapper.find('.grid-type-glyph').text()).toBe('123')
     expect(wrapper.findAll('.grid-type-icon')).toHaveLength(1)
     expect(wrapper.find('.grid-column-type').exists()).toBe(false)
-    const titles = wrapper
-      .findAll('.grid-column-name')
-      .map((name) => name.attributes('data-tooltip'))
-    expect(titles[1]).toContain('VARCHAR(20)')
+    const names = wrapper.findAll('.grid-column-name')
+    expect(names[1]?.attributes('data-tooltip')).toBe('name')
+    expect(names[1]?.attributes('data-tooltip-description')).toContain('VARCHAR(20)')
   })
 
   it('selects everything with a click on the top left corner', async () => {

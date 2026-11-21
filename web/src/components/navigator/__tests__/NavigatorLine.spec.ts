@@ -71,7 +71,9 @@ describe('NavigatorLine', () => {
       mountLine(source, session).find('[aria-label="Déconnecter"]')
     expect(button(null).attributes('disabled')).toBeDefined()
     expect(button('connecting').attributes('disabled')).toBeDefined()
-    expect(button('running').attributes('data-tooltip')).toContain('arrêtez d’abord les requêtes')
+    expect(button('running').attributes('data-tooltip-description')).toContain(
+      'Arrêtez d’abord les requêtes',
+    )
     expect(button('running').attributes('disabled')).toBeDefined()
 
     const wrapper = mountLine(source, 'ready')

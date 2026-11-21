@@ -1,13 +1,17 @@
 <!--
   Bubble of the tooltips, a single one for the whole page (mounted by
-  `App.vue`): it shows the text that the `v-tooltip` directive gave to the
-  element under the pointer, after a short hover, or to the element that
+  `App.vue`): it shows the tooltip that the `v-tooltip` directive gave to
+  the element under the pointer, after a short hover, or to the element that
   takes the keyboard focus. A short text in a small font on a dark
   background, above its element, so that the pointer does not hide it;
   under it when there is no room above. On the right of its element for a
   tooltip given on that side (`v-tooltip:right`, `data-tooltip-side`), on
-  its left when there is no room on the right. A keyboard shortcut follows
-  the text, smaller, in the subtle color (`data-tooltip-shortcut`).
+  its left when there is no room on the right.
+
+  Each part of the tooltip has its own element and its own class, styled
+  here only: the title (`.tooltip-title`), then on its line the keyboard
+  shortcut (`.tooltip-shortcut`, smaller, subtle); under them, the
+  description (`.tooltip-description`, subtle).
 
   Built on the browser's own tools: the `popover` attribute (`hint`: shows in
   the top layer, over the windows, and closes with Escape) and the anchor
@@ -19,6 +23,7 @@ import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
 
 import {
   TOOLTIP_ATTRIBUTE,
+  TOOLTIP_DESCRIPTION_ATTRIBUTE,
   TOOLTIP_SHORTCUT_ATTRIBUTE,
   shownTooltip,
   tooltipSideOf,
@@ -71,7 +76,8 @@ function schedule(element: HTMLElement | null, delay: number): void {
   }
   timer = setTimeout(
     () => {
-      shownTooltip.text = element.getAttribute(TOOLTIP_ATTRIBUTE) ?? ''
+      shownTooltip.title = element.getAttribute(TOOLTIP_ATTRIBUTE) ?? ''
+      shownTooltip.description = element.getAttribute(TOOLTIP_DESCRIPTION_ATTRIBUTE) ?? ''
       shownTooltip.shortcut = element.getAttribute(TOOLTIP_SHORTCUT_ATTRIBUTE) ?? ''
       shownTooltip.side = tooltipSideOf(element)
       shownTooltip.element = element
@@ -205,15 +211,16 @@ onBeforeUnmount(() => {
     popover="hint"
     role="tooltip"
     class="ui-tooltip"
-    :class="{ shortcut: shownTooltip.shortcut !== '' }"
     :data-side="shownTooltip.side"
     @toggle="onToggle"
   >
-    <template v-if="shownTooltip.shortcut === ''">{{ shownTooltip.text }}</template>
-    <template v-else>
-      <span>{{ shownTooltip.text }}</span>
-      <kbd class="font-sans text-xs">{{ shownTooltip.shortcut }}</kbd>
-    </template>
+    <span class="tooltip-head">
+      <span class="tooltip-title">{{ shownTooltip.title }}</span>
+      <kbd v-if="shownTooltip.shortcut" class="tooltip-shortcut">{{ shownTooltip.shortcut }}</kbd>
+    </span>
+    <span v-if="shownTooltip.description" class="tooltip-description">
+      {{ shownTooltip.description }}
+    </span>
   </div>
 </template>
 
@@ -245,30 +252,44 @@ onBeforeUnmount(() => {
   color: var(--tooltip-fg);
   font-size: var(--text-sm);
   line-height: 1.4;
-  white-space: pre-line;
   overflow-wrap: anywhere;
-  /* A long value (a cell) shows its first lines only. */
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 12;
-  line-clamp: 12;
   /* The pointer passes through: the bubble never hides what it explains. */
   pointer-events: none;
 
   &:popover-open {
-    display: -webkit-box;
+    display: flex;
+    flex-direction: column;
   }
 
-  /* With a shortcut: the text then the shortcut, on one line, the shortcut
-     subtle. */
-  &.shortcut:popover-open {
+  /* The title, then its shortcut on the same line, at its end. */
+  .tooltip-head {
     display: flex;
     gap: --spacing(2);
     align-items: baseline;
-    white-space: nowrap;
+    justify-content: space-between;
+  }
 
-    & kbd {
-      color: var(--tooltip-fg-subtle);
-    }
+  /* A long value (a cell) shows its first lines only, with its line breaks. */
+  .tooltip-title {
+    display: -webkit-box;
+    min-width: 0;
+    white-space: pre-line;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 12;
+    line-clamp: 12;
+    overflow: hidden;
+  }
+
+  .tooltip-shortcut {
+    flex-shrink: 0;
+    color: var(--tooltip-fg-subtle);
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    white-space: nowrap;
+  }
+
+  .tooltip-description {
+    color: var(--tooltip-fg-subtle);
   }
 
   /* On the right of its element, centered on it; on its left when there is

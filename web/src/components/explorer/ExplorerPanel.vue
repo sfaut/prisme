@@ -480,7 +480,10 @@ watch(
           variant="ghost"
           small
           aria-label="Replier le niveau du curseur"
-          v-tooltip="'Replier le niveau du curseur : tous les nœuds de même profondeur'"
+          v-tooltip="{
+            title: 'Replier le niveau du curseur',
+            description: 'Tous les nœuds de même profondeur',
+          }"
           :disabled="text === null || !levelFoldable"
           @click="applyFolding(true, 'cursor')"
         />
@@ -489,7 +492,10 @@ watch(
           variant="ghost"
           small
           aria-label="Déplier le niveau du curseur"
-          v-tooltip="'Déplier le niveau du curseur : tous les nœuds de même profondeur'"
+          v-tooltip="{
+            title: 'Déplier le niveau du curseur',
+            description: 'Tous les nœuds de même profondeur',
+          }"
           :disabled="text === null || !levelFoldable"
           @click="applyFolding(false, 'cursor')"
         />
@@ -500,7 +506,10 @@ watch(
           small
           :aria-pressed="searchOpen"
           aria-label="Rechercher"
-          v-tooltip="'Rechercher : JSONPath pour le JSON, XPath pour le XML'"
+          v-tooltip="{
+            title: 'Rechercher',
+            description: 'JSONPath pour le JSON, XPath pour le XML',
+          }"
           :disabled="text === null"
           @click="toggleSearch"
         />
@@ -511,7 +520,7 @@ watch(
           small
           :aria-pressed="explorer.wrap"
           aria-label="Retour à la ligne"
-          v-tooltip="'Retour à la ligne : coupe les lignes longues à la largeur du panneau'"
+          v-tooltip="{ title: 'Couper les lignes longues', description: 'À la largeur du panneau' }"
           :disabled="text === null"
           @click="explorer.wrap = !explorer.wrap"
         />
@@ -520,7 +529,10 @@ watch(
           variant="ghost"
           small
           aria-label="Copier le document"
-          v-tooltip="'Copier le document affiché (JSON ou XML valide, sans les replis)'"
+          v-tooltip="{
+            title: 'Copier le document affiché',
+            description: 'JSON ou XML valide, sans les replis',
+          }"
           :disabled="text === null"
           @click="copy"
         />
@@ -551,7 +563,7 @@ watch(
           variant="ghost"
           small
           aria-label="Résultat précédent"
-          v-tooltip="'Résultat précédent (Maj+Entrée)'"
+          v-tooltip="{ title: 'Aller au résultat précédent', shortcut: 'Maj-Entrée' }"
           :disabled="stops.length === 0"
           @click="goToMatch(-1)"
         />
@@ -560,7 +572,7 @@ watch(
           variant="ghost"
           small
           aria-label="Résultat suivant"
-          v-tooltip="'Résultat suivant (Entrée)'"
+          v-tooltip="{ title: 'Aller au résultat suivant', shortcut: 'Entrée' }"
           :disabled="stops.length === 0"
           @click="goToMatch(1)"
         />
@@ -571,9 +583,11 @@ watch(
           small
           :aria-pressed="filtering"
           aria-label="Filtrer"
-          v-tooltip="
-            'Filtrer : afficher seulement les résultats, au lieu de les surligner dans le document'
-          "
+          v-tooltip="{
+            title: 'Filtrer',
+            description:
+              'Afficher seulement les résultats ; sinon, ils sont surlignés dans le document',
+          }"
           @click="filtering = !filtering"
         />
       </div>

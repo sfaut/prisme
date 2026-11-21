@@ -65,7 +65,10 @@ function formatUsage(usage: FolderUsage): string {
         class="inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg text-fg-secondary hover:text-fg-strong data-[state=open]:text-fg-strong"
         :class="store.runningCount === 0 ? 'w-8' : 'px-2'"
         :aria-label="title"
-        v-tooltip="title"
+        v-tooltip="{
+          title: 'Afficher les exports',
+          description: store.runningCount > 0 ? `${store.runningCount} en cours` : '',
+        }"
       >
         <ui-progress-dot v-if="store.runningCount > 0" progress="loading" />
         <file-down class="size-5 shrink-0" aria-hidden="true" />
@@ -81,9 +84,10 @@ function formatUsage(usage: FolderUsage): string {
           <h2 class="font-semibold text-fg-strong">Exports</h2>
           <span
             class="text-sm text-fg-secondary"
-            v-tooltip="
-              'Fichiers des exports : ils restent dans le dossier des exports jusqu’à leur retrait'
-            "
+            v-tooltip="{
+              title: 'Fichiers des exports',
+              description: 'Ils restent dans le dossier des exports jusqu’à leur retrait',
+            }"
           >
             {{ formatUsage(store.usage) }}
           </span>
@@ -99,9 +103,11 @@ function formatUsage(usage: FolderUsage): string {
           class="flex items-center justify-between gap-3 text-sm text-fg-secondary"
         >
           <span
-            v-tooltip="
-              'Fichiers de Prisme dans le dossier des exports qu’aucun export ne référence : copiés dans le dossier, ou base interne remplacée'
-            "
+            v-tooltip="{
+              title: 'Fichiers non référencés',
+              description:
+                'Fichiers de Prisme du dossier des exports qu’aucun export ne référence : copiés dans le dossier, ou base interne remplacée',
+            }"
           >
             Non référencés : {{ formatUsage(store.orphans) }}
           </span>

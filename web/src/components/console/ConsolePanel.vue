@@ -45,13 +45,20 @@ const TABS: { value: ConsoleTab; label: string }[] = [
  */
 const shown = computed(() => {
   const whose = store.scope === null ? 'de tous les éditeurs' : 'de l’éditeur'
+  const scopeNote = store.scope === null ? 'De tous les éditeurs' : 'De l’éditeur'
   return store.tab === 'history'
     ? {
         list: store.history,
         filter: store.historyFilter,
         clearLabel: `Effacer l’historique ${whose}`,
+        clearTip: { title: 'Effacer l’historique', description: scopeNote },
       }
-    : { list: store.debug, filter: store.debugFilter, clearLabel: `Effacer le debug ${whose}` }
+    : {
+        list: store.debug,
+        filter: store.debugFilter,
+        clearLabel: `Effacer le debug ${whose}`,
+        clearTip: { title: 'Effacer le debug', description: scopeNote },
+      }
 })
 
 /**
@@ -112,9 +119,10 @@ async function clearShown(): Promise<void> {
       <template #actions>
         <label
           class="flex items-center gap-2 text-base text-fg-secondary"
-          v-tooltip="
-            'Montrer les éléments de tous les éditeurs, et ceux de Prisme hors des éditeurs'
-          "
+          v-tooltip="{
+            title: 'Afficher tous les éditeurs',
+            description: 'Avec les éléments de Prisme hors des éditeurs',
+          }"
         >
           <input v-model="store.allEditors" type="checkbox" class="size-5 accent-primary" />
           Tous les éditeurs
@@ -127,7 +135,10 @@ async function clearShown(): Promise<void> {
           :class="{ 'bg-surface-raised': store.filtersShown }"
           :aria-pressed="store.filtersShown"
           :aria-label="filtersLabel"
-          v-tooltip="filtersLabel"
+          v-tooltip="{
+            title: store.filtersShown ? 'Masquer les filtres' : 'Filtrer',
+            description: filtering ? 'Filtres actifs' : '',
+          }"
           @click="store.filtersShown = !store.filtersShown"
         />
         <ui-button
@@ -137,7 +148,7 @@ async function clearShown(): Promise<void> {
           :loading="clearing"
           :disabled="nothingToClear"
           :aria-label="shown.clearLabel"
-          v-tooltip="shown.clearLabel"
+          v-tooltip="shown.clearTip"
           @click="clearShown"
         />
       </template>

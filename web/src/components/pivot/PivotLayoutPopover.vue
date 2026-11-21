@@ -134,7 +134,10 @@ function ticked(event: Event): boolean {
           :class="{ 'text-fg-faint': form === 'compact' }"
           v-tooltip="
             form === 'compact'
-              ? 'Sans effet en mode compact : une seule colonne de libellés, rien à répéter'
+              ? {
+                  title: 'Sans effet en mode compact',
+                  description: 'Une seule colonne de libellés, rien à répéter',
+                }
               : null
           "
         >

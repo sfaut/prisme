@@ -530,7 +530,10 @@ function selectSource(editorId: number, connectionId: number): void {
               <split-handle
                 v-if="navigatorStore.layoutOf(editor.id).open"
                 :controls="`navigator-panel-${editor.id}`"
-                tooltip="Glisser pour redimensionner le navigateur d’objets, en deçà de sa largeur minimale pour le fermer"
+                :tooltip="{
+                  title: 'Redimensionner le navigateur d’objets',
+                  description: 'Glisser ; en deçà de sa largeur minimale, il se ferme',
+                }"
               />
               <!--
                     The padding of the sides is inside the panels of the views
@@ -579,7 +582,10 @@ function selectSource(editorId: number, connectionId: number): void {
               <split-handle
                 v-if="explorer.layoutOf(editor.id).open"
                 :controls="`explorer-panel-${editor.id}`"
-                tooltip="Glisser pour redimensionner l’explorateur de données, en deçà de sa largeur minimale pour le fermer"
+                :tooltip="{
+                  title: 'Redimensionner l’explorateur de données',
+                  description: 'Glisser ; en deçà de sa largeur minimale, il se ferme',
+                }"
               />
               <split-panel
                 :id="`explorer-panel-${editor.id}`"
@@ -605,7 +611,10 @@ function selectSource(editorId: number, connectionId: number): void {
             v-if="!layouts.layoutOf(editor.id).consoleFolded"
             :controls="`console-panel-${editor.id}`"
             :grip="false"
-            tooltip="Glisser pour redimensionner la console, en deçà de sa hauteur minimale pour la fermer"
+            :tooltip="{
+              title: 'Redimensionner la console',
+              description: 'Glisser ; en deçà de sa hauteur minimale, elle se ferme',
+            }"
           />
           <split-panel
             :id="`console-panel-${editor.id}`"
