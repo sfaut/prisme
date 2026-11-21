@@ -18,7 +18,9 @@
   final value at once. A query without a grid (waiting, failed, or without
   columns) shows only its durations. Without a grid, the free room keeps the
   status bar at the bottom, and shows "Calcul en cours…" with a spinner until
-  the query ends.
+  the query ends. A statement without columns that succeeded then shows what
+  it did (`outcomeSummary`: "3 lignes insérées"), from its verb and from what
+  its engine reported, repeated at the start of the status bar.
 
   The user filter belongs to the tab (`filter`, `v-model:filter`): its form
   (`ResultFilter.vue`) shows above the grid while its button, right of the
@@ -60,6 +62,7 @@
 -->
 <script setup lang="ts">
 import {
+  CircleCheck,
   ClipboardCopy,
   Database,
   DatabaseZap,
@@ -84,6 +87,7 @@ import {
   formatDuration,
   formatInstant,
   formatRowCount,
+  outcomeSummary,
   shownResult,
   showsGrid,
   transferDuration,
@@ -168,6 +172,18 @@ const shown = computed(() => shownResult(props.tab))
  * stay a result.
  */
 const shownError = computed(() => (failed(props.tab) ? props.tab.error : null))
+
+/**
+ * What a statement without columns did, once it succeeded; `null` for a
+ * result with a grid, a query running, failed or stopped.
+ */
+const summary = computed(() => {
+  const result = shown.value
+  if (result === null || showsGrid(props.tab) || !props.tab.done || props.tab.error !== null) {
+    return null
+  }
+  return outcomeSummary(result.verb, result.outcome)
+})
 
 /**
  * Was the reception of the rows stopped by the user? The grid then holds
@@ -260,7 +276,11 @@ const rate = computed(() =>
  * Does the status bar have an item to show?
  */
 const hasStatus = computed(
-  () => showsGrid(props.tab) || execution.value !== null || transfer.value !== null,
+  () =>
+    showsGrid(props.tab) ||
+    summary.value !== null ||
+    execution.value !== null ||
+    transfer.value !== null,
 )
 
 const exports = useExportsStore()
@@ -662,7 +682,7 @@ defineExpose({ exportGroups })
     />
     <!--
       Without a grid, this block takes its room and keeps the status bar at the
-      bottom; it says the query runs until it ends.
+      bottom; it says the query runs until it ends, then what it did.
     -->
     <div
       v-else
@@ -672,6 +692,10 @@ defineExpose({ exportGroups })
       <template v-if="!tab.done">
         <LoaderCircle class="size-5 animate-spin" aria-hidden="true" />
         Calcul en cours…
+      </template>
+      <template v-else-if="summary !== null">
+        <CircleCheck class="size-5 text-success" aria-hidden="true" />
+        <span class="text-fg">{{ summary }}</span>
       </template>
     </div>
     <ui-status-bar v-if="hasStatus">
@@ -685,6 +709,7 @@ defineExpose({ exportGroups })
       >
         Résultat tronqué
       </span>
+      <span v-if="summary !== null">{{ summary }}</span>
       <template v-if="showsGrid(tab)">
         <span v-if="tab.awaitedRows !== null" class="tabular-nums">
           Chargement : {{ formatRowCount(tab.awaitedRows, shownCount) }}

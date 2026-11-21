@@ -11,7 +11,7 @@ use futures_util::future::join_all;
 use prisme_connectors::mysql::sql_log::{self, Sent};
 use prisme_connectors::mysql::{self, Cell, Connection, MysqlTarget};
 use prisme_dialects::Dialect;
-use prisme_dialects::classify::{StatementKind, changes_database, classify};
+use prisme_dialects::classify::{StatementKind, changes_database, classify, classify_with};
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit, written_limit};
 use prisme_dialects::temporary::TableName;
 use prisme_splitter::{Statement, pieces_in, statement_at, statements_in};
@@ -209,7 +209,8 @@ impl Session<'_> {
         let max_rows = limits.max_rows;
         let database = self.current_database();
         let temporary = |table: &TableName| self.is_temporary(table, database.as_deref());
-        if let Some(refusal) = write_refusal(sql, dialect, limits.writes.as_ref(), &temporary) {
+        let kind = classify_with(sql, dialect, &temporary);
+        if let Some(refusal) = write_refusal(&kind, limits.writes.as_ref()) {
             self.outbox.error(Some(query), refusal).await?;
             return Ok(None);
         }
@@ -358,13 +359,14 @@ impl Session<'_> {
                 .await?;
         }
 
-        let affected_rows = stream.affected_rows();
+        let outcome = stream.outcome();
         stream.discard().await;
-        trace(row_count, truncated, affected_rows, None);
+        trace(row_count, truncated, outcome.affected.unwrap_or(0), None);
         Ok(Some(Summary {
             row_count,
             truncated,
-            affected_rows,
+            verb: kind.verb(),
+            outcome,
             elapsed_ms: started.elapsed().as_millis(),
         }))
     }
@@ -401,7 +403,8 @@ impl Session<'_> {
                 query,
                 row_count: summary.row_count,
                 truncated: summary.truncated,
-                affected_rows: summary.affected_rows,
+                verb: summary.verb,
+                outcome: summary.outcome,
                 elapsed_ms: summary.elapsed_ms,
                 database,
             })

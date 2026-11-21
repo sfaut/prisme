@@ -18,6 +18,7 @@ import {
   formatRowCount,
   initialState,
   nextReading,
+  outcomeSummary,
   removeTab,
   savedTab,
   sessionUrl,
@@ -122,7 +123,8 @@ describe('applyMessage', () => {
       query: 1,
       row_count: 2,
       truncated: false,
-      affected_rows: 0,
+      verb: 'other',
+      outcome: { affected: 0 },
       elapsed_ms: 5,
       database: 'xlist',
     })
@@ -151,7 +153,8 @@ describe('applyMessage', () => {
       query: 0,
       row_count: 0,
       truncated: false,
-      affected_rows: 0,
+      verb: 'other',
+      outcome: { affected: 0 },
       elapsed_ms: 1,
       database: 'shop',
     })
@@ -284,7 +287,8 @@ describe('tabProgress', () => {
       query: 0,
       row_count: 0,
       truncated: false,
-      affected_rows: 0,
+      verb: 'other',
+      outcome: { affected: 0 },
       elapsed_ms: 1,
       database: null,
     })
@@ -323,7 +327,8 @@ describe('batchProgress', () => {
       query,
       row_count: 0,
       truncated: false,
-      affected_rows: 0,
+      verb: 'other',
+      outcome: { affected: 0 },
       elapsed_ms: 1,
       database: null,
     }
@@ -468,7 +473,8 @@ describe('stop of a query', () => {
           columns: null,
           row_count: 0,
           truncated: false,
-          affected_rows: 0,
+          verb: 'other',
+          outcome: { affected: 0 },
           transfer_us: 0,
           bytes: 0,
         },
@@ -527,7 +533,8 @@ describe('durations', () => {
         query: 0,
         row_count: 0,
         truncated: false,
-        affected_rows: 0,
+        verb: 'other',
+        outcome: { affected: 0 },
         elapsed_ms: 500,
         database: null,
       },
@@ -620,6 +627,20 @@ describe('durations', () => {
     expect(formatRowCount(5000, 120)).toBe('120 / 5 000 lignes')
   })
 
+  it('sums up the outcome of a statement without rows', () => {
+    expect(outcomeSummary('insert', { affected: 3 })).toBe('3 lignes insérées')
+    expect(outcomeSummary('insert', { affected: 1 })).toBe('1 ligne insérée')
+    expect(outcomeSummary('update', { affected: 0 })).toBe('Aucune ligne modifiée')
+    expect(outcomeSummary('delete', { affected: 2500 })).toBe('2 500 lignes supprimées')
+    expect(outcomeSummary('truncate', { affected: 0 })).toBe('Table vidée')
+    // A count whose meaning depends on the engine.
+    expect(outcomeSummary('upsert', { affected: 4 })).toBe('4 lignes concernées')
+    expect(outcomeSummary('schema', { affected: 0 })).toBe('Requête exécutée')
+    expect(outcomeSummary('other', { affected: 0 })).toBe('Requête exécutée')
+    // An engine that reports no count.
+    expect(outcomeSummary('delete', { affected: null })).toBe('Requête exécutée')
+  })
+
   it('formats the volumes', () => {
     expect(formatBytes(0)).toBe('0 o')
     expect(formatBytes(999)).toBe('999 o')
@@ -703,7 +724,8 @@ describe('savedTab', () => {
           },
           row_count: 2,
           truncated: false,
-          affected_rows: 0,
+          verb: 'other',
+          outcome: { affected: 0 },
           transfer_us: 4000,
           bytes: 120,
         },
@@ -742,7 +764,8 @@ describe('resume', () => {
             columns: null,
             row_count: 0,
             truncated: false,
-            affected_rows: 0,
+            verb: 'other',
+            outcome: { affected: 0 },
             transfer_us: 0,
             bytes: 0,
           },
@@ -770,7 +793,8 @@ describe('resume', () => {
       },
       row_count: 1,
       truncated: false,
-      affected_rows: 0,
+      verb: 'other' as const,
+      outcome: { affected: 0 },
       transfer_us: 0,
       bytes: 50,
     }
@@ -843,7 +867,8 @@ describe('resume', () => {
       },
       row_count: 3,
       truncated: false,
-      affected_rows: 0,
+      verb: 'other' as const,
+      outcome: { affected: 0 },
       transfer_us: 9000,
       bytes: 90,
     }
@@ -901,7 +926,8 @@ function done(query: number): ServerMessage {
     query,
     row_count: 1,
     truncated: false,
-    affected_rows: 0,
+    verb: 'other',
+    outcome: { affected: 0 },
     elapsed_ms: 1,
     database: null,
   }
@@ -1011,7 +1037,8 @@ describe('refresh', () => {
       columns: null,
       row_count: 0,
       truncated: false,
-      affected_rows: 0,
+      verb: 'other' as const,
+      outcome: { affected: 0 },
       transfer_us: 0,
       bytes: 0,
     }
@@ -1097,7 +1124,8 @@ function saved(id: number, rows: number, chunks: number): ResultTab {
       },
       row_count: rows,
       truncated: false,
-      affected_rows: 0,
+      verb: 'other',
+      outcome: { affected: 0 },
       transfer_us: 9000,
       bytes: 90,
     },

@@ -16,9 +16,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use prisme_connectors::mysql::{self, Connection, MysqlTarget};
+use prisme_connectors::outcome::StatementOutcome;
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::ends_transaction;
 use prisme_dialects::temporary::{TableName, temporary_changes};
+use prisme_dialects::verb::StatementVerb;
 use prisme_splitter::split;
 use tokio::sync::{mpsc, watch};
 use tracing::Instrument;
@@ -137,7 +139,10 @@ pub(super) struct Session<'a> {
 pub(super) struct Summary {
     pub(super) row_count: usize,
     pub(super) truncated: bool,
-    pub(super) affected_rows: u64,
+    /// What the statement does to the data, from its AST.
+    pub(super) verb: StatementVerb,
+    /// What the statement did, as its engine reports it.
+    pub(super) outcome: StatementOutcome,
     pub(super) elapsed_ms: u128,
 }
 

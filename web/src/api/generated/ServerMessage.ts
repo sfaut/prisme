@@ -5,6 +5,8 @@ import type { ErrorDetail } from "./ErrorDetail";
 import type { LimitReport } from "./LimitReport";
 import type { ResumedQuery } from "./ResumedQuery";
 import type { ServerInfo } from "./ServerInfo";
+import type { StatementOutcome } from "./StatementOutcome";
+import type { StatementVerb } from "./StatementVerb";
 
 /**
  * Message sent to the client.
@@ -60,7 +62,14 @@ export type ServerMessage =
     query: number;
     row_count: number;
     truncated: boolean;
-    affected_rows: number;
+    /**
+     * What the statement does to the data, from its AST.
+     */
+    verb: StatementVerb;
+    /**
+     * What the statement did, as its engine reports it.
+     */
+    outcome: StatementOutcome;
     elapsed_ms: number;
     /**
      * Current database of the session after the query (it changes with `USE`).

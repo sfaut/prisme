@@ -57,6 +57,8 @@ import type { ResumedQuery } from './generated/ResumedQuery'
 import type { SelectionRange } from './generated/SelectionRange'
 import type { ServerInfo } from './generated/ServerInfo'
 import type { ServerMessage } from './generated/ServerMessage'
+import type { StatementOutcome } from './generated/StatementOutcome'
+import type { StatementVerb } from './generated/StatementVerb'
 import type { TabPivot } from './generated/TabPivot'
 
 /**
@@ -158,9 +160,14 @@ export interface QueryResult {
    */
   truncated: boolean
   /**
-   * Number of rows changed, for a write.
+   * What the statement does to the data, from its AST.
    */
-  affectedRows: number
+  verb: StatementVerb
+  /**
+   * What the statement did, as its engine reports it; its fields absent
+   * until the end of the query, and when the engine does not report them.
+   */
+  outcome: StatementOutcome
   /**
    * Execution duration, in milliseconds.
    */
@@ -508,7 +515,8 @@ export function applyMessage(
           rows: [],
           rowCount: 0,
           truncated: false,
-          affectedRows: 0,
+          verb: 'other',
+          outcome: { affected: null },
           elapsedMs: 0,
         }
       }
@@ -530,7 +538,8 @@ export function applyMessage(
         tab.previous = null
         if (tab.result) {
           tab.result.truncated = message.truncated
-          tab.result.affectedRows = message.affected_rows
+          tab.result.verb = message.verb
+          tab.result.outcome = message.outcome
           tab.result.elapsedMs = message.elapsed_ms
         }
       }
@@ -924,6 +933,68 @@ export function formatRowCount(loaded: number, kept: number | null): string {
 }
 
 /**
+ * Participle of each verb whose count names the rows it changed: singular,
+ * plural.
+ */
+const PARTICIPLES: Partial<Record<StatementVerb, [string, string]>> = {
+  insert: ['insérée', 'insérées'],
+  update: ['modifiée', 'modifiées'],
+  delete: ['supprimée', 'supprimées'],
+}
+
+/**
+ * Formats a number of rows with its participle: "aucune ligne insérée",
+ * "1 ligne insérée", "3 lignes insérées".
+ *
+ * @param count Number of rows.
+ * @param forms Participle, singular and plural.
+ */
+function countedRows(count: number, [one, many]: [string, string]): string {
+  if (count === 0) {
+    return `aucune ligne ${one}`
+  }
+  const rows = count > 1 ? 'lignes' : 'ligne'
+  return `${count.toLocaleString('fr-FR')} ${rows} ${count > 1 ? many : one}`
+}
+
+/**
+ * Summary of what a statement without rows did, from its verb and from the
+ * fields its engine reported, without knowing the engine: "3 lignes
+ * insérées", "aucune ligne supprimée". A count whose meaning depends on the
+ * engine (a `REPLACE`, an upsert, a change of the schema that copies rows)
+ * says "concernées"; without a count, "Requête exécutée".
+ *
+ * @param verb What the statement does to the data.
+ * @param outcome What its engine reported.
+ */
+export function outcomeSummary(verb: StatementVerb, outcome: StatementOutcome): string {
+  const affected = outcome.affected
+  if (verb === 'truncate') {
+    return 'Table vidée'
+  }
+  if (affected === null) {
+    return 'Requête exécutée'
+  }
+  const participle = PARTICIPLES[verb]
+  if (participle !== undefined) {
+    return capitalized(countedRows(affected, participle))
+  }
+  if (affected === 0) {
+    return 'Requête exécutée'
+  }
+  return capitalized(countedRows(affected, ['concernée', 'concernées']))
+}
+
+/**
+ * Text with its first letter in upper case.
+ *
+ * @param text Text, not empty.
+ */
+function capitalized(text: string): string {
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`
+}
+
+/**
  * Formats a data volume in the unit that suits it: bytes, then kB, MB, GB and
  * TB (by 1,000), with one decimal beyond the byte. Units are displayed in
  * French (o, ko, Mo, Go, To), like the rest of the interface.
@@ -1114,7 +1185,8 @@ export function savedTab(saved: ResultTab, rows: Cell[][]): QueryTab {
             rows: markRaw(rows),
             rowCount: rows.length,
             truncated: result.truncated,
-            affectedRows: result.affected_rows,
+            verb: result.verb,
+            outcome: result.outcome,
             elapsedMs: 0,
           },
     // A result saved before the details existed shows its English text.

@@ -3,10 +3,8 @@
 
 use std::collections::BTreeSet;
 
-use prisme_dialects::Dialect;
-use prisme_dialects::classify::{StatementKind, WriteKind, classify_with};
+use prisme_dialects::classify::{StatementKind, WriteKind};
 use prisme_dialects::limit::{LimitError, LimitOutcome};
-use prisme_dialects::temporary::TableName;
 
 use super::protocol::LimitReport;
 use crate::api::AppState;
@@ -44,21 +42,19 @@ pub(super) async fn run_limits(
     })
 }
 
-/// Returns the reason for the refusal if the query is neither a read, a
-/// setting, a control of the transaction nor a write of the kinds `writes`
-/// allows (`None`: read-only sessions); `temporary` tells the temporary
-/// tables of the connection.
+/// Returns the reason for the refusal if the query, of nature `kind`
+/// (`classify_with`), is neither a read, a setting, a control of the
+/// transaction nor a write of the kinds `writes` allows (`None`: read-only
+/// sessions).
 ///
 /// A write that no switch covers is refused, and so is a query that cannot
 /// be parsed, as nothing proves what it does. A read-only session refuses
 /// the controls of the transaction that would lift its mode.
 pub(super) fn write_refusal(
-    sql: &str,
-    dialect: Dialect,
+    kind: &StatementKind,
     writes: Option<&BTreeSet<WriteKind>>,
-    temporary: &dyn Fn(&TableName) -> bool,
 ) -> Option<ErrorDetail> {
-    match classify_with(sql, dialect, temporary) {
+    match kind {
         StatementKind::Read | StatementKind::Setting | StatementKind::Transaction => None,
         StatementKind::ReadWriteTransaction => writes
             .is_none()

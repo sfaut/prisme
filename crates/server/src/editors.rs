@@ -35,6 +35,8 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use prisme_connectors::mysql::ColumnTypeInfo;
+use prisme_connectors::outcome::StatementOutcome;
+use prisme_dialects::verb::StatementVerb;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -156,8 +158,10 @@ pub struct SavedResult {
     pub row_count: usize,
     /// Was the result truncated by the limit?
     pub truncated: bool,
-    /// Rows affected by a write.
-    pub affected_rows: u64,
+    /// What the statement does to the data, from its AST.
+    pub verb: StatementVerb,
+    /// What the statement did, as its engine reports it.
+    pub outcome: StatementOutcome,
     /// Transfer time of the rows, measured by the server, in microseconds.
     pub transfer_us: u64,
     /// Size of the result's messages, in bytes.

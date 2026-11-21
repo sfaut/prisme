@@ -95,7 +95,8 @@ function result(
     rows,
     rowCount: rows.length,
     truncated: false,
-    affectedRows: 0,
+    verb: 'other',
+    outcome: { affected: 0 },
     elapsedMs: 0,
   }
 }

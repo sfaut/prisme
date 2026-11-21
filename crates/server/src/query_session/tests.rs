@@ -18,7 +18,7 @@ use crate::store;
 use prisme_connectors::mysql::{Flavor, MysqlTarget};
 use prisme_connectors::test_servers;
 use prisme_dialects::Dialect;
-use prisme_dialects::classify::WriteKind;
+use prisme_dialects::classify::{WriteKind, classify};
 use std::collections::BTreeSet;
 
 type ClientSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -350,7 +350,8 @@ fn refuses_the_writes_not_allowed_and_unparsable_queries() {
     let refusal = |sql: &str, writes: Option<&[WriteKind]>| {
         let writes: Option<BTreeSet<WriteKind>> =
             writes.map(|kinds| kinds.iter().copied().collect());
-        super::limits::write_refusal(sql, Dialect::MariaDb, writes.as_ref(), &|_| false)
+        let kind = classify(sql, Dialect::MariaDb);
+        super::limits::write_refusal(&kind, writes.as_ref())
     };
     assert_eq!(refusal("SELECT 1", None), None);
     assert_eq!(refusal("SHOW TABLES", None), None);

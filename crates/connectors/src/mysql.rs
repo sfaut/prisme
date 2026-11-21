@@ -20,6 +20,8 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::outcome::StatementOutcome;
+
 /// Open connection to a MySQL or MariaDB server.
 pub use mysql_async::Conn as Connection;
 
@@ -396,6 +398,14 @@ impl ResultStream<'_> {
     /// Number of affected rows, for a write.
     pub fn affected_rows(&self) -> u64 {
         self.result.affected_rows()
+    }
+
+    /// Outcome of the statement, in its neutral form, from the OK packet
+    /// that ends it: to read once the rows are read.
+    pub fn outcome(&self) -> StatementOutcome {
+        StatementOutcome {
+            affected: Some(self.result.affected_rows()),
+        }
     }
 
     /// Gives up reading: the remaining rows are read and dropped by the

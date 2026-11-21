@@ -137,7 +137,7 @@ impl fmt::Display for Sent<'_> {
                 query,
                 row_count,
                 truncated,
-                affected_rows,
+                outcome,
                 elapsed_ms,
                 ..
             } => {
@@ -149,8 +149,8 @@ impl fmt::Display for Sent<'_> {
                 if *truncated {
                     f.write_str(", truncated")?;
                 }
-                if *affected_rows > 0 {
-                    let affected = Count(*affected_rows, "affected row", "affected rows");
+                if let Some(affected) = outcome.affected.filter(|affected| *affected > 0) {
+                    let affected = Count(affected, "affected row", "affected rows");
                     write!(f, ", {affected}")?;
                 }
                 write!(f, ", {elapsed_ms} ms")
@@ -205,6 +205,8 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use axum::Router;
+    use prisme_connectors::outcome::StatementOutcome;
+    use prisme_dialects::verb::StatementVerb;
 
     use crate::error_detail::ErrorDetail;
     use axum::body::Body;
@@ -299,7 +301,8 @@ mod tests {
                 query: 0,
                 row_count: 1000,
                 truncated: true,
-                affected_rows: 0,
+                verb: StatementVerb::Other,
+                outcome: StatementOutcome::default(),
                 elapsed_ms: 160,
                 database: None,
             }),
@@ -310,7 +313,8 @@ mod tests {
                 query: 1,
                 row_count: 0,
                 truncated: false,
-                affected_rows: 1,
+                verb: StatementVerb::Insert,
+                outcome: StatementOutcome { affected: Some(1) },
                 elapsed_ms: 3,
                 database: None,
             }),

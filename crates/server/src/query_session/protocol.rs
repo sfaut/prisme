@@ -2,6 +2,8 @@
 //! what the session answers. The types are exported to the interface by `ts-rs`.
 
 use prisme_connectors::mysql::{Cell, ColumnTypeInfo, ServerInfo};
+use prisme_connectors::outcome::StatementOutcome;
+use prisme_dialects::verb::StatementVerb;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -163,7 +165,10 @@ pub(crate) enum ServerMessage {
         query: u32,
         row_count: usize,
         truncated: bool,
-        affected_rows: u64,
+        /// What the statement does to the data, from its AST.
+        verb: StatementVerb,
+        /// What the statement did, as its engine reports it.
+        outcome: StatementOutcome,
         elapsed_ms: u128,
         /// Current database of the session after the query (it changes with `USE`).
         database: Option<String>,

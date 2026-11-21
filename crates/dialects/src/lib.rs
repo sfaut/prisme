@@ -3,7 +3,8 @@
 //! Relies on `sqlparser` (see `docs/V1.md`, section 3.2), with a MySQL
 //! dialect of its own for the compound time units (`mysql_parser` module).
 //! For now: the default row limit (`limit` module), the read / write
-//! classification (`classify` module), the beautifier (`beautify` module),
+//! classification (`classify` module) and the verb it gives a statement
+//! (`verb` module), the beautifier (`beautify` module),
 //! the keywords of each dialect (`keywords` module, `keywords/*.yaml` files)
 //! and the position of syntax errors (`syntax` module). The function catalog and the emitters
 //! per dialect will come with the translation.
@@ -22,6 +23,7 @@ mod offsets;
 mod parse;
 pub mod syntax;
 pub mod temporary;
+pub mod verb;
 mod whitespace;
 
 /// SQL dialect of a query.

@@ -71,6 +71,7 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
             "../migrations/0027_query_history_interrupted.sql"
         )),
         M::up(include_str!("../migrations/0028_console_editor.sql")),
+        M::up(include_str!("../migrations/0029_result_tabs_outcome.sql")),
     ])
 });
 
@@ -306,6 +307,40 @@ mod tests {
             .collect::<Result<_, _>>()
             .unwrap();
         assert_eq!(interrupted, [true, false, false]);
+    }
+
+    #[test]
+    fn moves_the_affected_rows_into_the_outcome() {
+        // Schema before the outcome of the saved results (migration 0029).
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", "ON")
+            .unwrap();
+        MIGRATIONS.to_version(&mut connection, 28).unwrap();
+        let user = ensure_user(&connection, "owner@example.com").unwrap();
+        connection
+            .execute("INSERT INTO editors (user_id) VALUES (?1)", params![user])
+            .unwrap();
+        let editor = connection.last_insert_rowid();
+        connection
+            .execute(
+                "INSERT INTO result_tabs (editor_id, query, sql, result) VALUES \
+                 (?1, 0, 'DELETE FROM t', '{\"done\":true,\"affected_rows\":3}'), \
+                 (?1, 1, 'SELECT 1', '{}')",
+                params![editor],
+            )
+            .unwrap();
+
+        MIGRATIONS.to_latest(&mut connection).unwrap();
+        let mut statement = connection
+            .prepare("SELECT result FROM result_tabs ORDER BY query")
+            .unwrap();
+        let results: Vec<String> = statement
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(results, [r#"{"done":true,"outcome":{"affected":3}}"#, "{}"]);
     }
 
     #[test]

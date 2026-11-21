@@ -217,13 +217,15 @@ impl Recorder {
             ServerMessage::Done {
                 query,
                 truncated,
-                affected_rows,
+                verb,
+                outcome,
                 ..
             } => {
                 if let Some(record) = records.get_mut(query) {
                     record.result.done = true;
                     record.result.truncated = *truncated;
-                    record.result.affected_rows = *affected_rows;
+                    record.result.verb = *verb;
+                    record.result.outcome.clone_from(outcome);
                     record.result.bytes += bytes;
                     // Saturates: 2^64 microseconds is about 584,000 years.
                     record.result.transfer_us = record.columns_at.map_or(0, |at| {
@@ -514,6 +516,9 @@ fn micros_since(instant: Instant) -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use prisme_connectors::outcome::StatementOutcome;
+    use prisme_dialects::verb::StatementVerb;
+
     use super::*;
     use crate::editors::NewEditor;
     use crate::exports;
@@ -575,7 +580,8 @@ mod tests {
             query: 0,
             row_count: 1,
             truncated: false,
-            affected_rows: 0,
+            verb: StatementVerb::Other,
+            outcome: StatementOutcome::default(),
             elapsed_ms: 1,
             database: None,
         }
