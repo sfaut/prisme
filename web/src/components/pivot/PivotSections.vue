@@ -855,6 +855,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
         <ui-input
           v-model="search"
           :icon="Search"
+          small
           placeholder="Rechercher une colonne"
           aria-label="Rechercher une colonne"
         />
