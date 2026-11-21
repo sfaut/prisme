@@ -3,7 +3,10 @@
   page behind no longer scrolls, Escape or a click outside closes it.
 
   Title and description at the top, closing cross, content (default slot)
-  then footer (`footer` slot, for the buttons). On opening, the focus goes
+  then footer (`footer` slot, for the buttons). `wide` gives a wider window
+  of a fixed height, for a window of several sections: its header and its
+  footer, buttons at the end, are set apart by a line, and its content goes
+  from edge to edge (a list of sections on the full height). On opening, the focus goes
   to the first input field, or failing that to the first button of the
   footer ("Annuler" of a confirmation).
 -->
@@ -30,6 +33,11 @@ defineProps<{
    * Description, under the title.
    */
   description?: string
+  /**
+   * Wide window of a fixed height, for a window of several sections: its
+   * size stays the same from one section to the next.
+   */
+  wide?: boolean
 }>()
 
 /**
@@ -61,11 +69,19 @@ function focusFirst(event: Event): void {
     <dialog-portal>
       <dialog-overlay class="fixed inset-0 z-50 bg-overlay" />
       <dialog-content
-        class="fixed top-1/2 left-1/2 z-50 flex w-[calc(100vw-(--spacing(11)))] max-w-149 -translate-1/2 flex-col gap-4 rounded-xl border border-line bg-surface p-4 text-base shadow-xl"
+        class="fixed top-1/2 left-1/2 z-50 flex w-[calc(100vw-(--spacing(11)))] -translate-1/2 flex-col rounded-xl border border-line bg-surface text-base shadow-xl"
+        :class="
+          wide
+            ? 'h-207 max-h-[calc(100dvh-(--spacing(11)))] max-w-266 overflow-hidden'
+            : 'max-w-149 gap-4 p-4'
+        "
         :aria-describedby="description ? undefined : ''"
         @open-auto-focus="focusFirst"
       >
-        <header class="flex items-start gap-3">
+        <header
+          class="flex gap-3"
+          :class="wide ? 'items-center border-b border-line py-4 ps-6 pe-4' : 'items-start'"
+        >
           <div class="flex min-w-0 flex-1 flex-col gap-1">
             <dialog-title class="text-lg font-semibold text-fg-strong">{{ title }}</dialog-title>
             <dialog-description v-if="description" class="text-fg-secondary">
@@ -77,7 +93,11 @@ function focusFirst(event: Event): void {
           </dialog-close>
         </header>
         <slot />
-        <footer v-if="$slots.footer" class="flex gap-3">
+        <footer
+          v-if="$slots.footer"
+          class="flex gap-3"
+          :class="{ 'justify-end border-t border-line px-6 py-4': wide }"
+        >
           <slot name="footer" />
         </footer>
       </dialog-content>
