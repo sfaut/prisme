@@ -70,7 +70,7 @@ function commit(): void {
     ref="input"
     v-model="draft"
     aria-label="Nom de l'onglet"
-    class="field-sizing-content h-6 max-w-full min-w-24 rounded-md border border-line bg-surface px-1 text-base text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary/60"
+    class="field-sizing-content h-6 max-w-full min-w-24 rounded-md border border-line bg-surface px-1 text-base text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary"
     @blur="commit"
     @keydown.stop
     @keydown.enter.prevent="commit"
