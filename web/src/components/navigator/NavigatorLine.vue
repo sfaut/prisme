@@ -14,8 +14,8 @@
 -->
 <script setup lang="ts">
 import {
-  ArrowDownAZ,
   ArrowDownWideNarrow,
+  ArrowUpAZ,
   Cable,
   CalendarClock,
   ChevronDown,
@@ -91,7 +91,7 @@ const emit = defineEmits<{
  * Buttons of a "Tables" folder, one per order of its tables.
  */
 const TABLE_SORTS = [
-  { sort: 'name', icon: ArrowDownAZ, label: 'Trier par nom' },
+  { sort: 'name', icon: ArrowUpAZ, label: 'Trier par nom' },
   { sort: 'rows', icon: ArrowDownWideNarrow, label: 'Trier par nombre de lignes' },
 ] as const
 
