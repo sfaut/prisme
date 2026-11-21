@@ -270,6 +270,31 @@ describe('UiDropdownMenu', () => {
     wrapper.unmount()
   })
 
+  it('shows its header above the choices, out of the choices, which keep their action', async () => {
+    const open = vi.fn<() => void>()
+    const wrapper = mount(UiDropdownMenu, {
+      props: { items: [{ label: 'Profil', icon: Download, onSelect: open }], open: true },
+      slots: {
+        default: () => h('button', { type: 'button' }, 'Compte'),
+        header: () => h('span', { class: 'user' }, 'Ada Lovelace'),
+      },
+      attachTo: document.body,
+    })
+    await vi.waitFor(() => expect(document.querySelector('[role="menu"]')).not.toBeNull())
+
+    const menu = document.querySelector('[role="menu"]')
+    const header = menu?.querySelector('.user')
+    expect(header?.textContent).toBe('Ada Lovelace')
+    expect(header?.closest('[role="menuitem"]')).toBeNull()
+    expect(shownLabels()).toEqual(['Profil'])
+    const choice = menu?.querySelector('[role="menuitem"]')
+    expect(header?.compareDocumentPosition(choice as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+
+    choice?.dispatchEvent(new Event('click', { bubbles: true }))
+    await vi.waitFor(() => expect(open).toHaveBeenCalledOnce())
+    wrapper.unmount()
+  })
+
   it('tells its parent that it is closed when it leaves open, with its element', async () => {
     const closed = vi.fn<(open: boolean) => void>()
     const wrapper = mount(UiDropdownMenu, {

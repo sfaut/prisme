@@ -143,7 +143,7 @@ Legend: `[«]`, `[^]`, `[v]` fold buttons (`PanelLeftClose`, `PanelTopClose`, `P
 - Right:
   - synchronisation icon, `size-5`, `fg-secondary`, explained by its tooltip: `Database` nothing exchanged yet, `DatabaseArrowDown` reading, `DatabaseArrowUp` saving, `DatabaseCheck` everything saved, `DatabaseX` in `error` when the last save was refused;
   - theme list, 37 steps wide: **Système** (System, `Monitor`), **Clair** (Light, `Sun`), **Sombre** (Dark, `Moon`);
-  - round avatar (`size-8`, `rounded-full`, initials `text-sm` semibold, `text-primary` on `bg-primary/15`; hovered or open, `bg-primary text-on-primary`), which opens the account menu: **Profil** (Profile, `User`), **Préférences** (Preferences, `Settings`).
+  - round avatar (`size-8`, `rounded-full`, initials `text-sm` semibold, `text-primary` on `bg-primary/15`; hovered or open, `bg-primary text-on-primary`), which opens the account menu (`max-w-96`): first the user, set apart by a `line` from edge to edge (`p-4`): avatar of the initials (`size-10`, same colors), first and last names (medium, `fg-strong`) and email address under them (`text-sm fg-secondary`; the address alone, without names), both truncated; then **Profil** (Profile, `User`), **Préférences** (Preferences, `Settings`).
 
 ### 7.2 Object navigator (left panel)
 

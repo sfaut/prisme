@@ -101,11 +101,17 @@ export interface MenuGroup {
 }
 
 /**
+ * Classes of the frame of a menu, without its padding: that of a menu whose
+ * header and choices each have their own (`UiDropdownMenu.vue`).
+ */
+export const MENU_FRAME =
+  'z-50 min-w-53 rounded-xl border border-line bg-surface text-base shadow-lg'
+
+/**
  * Classes of the panel that holds the choices: that of the menu, or that of
  * a submenu.
  */
-export const MENU_PANEL =
-  'z-50 min-w-53 rounded-xl border border-line bg-surface p-1 text-base shadow-lg'
+export const MENU_PANEL = `${MENU_FRAME} p-1`
 
 /**
  * Classes of a choice, or of the choice that opens a submenu. The choice

@@ -5,7 +5,9 @@
   an action, or is inactive, and possibly an explanation in its tooltip. The
   choices come as a list, or gathered in groups (`UiMenuEntries.vue`, which
   also draws the radio choices, the checkboxes, the values of the settings
-  and the submenus). The menu opens by its trigger, or by the code
+  and the submenus). A header (`header` slot) can come above the choices,
+  set apart by a line from edge to edge: a label that the keyboard skips
+  (the user of the account menu). The menu opens by its trigger, or by the code
   (`v-model:open`), possibly with the submenu of a choice open (`openSub`).
   Closed, the menu gives the focus back to its trigger, unless the parent
   prevents it (`closeAutoFocus`), to give it to a field opened by a choice.
@@ -15,13 +17,14 @@
 <script setup lang="ts">
 import {
   DropdownMenuContent,
+  DropdownMenuLabel,
   DropdownMenuPortal,
   DropdownMenuRoot,
   DropdownMenuTrigger,
 } from 'reka-ui'
 import { onBeforeUnmount } from 'vue'
 
-import { MENU_PANEL, type MenuGroup, type MenuItem } from './menuItem'
+import { MENU_FRAME, MENU_PANEL, type MenuGroup, type MenuItem } from './menuItem'
 import UiMenuEntries from './UiMenuEntries.vue'
 
 import { cssPixels } from '@/utils/cssLength'
@@ -72,6 +75,21 @@ onBeforeUnmount(() => (open.value = false))
     </dropdown-menu-trigger>
     <dropdown-menu-portal>
       <dropdown-menu-content
+        v-if="$slots.header"
+        align="end"
+        :side-offset="OFFSET"
+        :class="[MENU_FRAME, 'flex max-w-96 flex-col']"
+        @close-auto-focus="emit('closeAutoFocus', $event)"
+      >
+        <dropdown-menu-label class="border-b border-line p-4">
+          <slot name="header" />
+        </dropdown-menu-label>
+        <div class="p-1" :class="{ 'flex flex-col gap-1': groups }">
+          <ui-menu-entries :items="items" :groups="groups" :open-sub="openSub" />
+        </div>
+      </dropdown-menu-content>
+      <dropdown-menu-content
+        v-else
         align="end"
         :side-offset="OFFSET"
         :class="[MENU_PANEL, { 'flex flex-col gap-1': groups }]"

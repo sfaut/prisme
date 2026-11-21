@@ -5,8 +5,8 @@
   main action, filled in the primary color, which opens an editor on the
   connection of the active one (later, a menu: editor or notebook), exports
   manager (`ExportManager`), synchronisation state
-  (`SyncStatus`), theme choice, and the account menu, which opens the
-  user's profile (`ProfileDialog`) and the preferences, the settings
+  (`SyncStatus`), theme choice, and the account menu, headed by the user
+  (initials, name, email address), which opens the user's profile (`ProfileDialog`) and the preferences, the settings
   (`PreferencesDialog`).
 
   The windows it opens are its own: the menu only chooses which one shows.
@@ -111,6 +111,26 @@ const menuItems: MenuItem[] = [
           <template v-if="profile.initials">{{ profile.initials }}</template>
           <user v-else class="size-4" />
         </button>
+        <template v-if="profile.profile" #header>
+          <!-- The user: avatar, name, then the email address unless it stands for the name. -->
+          <div class="flex items-center gap-3">
+            <span
+              class="grid size-10 shrink-0 place-items-center rounded-full bg-primary/15 font-semibold text-primary"
+              aria-hidden="true"
+            >
+              {{ profile.initials }}
+            </span>
+            <div class="flex min-w-0 flex-col">
+              <span class="truncate font-medium text-fg-strong">{{ profile.displayName }}</span>
+              <span
+                v-if="profile.displayName !== profile.profile.email"
+                class="truncate text-sm text-fg-secondary"
+              >
+                {{ profile.profile.email }}
+              </span>
+            </div>
+          </div>
+        </template>
       </ui-dropdown-menu>
     </div>
     <profile-dialog v-model:open="profileOpen" />
