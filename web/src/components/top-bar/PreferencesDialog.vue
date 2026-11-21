@@ -1,10 +1,9 @@
 <!--
-  Window of the preferences, saved on the server: the user's profile and the
-  settings, in sections chosen in a list on the left (Reka UI's vertical
-  `Tabs`: arrow keys, state read by screen readers).
+  Window of the preferences, the settings saved on the server, in sections
+  chosen in a list on the left (Reka UI's vertical `Tabs`: arrow keys, state
+  read by screen readers). The user's profile has its own window
+  (`ProfileDialog`).
 
-  - Profil: first and last names; the email address is shown, not editable:
-    it identifies the user, and `prisme --setup` or `--user-email` change it.
   - Langue: French only for now, the interface staying in French until it is
     made multilingual (see `docs/QUESTIONS.md`); the planned languages are
     listed, inactive, and the choice is not saved yet.
@@ -19,17 +18,15 @@
   - Console: the retention of the history and of the debug log, in days.
 
   Each setting is a row, its description in sight under its name
-  (`UiSettingRow`). One save for the whole window: the profile, then the
-  settings. Window, fields and buttons of Prisme (`ui/`).
+  (`UiSettingRow`). One save for the whole window. Window, fields and buttons of Prisme (`ui/`).
 -->
 <script setup lang="ts">
-import { Code, Database, Grid2x2, Languages, SquareTerminal, User } from '@lucide/vue'
+import { Code, Database, Grid2x2, Languages, SquareTerminal } from '@lucide/vue'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { type Component, computed, reactive, ref, watch } from 'vue'
 
 import { errorMessage } from '@/api/errorMessage'
 import type { WriteKind } from '@/api/generated/WriteKind'
-import { initialsOf, useProfileStore } from '@/stores/profile'
 import { useSettingsStore } from '@/stores/settings'
 
 import PreferencesWrites from './PreferencesWrites.vue'
@@ -50,24 +47,17 @@ import UiSwitch from '@/components/ui/UiSwitch.vue'
  */
 const open = defineModel<boolean>('open', { required: true })
 
-const profile = useProfileStore()
 const settings = useSettingsStore()
 
 /**
  * Sections of the window.
  */
-type Section = 'profile' | 'language' | 'queries' | 'editor' | 'pivot' | 'console'
+type Section = 'language' | 'queries' | 'editor' | 'pivot' | 'console'
 
 /**
  * Sections in the list, with their name, icon and description.
  */
 const SECTIONS: { value: Section; label: string; icon: Component; description: string }[] = [
-  {
-    value: 'profile',
-    label: 'Profil',
-    icon: User,
-    description: 'Le nom que Prisme affiche dans la barre du haut.',
-  },
   {
     value: 'language',
     label: 'Langue',
@@ -103,7 +93,7 @@ const SECTIONS: { value: Section; label: string; icon: Component; description: s
 /**
  * Section shown: the first at the first opening, then the last one chosen.
  */
-const section = ref<Section>('profile')
+const section = ref<Section>('language')
 
 /**
  * Language codes of the interface.
@@ -166,19 +156,6 @@ const REFRESH_STEP_SECONDS = 0.1
 const WRITE_KIND_COUNT = 25
 
 /**
- * Current input of the profile: the names, as typed.
- */
-const names = reactive({
-  first_name: '',
-  last_name: '',
-})
-
-/**
- * Email address of the user, shown in the profile.
- */
-const email = ref('')
-
-/**
  * Current input of the settings: the row limit, the read-only mode, the
  * allowed writes, the indentation, the longest text of a `GROUP_CONCAT` and
  * the retentions; the delay of the Pivoteur is typed in seconds
@@ -221,13 +198,6 @@ const rowLimitItems = computed(() =>
 )
 
 /**
- * Initials and full name of the profile, as typed: the avatar of the top bar
- * once saved.
- */
-const initials = computed(() => initialsOf({ email: email.value, ...names }))
-const fullName = computed(() => `${names.first_name} ${names.last_name}`.trim())
-
-/**
  * What the writes allowed do, under their name: nothing while the sessions
  * are read-only, else how many there are.
  */
@@ -242,7 +212,7 @@ const writesDescription = computed(() => {
 })
 
 /**
- * Loads the profile and the settings in the window each time it opens, so
+ * Loads the settings in the window each time it opens, so
  * that it starts from the saved values.
  */
 watch(open, async (isOpen) => {
@@ -251,14 +221,11 @@ watch(open, async (isOpen) => {
   }
   error.value = null
   try {
-    await Promise.all([profile.load(), settings.load()])
+    await settings.load()
   } catch (failure) {
     error.value = errorMessage(failure)
     return
   }
-  names.first_name = profile.profile?.first_name ?? ''
-  names.last_name = profile.profile?.last_name ?? ''
-  email.value = profile.profile?.email ?? ''
   form.row_limit = settings.settings?.row_limit ?? DEFAULT_ROW_LIMIT
   form.read_only_session = settings.settings?.read_only_session ?? true
   form.allowed_writes = [...(settings.settings?.allowed_writes ?? [])]
@@ -270,13 +237,12 @@ watch(open, async (isOpen) => {
 })
 
 /**
- * Saves the profile, then the settings, then closes the window.
+ * Saves the settings, then closes the window.
  */
 async function save(): Promise<void> {
   saving.value = true
   error.value = null
   try {
-    await profile.save({ ...names })
     await settings.update({
       ...form,
       allowed_writes: [...form.allowed_writes],
@@ -325,49 +291,7 @@ async function save(): Promise<void> {
             <p class="text-sm text-fg-secondary">{{ item.description }}</p>
           </div>
 
-          <template v-if="item.value === 'profile'">
-            <div class="flex items-center gap-3">
-              <span
-                class="grid size-12 shrink-0 place-items-center rounded-full bg-primary/15 text-lg font-semibold text-primary"
-                aria-hidden="true"
-              >
-                {{ initials }}
-              </span>
-              <div class="flex min-w-0 flex-col">
-                <span class="truncate font-medium text-fg-strong">{{ fullName || email }}</span>
-                <span v-if="fullName" class="truncate text-sm text-fg-secondary">{{ email }}</span>
-              </div>
-            </div>
-            <ui-setting-list>
-              <ui-setting-row label="Prénom" for="preferences-first-name">
-                <ui-input
-                  id="preferences-first-name"
-                  v-model="names.first_name"
-                  :maxlength="100"
-                  autocomplete="given-name"
-                  class="w-72"
-                />
-              </ui-setting-row>
-              <ui-setting-row label="Nom" for="preferences-last-name">
-                <ui-input
-                  id="preferences-last-name"
-                  v-model="names.last_name"
-                  :maxlength="100"
-                  autocomplete="family-name"
-                  class="w-72"
-                />
-              </ui-setting-row>
-              <ui-setting-row label="Adresse e-mail">
-                <template #description>
-                  Elle identifie votre compte, et se change au lancement de Prisme :
-                  <span class="font-mono">prisme --setup</span>.
-                </template>
-                <span class="text-fg-strong">{{ email }}</span>
-              </ui-setting-row>
-            </ui-setting-list>
-          </template>
-
-          <ui-setting-list v-else-if="item.value === 'language'">
+          <ui-setting-list v-if="item.value === 'language'">
             <ui-setting-row
               label="Langue de l’interface"
               description="Les autres langues arriveront avec la traduction de l’interface."

@@ -453,8 +453,8 @@ Both tabs are kept in the internal database, 30 days by default: the **Historiqu
 - **Synchronisation**: Prisme saves every change as you go in its local database, and reads it back from there. A database icon shows the state, explained by its tooltip: a check mark when everything is saved, a down arrow while reading, an up arrow while saving, a cross when the last save was refused (plain database icon: nothing exchanged yet).
 - **Theme**: the switch of the top bar, **Clair / Système / Sombre** (Light / System / Dark), sets the theme of the whole interface. **Système** follows your computer's setting.
 - **Account** menu, the round avatar with your initials (those of your first and last names, or the first letter of your email address):
-  - **Préférences** (Preferences): one window for your profile and the settings, in sections listed on its left; each setting says under its name what it changes, and **Enregistrer** (Save) saves them all:
-    - **Profil** (Profile): your first and last names, and your email address (read-only);
+  - **Profil** (Profile): your first and last names, and your email address (read-only);
+  - **Préférences** (Preferences): one window for the settings, in sections listed on its left; each setting says under its name what it changes, and **Enregistrer** (Save) saves them all:
     - **Langue** (Language): the language of the interface, French only for now;
     - **Requêtes** (Queries): the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; **Écritures autorisées** (Writes allowed), the switches of the writes, one row per object and one column per verb, greyed out while the sessions are read-only;
     - **Éditeur SQL** (SQL editor): the **Indentation** of the editor and of **Enjoliver**, from 1 to 8 spaces (4 by default);

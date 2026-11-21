@@ -2,17 +2,10 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Profile } from '@/api/generated/Profile'
-import type { ProfileUpdate } from '@/api/generated/ProfileUpdate'
 import type { Settings } from '@/api/generated/Settings'
 import type { SettingsUpdate } from '@/api/generated/SettingsUpdate'
 
 import PreferencesDialog from '../PreferencesDialog.vue'
-
-/**
- * Profile saved on the server.
- */
-const PROFILE: Profile = { email: 'ada@example.com', first_name: 'Ada', last_name: 'Lovelace' }
 
 /**
  * Settings saved on the server: read-only sessions, `DELETE` allowed.
@@ -34,12 +27,6 @@ const settingsApi = vi.hoisted(() => ({
   updateSettings: vi.fn<(update: SettingsUpdate) => Promise<Settings>>(),
 }))
 vi.mock('@/api/settings', () => settingsApi)
-
-const profileApi = vi.hoisted(() => ({
-  getProfile: vi.fn<() => Promise<Profile>>(),
-  updateProfile: vi.fn<(update: ProfileUpdate) => Promise<Profile>>(),
-}))
-vi.mock('@/api/profile', () => profileApi)
 
 /**
  * Opens the window on the saved values, with the given settings.
@@ -114,28 +101,7 @@ beforeEach(() => {
   setActivePinia(createPinia())
   document.body.innerHTML = ''
   vi.clearAllMocks()
-  profileApi.getProfile.mockResolvedValue({ ...PROFILE })
-  profileApi.updateProfile.mockImplementation(async (update) => ({ ...PROFILE, ...update }))
   settingsApi.updateSettings.mockImplementation(async (update) => ({ ...SAVED, ...update }))
-})
-
-describe('profile', () => {
-  it('shows the saved names and the email address, then saves the names typed', async () => {
-    await openWindow()
-
-    expect(find<HTMLInputElement>('#preferences-first-name').value).toBe('Ada')
-    expect(find<HTMLInputElement>('#preferences-last-name').value).toBe('Lovelace')
-    expect(document.body.textContent).toContain('ada@example.com')
-
-    type(find<HTMLInputElement>('#preferences-first-name'), 'Augusta')
-    await submit()
-
-    expect(profileApi.updateProfile).toHaveBeenCalledWith({
-      first_name: 'Augusta',
-      last_name: 'Lovelace',
-    })
-    expect(settingsApi.updateSettings).toHaveBeenCalled()
-  })
 })
 
 describe('writes', () => {

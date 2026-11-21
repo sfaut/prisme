@@ -6,7 +6,8 @@
   connection of the active one (later, a menu: editor or notebook), exports
   manager (`ExportManager`), synchronisation state
   (`SyncStatus`), theme choice, and the account menu, which opens the
-  preferences: the user's profile and the settings (`PreferencesDialog`).
+  user's profile (`ProfileDialog`) and the preferences, the settings
+  (`PreferencesDialog`).
 
   The windows it opens are its own: the menu only chooses which one shows.
 -->
@@ -21,6 +22,7 @@ import { useProfileStore } from '@/stores/profile'
 
 import ExportManager from './ExportManager.vue'
 import PreferencesDialog from './PreferencesDialog.vue'
+import ProfileDialog from './ProfileDialog.vue'
 import SyncStatus from './SyncStatus.vue'
 import UiDropdownMenu from '@/components/ui/UiDropdownMenu.vue'
 import UiButton from '@/components/ui/UiButton.vue'
@@ -62,6 +64,11 @@ const COLOR_MODES: { label: string; value: ColorMode; icon: typeof Monitor }[] =
 ]
 
 /**
+ * Profile window open or closed.
+ */
+const profileOpen = ref(false)
+
+/**
  * Preferences window open or closed.
  */
 const preferencesOpen = ref(false)
@@ -70,6 +77,7 @@ const preferencesOpen = ref(false)
  * Choices of the account menu, opened from the avatar.
  */
 const menuItems: MenuItem[] = [
+  { label: 'Profil', icon: User, onSelect: () => (profileOpen.value = true) },
   { label: 'Préférences', icon: Settings, onSelect: () => (preferencesOpen.value = true) },
 ]
 </script>
@@ -105,6 +113,7 @@ const menuItems: MenuItem[] = [
         </button>
       </ui-dropdown-menu>
     </div>
+    <profile-dialog v-model:open="profileOpen" />
     <preferences-dialog v-model:open="preferencesOpen" />
   </header>
 </template>

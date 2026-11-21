@@ -207,8 +207,8 @@ Rules:
 | `Eye` / `EyeOff` | Show / hide the password | connection dialog |
 | `ChevronDown`, `Check` | Open a list; chosen item | `UiSelect` |
 | `Sun`, `Monitor`, `Moon` | Color mode: light, system, dark | top bar (`UiChoiceSwitch`) |
-| `Settings` | Preferences | account menu |
-| `User`, `Languages`, `Database`, `Code`, `Grid2x2`, `SquareTerminal` | Sections of the preferences: profile, language, queries, SQL editor, Pivoteur, console | preferences window |
+| `User`, `Settings` | Profile, preferences | account menu |
+| `Languages`, `Database`, `Code`, `Grid2x2`, `SquareTerminal` | Sections of the preferences: language, queries, SQL editor, Pivoteur, console | preferences window |
 
 ### Lengths in pixels
 
