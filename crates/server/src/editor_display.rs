@@ -1,6 +1,6 @@
 //! Display of an editor, saved with it: its panels (open or closed, their
-//! size) and the tree of its object navigator (open nodes, scroll, "Tables"
-//! folders sorted by row count). It survives a page reload, and the closing
+//! size), the tree of its object navigator (open nodes, scroll, "Tables"
+//! folders sorted by row count) and its result tab shown. It survives a page reload, and the closing
 //! of the editor followed by its reopening ("Rouvrir").
 //!
 //! The page makes the display and sends it whole on each change
@@ -20,6 +20,10 @@ pub struct EditorDisplay {
     pub panels: Panels,
     /// Tree of the object navigator.
     pub navigator: NavigatorTree,
+    /// Id of the result tab shown; `null`, or a tab no longer there: the
+    /// first one. Absent from a display saved before it existed.
+    #[serde(default)]
+    pub active_result: Option<i64>,
 }
 
 /// Panels of an editor's tab, each open or closed, with its size.
@@ -63,4 +67,21 @@ pub struct NavigatorTree {
     /// Keys of the "Tables" folders sorted by row count, the largest first;
     /// the other folders are sorted by name.
     pub tables_by_rows: Vec<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_a_display_saved_before_the_result_tab_shown() {
+        let panel = r#"{"open":true,"size":null}"#;
+        let display: EditorDisplay = serde_json::from_str(&format!(
+            r#"{{"panels":{{"navigator":{panel},"explorer":{panel},"editor":{panel},
+            "results":{panel},"pivot":{panel},"console":{panel}}},
+            "navigator":{{"expanded":[],"scroll_top":0,"tables_by_rows":[]}}}}"#
+        ))
+        .unwrap();
+        assert_eq!(display.active_result, None);
+    }
 }

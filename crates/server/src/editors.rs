@@ -1014,6 +1014,7 @@ mod tests {
                 scroll_top: 48.0,
                 tables_by_rows: vec!["folder:tables:1/shop".to_string()],
             },
+            active_result: Some(12),
         };
         assert!(update_display(&db, user_id, editor.id, &display).unwrap());
         let other = store::ensure_user(&db, "other@example.com").unwrap();

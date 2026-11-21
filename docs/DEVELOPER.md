@@ -76,7 +76,7 @@ Each area has its folder in `web/src/components/` (see "Repository layout"), wit
 
 ### Local storage
 
-The settings and adjustments of the user are saved on the server side: the display settings of the user (theme, active editor, console, data explorer: `users.theme` and `users.display`, `GET` / `PUT /api/display`, `userDisplay` store, read before the interface is mounted), and the display of each editor (panels, tree of the object navigator: `editors.display`, `PUT /api/editors/{id}/display`, `editorDisplays` store), which comes back when a closed editor is reopened. The browser's local storage keeps one key only, `prisme.app.colorMode`: a copy of the theme (`system`, `light` or `dark`), read before the settings, so that the first paint has the right theme (`web/src/utils/colorMode.ts`). The other keys `prisme.*` that held settings before are removed.
+The settings and adjustments of the user are saved on the server side: the display settings of the user (theme, active editor, console, data explorer: `users.theme` and `users.display`, `GET` / `PUT /api/display`, `userDisplay` store, read before the interface is mounted), and the display of each editor (panels, tree of the object navigator, result tab shown: `editors.display`, `PUT /api/editors/{id}/display`, `editorDisplays` store), which comes back when a closed editor is reopened. The browser's local storage keeps one key only, `prisme.app.colorMode`: a copy of the theme (`system`, `light` or `dark`), read before the settings, so that the first paint has the right theme (`web/src/utils/colorMode.ts`). The other keys `prisme.*` that held settings before are removed.
 
 ### Icons and actions
 

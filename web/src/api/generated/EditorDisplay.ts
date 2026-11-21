@@ -14,4 +14,9 @@ export type EditorDisplay = {
    * Tree of the object navigator.
    */
   navigator: NavigatorTree;
+  /**
+   * Id of the result tab shown; `null`, or a tab no longer there: the
+   * first one. Absent from a display saved before it existed.
+   */
+  active_result: number | null;
 };

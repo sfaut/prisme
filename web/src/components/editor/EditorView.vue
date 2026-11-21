@@ -90,6 +90,7 @@ import ResultView from '@/components/result/ResultView.vue'
 import { EDITOR_ID } from './editorId'
 import { useEditorDisplaysStore } from '@/stores/editorDisplays'
 import { type ViewPanel, fillingPanel } from './editorLayout'
+import { nextShownTab } from './shownTab'
 import ResultTab from '@/components/result/ResultTab.vue'
 import ResultTabActions from '@/components/result/ResultTabActions.vue'
 import SplitGroup from '@/components/split/SplitGroup.vue'
@@ -159,9 +160,22 @@ const emit = defineEmits<{
 const sql = defineModel<string>('sql', { required: true })
 
 /**
- * Displayed tab: its id.
+ * Display of the editor, saved with it (`editorDisplays` store).
  */
-const selectedTab = ref<string | number>(0)
+const display = useEditorDisplaysStore().displayOf(props.editorId)
+
+/**
+ * Displayed tab: its id; at first, the one shown when the editor was left.
+ */
+const selectedTab = ref<string | number>(display.active_result ?? 0)
+
+// The tab shown is saved with the display of the editor, once it has an id
+// of the server.
+watch(selectedTab, (id) => {
+  if (typeof id === 'number' && id > 0) {
+    display.active_result = id
+  }
+})
 
 const session = useQuerySession(
   props.editorId,
@@ -202,7 +216,7 @@ provide(EDITOR_ID, props.editorId)
  * editor fills the height when it is open, the highest panel open; the
  * results and the Pivoteur start closed.
  */
-const panels = useEditorDisplaysStore().displayOf(props.editorId).panels
+const panels = display.panels
 
 /**
  * Opens or closes a panel of the view, as its splitter asks.
@@ -250,17 +264,15 @@ function toggleFilter(tab: QueryTab): void {
   tab.filterOpen = !tab.filterOpen
 }
 
-// The tabs of a new batch arrive: the first one is displayed. Otherwise,
-// the displayed tab has disappeared: the first remaining one takes its place.
+// The tab shown follows the changes of the tabs (`nextShownTab`).
 watch(
   () => state.tabs,
   (tabs, previous) => {
-    const fresh = tabs.find((tab) => !previous?.some((old) => old.id === tab.id))
-    if (fresh) {
-      selectedTab.value = fresh.id
-    } else if (!tabs.some((tab) => tab.id === selectedTab.value)) {
-      selectedTab.value = tabs[0]?.id ?? 0
-    }
+    selectedTab.value = nextShownTab(
+      tabs.map((tab) => tab.id),
+      previous?.map((tab) => tab.id),
+      typeof selectedTab.value === 'number' ? selectedTab.value : 0,
+    )
   },
 )
 

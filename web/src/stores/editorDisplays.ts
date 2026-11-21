@@ -1,7 +1,7 @@
 /**
  * Displays of the editors: for each editor, its panels (object navigator,
  * editor, results, Pivoteur, data explorer, console), open or closed with
- * their size, and the tree of its object navigator. The panels and the
+ * their size, the tree of its object navigator and its result tab shown. The panels and the
  * activity bar of an editor's tab read the same display, which outlives the
  * view (an editor without a connection has none).
  *
@@ -33,7 +33,7 @@ const LEGACY_PREFIXES = ['prisme.navigator.', 'prisme.editor.layout.', 'prisme.e
  * Display of a new editor: the navigator open, at the width of the theme,
  * on the root of the sources; the editor alone in the view, the results and
  * the Pivoteur closed; the data explorer closed; the console open, at the
- * height of the theme.
+ * height of the theme; no result tab chosen.
  */
 export function defaultEditorDisplay(): EditorDisplay {
   return {
@@ -46,6 +46,7 @@ export function defaultEditorDisplay(): EditorDisplay {
       console: { open: true, size: null },
     },
     navigator: { expanded: [SOURCES_KEY], scroll_top: 0, tables_by_rows: [] },
+    active_result: null,
   }
 }
 
