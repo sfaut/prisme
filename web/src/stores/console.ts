@@ -5,7 +5,7 @@
  * (`api/console.ts`).
  *
  * Each editor's tab has its console, open by default: whether it is open
- * and its height belong to the layout of the editor (`editorLayouts`). The
+ * and its height belong to the display of the editor (`editorDisplays`). The
  * lists are those of the editor on screen (`follow`): the elements its
  * session wrote, or, on request, those of all the editors and of Prisme
  * itself (`allEditors`, off by default). They are followed while a console

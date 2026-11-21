@@ -76,6 +76,7 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
             "../migrations/0030_query_history_diagnostics.sql"
         )),
         M::up(include_str!("../migrations/0031_editors_navigator.sql")),
+        M::up(include_str!("../migrations/0032_editors_display.sql")),
     ])
 });
 
@@ -381,6 +382,49 @@ mod tests {
                 params![user],
             )
             .unwrap();
+    }
+
+    #[test]
+    fn moves_the_navigator_of_the_editors_into_their_display() {
+        // Schema with the navigator of the editors (migration 0031).
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", "ON")
+            .unwrap();
+        MIGRATIONS.to_version(&mut connection, 31).unwrap();
+        let user = ensure_user(&connection, "owner@example.com").unwrap();
+        connection
+            .execute(
+                "INSERT INTO editors (user_id, navigator) VALUES                  (?1, '{\"open\":false,\"width\":320.5,\"expanded\":[\"sources\",\"source:1\"],                 \"scroll_top\":48,\"tables_by_rows\":[\"folder:tables:1/shop\"]}'),                  (?1, '{\"open\":true,\"width\":null,\"expanded\":[],\"scroll_top\":0}'),                  (?1, '')",
+                params![user],
+            )
+            .unwrap();
+
+        MIGRATIONS.to_latest(&mut connection).unwrap();
+        let mut statement = connection
+            .prepare("SELECT display FROM editors ORDER BY id")
+            .unwrap();
+        let displays: Vec<String> = statement
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        let read = |json: &str| -> crate::editor_display::EditorDisplay {
+            serde_json::from_str(json).unwrap()
+        };
+        let first = read(&displays[0]);
+        assert!(!first.panels.navigator.open);
+        assert_eq!(first.panels.navigator.size, Some(320.5));
+        assert!(first.panels.editor.open && first.panels.console.open);
+        assert!(!first.panels.explorer.open && !first.panels.results.open);
+        assert_eq!(first.navigator.expanded, ["sources", "source:1"]);
+        assert_eq!(first.navigator.scroll_top, 48.0);
+        assert_eq!(first.navigator.tables_by_rows, ["folder:tables:1/shop"]);
+        let second = read(&displays[1]);
+        assert!(second.panels.navigator.open);
+        assert_eq!(second.panels.navigator.size, None);
+        assert!(second.navigator.tables_by_rows.is_empty());
+        assert_eq!(displays[2], "");
     }
 
     #[test]

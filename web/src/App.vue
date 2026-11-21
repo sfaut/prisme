@@ -9,14 +9,14 @@
   the columns and the console the height, in splitters of Prisme
   (`split/`): dragging the line between two panels moves it, to the pixel,
   within their bounds (the editors keep `--editors-min-width` and
-  `--editors-min-height`, where the line stops), and the sizes are kept in
-  the browser (`navigator`, `editorLayouts` and `explorer` stores). On the
-  left of each editor's tab, down to its bottom, its activity bar (`PanelActivityBar`) opens and closes
-  the panels: a closed panel takes no room, and its line goes with it; a
-  drag of a line below the smallest size of its panel closes it too. The
-  object navigator and the console are open by default (`navigator` and
-  `editorLayouts` stores), the data explorer closed. Layout in Tailwind
-  classes.
+  `--editors-min-height`, where the line stops), and the panels, open or
+  closed with their sizes, are part of the display of the editor, saved
+  with it on the server side (`editorDisplays` store). On the left of each
+  editor's tab, down to its bottom, its activity bar (`PanelActivityBar`)
+  opens and closes the panels: a closed panel takes no room, and its line
+  goes with it; a drag of a line below the smallest size of its panel closes
+  it too. The object navigator and the console are open by default, the
+  data explorer closed. Layout in Tailwind classes.
 
   Each editor has its own object navigator, data explorer and console, in
   its tab.
@@ -24,8 +24,8 @@
   connection, an opened table or a chosen database (`USE`) runs there, and
   "Déconnecter" closes its session, which any of these actions on its source
   opens again. The explorer shows the values selected in the grid of its
-  editor. Both keep their layout (open or closed, their width) for their
-  editor, and the navigator its tree (`navigator` and `explorer` stores).
+  editor. The navigator keeps its tree with the display of its editor
+  (`navigator` store).
   The tabs of all the editors stay mounted, navigator, view and explorer:
   each view keeps its session (and its transactions) open, even when
   another editor is displayed. The console of the active editor alone is
@@ -44,14 +44,13 @@ import { Database } from '@lucide/vue'
 import { TabsContent, TabsRoot } from 'reka-ui'
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowReactive, watch } from 'vue'
 
+import type { Panels } from './api/generated/Panels'
 import type { SessionStatus } from './api/querySession'
 
 import { useConnectionsStore } from './stores/connections'
 import { useConsoleStore } from './stores/console'
-import { useEditorLayoutsStore } from './stores/editorLayouts'
-import { useExplorerStore } from './stores/explorer'
+import { useEditorDisplaysStore } from './stores/editorDisplays'
 import { type EditorEntry, useEditorsStore } from './stores/editors'
-import { useNavigatorStore } from './stores/navigator'
 import { showEditor } from './components/ui/toasts'
 
 import TopBar from '@/components/top-bar/TopBar.vue'
@@ -72,9 +71,16 @@ import UiTooltip from './components/ui/UiTooltip.vue'
 
 const connections = useConnectionsStore()
 const editors = useEditorsStore()
-const explorer = useExplorerStore()
-const navigatorStore = useNavigatorStore()
-const layouts = useEditorLayoutsStore()
+const displays = useEditorDisplaysStore()
+
+/**
+ * Panels of an editor's tab, part of its display.
+ *
+ * @param editorId Id of the editor.
+ */
+function panelsOf(editorId: number): Panels {
+  return displays.displayOf(editorId).panels
+}
 const consoleStore = useConsoleStore()
 
 // The lists of the console are those of the active editor, followed while
@@ -82,7 +88,7 @@ const consoleStore = useConsoleStore()
 watch(
   () => {
     const id = editors.activeId
-    return id !== null && !layouts.layoutOf(id).consoleFolded ? id : null
+    return id !== null && panelsOf(id).console.open ? id : null
   },
   (id) => consoleStore.follow(id),
   { immediate: true },
@@ -487,22 +493,18 @@ function selectSource(editorId: number, connectionId: number): void {
             <split-group direction="horizontal" class="min-w-0 flex-1">
               <split-panel
                 :id="`navigator-panel-${editor.id}`"
-                :size="navigatorStore.layoutOf(editor.id).width"
-                :folded="!navigatorStore.layoutOf(editor.id).open"
+                :size="panelsOf(editor.id).navigator.size"
+                :folded="!panelsOf(editor.id).navigator.open"
                 default-size="var(--navigator-width)"
                 min-size="var(--navigator-min-width)"
                 folded-size="0px"
                 class="flex"
-                @update:size="
-                  (size: number | null) => (navigatorStore.layoutOf(editor.id).width = size)
-                "
-                @update:folded="
-                  (folded: boolean) => (navigatorStore.layoutOf(editor.id).open = !folded)
-                "
+                @update:size="(size: number | null) => (panelsOf(editor.id).navigator.size = size)"
+                @update:folded="(folded: boolean) => (panelsOf(editor.id).navigator.open = !folded)"
               >
                 <!-- Closed, the object navigator stays mounted: its tree keeps its state. -->
                 <aside
-                  v-show="navigatorStore.layoutOf(editor.id).open"
+                  v-show="panelsOf(editor.id).navigator.open"
                   class="flex min-w-0 flex-1 flex-col gap-4 px-4 pt-3 pb-4"
                 >
                   <navigator-panel
@@ -528,7 +530,7 @@ function selectSource(editorId: number, connectionId: number): void {
                 </aside>
               </split-panel>
               <split-handle
-                v-if="navigatorStore.layoutOf(editor.id).open"
+                v-if="panelsOf(editor.id).navigator.open"
                 :controls="`navigator-panel-${editor.id}`"
                 :tooltip="{
                   title: 'Redimensionner le navigateur d’objets',
@@ -580,7 +582,7 @@ function selectSource(editorId: number, connectionId: number): void {
                 </div>
               </split-panel>
               <split-handle
-                v-if="explorer.layoutOf(editor.id).open"
+                v-if="panelsOf(editor.id).explorer.open"
                 :controls="`explorer-panel-${editor.id}`"
                 :tooltip="{
                   title: 'Redimensionner l’explorateur de données',
@@ -589,17 +591,17 @@ function selectSource(editorId: number, connectionId: number): void {
               />
               <split-panel
                 :id="`explorer-panel-${editor.id}`"
-                :size="explorer.layoutOf(editor.id).width"
-                :folded="!explorer.layoutOf(editor.id).open"
+                :size="panelsOf(editor.id).explorer.size"
+                :folded="!panelsOf(editor.id).explorer.open"
                 default-size="var(--explorer-width)"
                 min-size="var(--explorer-min-width)"
                 folded-size="0px"
                 class="flex"
-                @update:size="(size: number | null) => (explorer.layoutOf(editor.id).width = size)"
-                @update:folded="(folded: boolean) => (explorer.layoutOf(editor.id).open = !folded)"
+                @update:size="(size: number | null) => (panelsOf(editor.id).explorer.size = size)"
+                @update:folded="(folded: boolean) => (panelsOf(editor.id).explorer.open = !folded)"
               >
                 <aside
-                  v-if="explorer.layoutOf(editor.id).open"
+                  v-if="panelsOf(editor.id).explorer.open"
                   class="flex min-w-0 flex-1 flex-col px-4 pt-3 pb-4"
                 >
                   <explorer-panel :editor-id="editor.id" />
@@ -608,7 +610,7 @@ function selectSource(editorId: number, connectionId: number): void {
             </split-group>
           </split-panel>
           <split-handle
-            v-if="!layouts.layoutOf(editor.id).consoleFolded"
+            v-if="panelsOf(editor.id).console.open"
             :controls="`console-panel-${editor.id}`"
             :grip="false"
             :tooltip="{
@@ -618,19 +620,17 @@ function selectSource(editorId: number, connectionId: number): void {
           />
           <split-panel
             :id="`console-panel-${editor.id}`"
-            :size="layouts.layoutOf(editor.id).console"
-            :folded="layouts.layoutOf(editor.id).consoleFolded"
+            :size="panelsOf(editor.id).console.size"
+            :folded="!panelsOf(editor.id).console.open"
             default-size="var(--console-height)"
             min-size="var(--console-min-height)"
             folded-size="0px"
             class="flex"
-            @update:size="(size: number | null) => (layouts.layoutOf(editor.id).console = size)"
-            @update:folded="
-              (folded: boolean) => (layouts.layoutOf(editor.id).consoleFolded = folded)
-            "
+            @update:size="(size: number | null) => (panelsOf(editor.id).console.size = size)"
+            @update:folded="(folded: boolean) => (panelsOf(editor.id).console.open = !folded)"
           >
             <section
-              v-if="!layouts.layoutOf(editor.id).consoleFolded && editor.id === editors.activeId"
+              v-if="panelsOf(editor.id).console.open && editor.id === editors.activeId"
               class="flex min-h-0 min-w-0 flex-1 flex-col px-4 pt-1 pb-4"
             >
               <console-panel />

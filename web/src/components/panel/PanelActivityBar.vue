@@ -14,9 +14,8 @@
   Each button has its shortcut, Ctrl-K then a key (`panelChord.ts`), given
   in its tooltip; the bar of the active editor alone follows them.
 
-  The layouts come from the stores of the panels: `navigator`,
-  `editorLayouts` (the view's panels and the console, kept for this editor
-  even while it has no connection) and `explorer`.
+  The panels are those of the display of the editor (`editorDisplays`
+  store), kept even while it has no connection.
 -->
 <script setup lang="ts">
 import {
@@ -30,9 +29,9 @@ import {
 } from '@lucide/vue'
 import { type Component, computed, watchEffect } from 'vue'
 
-import { useEditorLayoutsStore } from '@/stores/editorLayouts'
-import { useExplorerStore } from '@/stores/explorer'
-import { useNavigatorStore } from '@/stores/navigator'
+import type { Panels } from '@/api/generated/Panels'
+
+import { useEditorDisplaysStore } from '@/stores/editorDisplays'
 import { type Tooltip, vTooltip } from '@/components/ui/tooltip'
 
 import { chordLabel, followChords } from './panelChord'
@@ -48,9 +47,7 @@ const props = defineProps<{
   active: boolean
 }>()
 
-const navigator = useNavigatorStore()
-const layouts = useEditorLayoutsStore()
-const explorer = useExplorerStore()
+const displays = useEditorDisplaysStore()
 
 /**
  * Button of a panel.
@@ -82,17 +79,16 @@ interface PanelButton {
  * Buttons of the bar, in groups set apart by a line.
  */
 const groups = computed<PanelButton[][]>(() => {
-  const objects = navigator.layoutOf(props.editorId)
-  const view = layouts.layoutOf(props.editorId)
-  const data = explorer.layoutOf(props.editorId)
+  const panels = displays.displayOf(props.editorId).panels
+  const toggle = (name: keyof Panels) => () => (panels[name].open = !panels[name].open)
   return [
     [
       {
         label: 'Navigateur d’objets',
         icon: ListTree,
         key: 'n',
-        open: objects.open,
-        toggle: () => (objects.open = !objects.open),
+        open: panels.navigator.open,
+        toggle: toggle('navigator'),
       },
     ],
     [
@@ -100,22 +96,22 @@ const groups = computed<PanelButton[][]>(() => {
         label: 'Éditeur',
         icon: Code,
         key: 'e',
-        open: !view.editorFolded,
-        toggle: () => (view.editorFolded = !view.editorFolded),
+        open: panels.editor.open,
+        toggle: toggle('editor'),
       },
       {
         label: 'Résultat',
         icon: Table,
         key: 'r',
-        open: !view.resultsFolded,
-        toggle: () => (view.resultsFolded = !view.resultsFolded),
+        open: panels.results.open,
+        toggle: toggle('results'),
       },
       {
         label: 'Pivoteur',
         icon: TableProperties,
         key: 'p',
-        open: !view.pivotFolded,
-        toggle: () => (view.pivotFolded = !view.pivotFolded),
+        open: panels.pivot.open,
+        toggle: toggle('pivot'),
       },
     ],
     [
@@ -123,15 +119,15 @@ const groups = computed<PanelButton[][]>(() => {
         label: 'Explorateur de données',
         icon: Braces,
         key: 'x',
-        open: data.open,
-        toggle: () => (data.open = !data.open),
+        open: panels.explorer.open,
+        toggle: toggle('explorer'),
       },
       {
         label: 'Console',
         icon: SquareTerminal,
         key: 'c',
-        open: !view.consoleFolded,
-        toggle: () => (view.consoleFolded = !view.consoleFolded),
+        open: panels.console.open,
+        toggle: toggle('console'),
       },
     ],
   ]
@@ -152,12 +148,10 @@ function tooltip(button: PanelButton): Tooltip {
  * panels and the console take their default size.
  */
 function distribute(): void {
-  const view = layouts.layoutOf(props.editorId)
-  view.results = null
-  view.pivot = null
-  view.console = null
-  navigator.layoutOf(props.editorId).width = null
-  explorer.layoutOf(props.editorId).width = null
+  const panels = displays.displayOf(props.editorId).panels
+  for (const name of ['results', 'pivot', 'console', 'navigator', 'explorer'] as const) {
+    panels[name].size = null
+  }
 }
 
 /**

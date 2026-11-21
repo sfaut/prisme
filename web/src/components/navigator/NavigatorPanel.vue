@@ -8,8 +8,9 @@
   Each editor has its own navigator, in its tab, which acts on it: its
   connection is the chosen source, its session's database is the current
   one. Each navigator keeps its open nodes and its scroll, and its layout
-  (open or closed, its width), in the `navigator` store, which saves them
-  with the editor on the server side, for a reload as for a reopening; the
+  (open or closed, its width), in the `navigator` store, part of the
+  display of the editor saved on the server side (`editorDisplays` store),
+  for a reload as for a reopening; the
   catalogs read, the list of the connections and the
   windows are common to all. A navigator builds its tree only while its
   editor is active: the others wait, hidden, without following the catalogs
@@ -260,7 +261,7 @@ const nodes = computed(() => {
         showSystemSchemas: connection.show_system_schemas,
       })),
       receiving.value,
-      new Set(tree.tablesByRows),
+      new Set(tree.tables_by_rows),
     )
   }
   return built
@@ -640,9 +641,11 @@ let seenConnection: number | null | undefined
  * @param connectionId Id of the editor's connection, `null` if none.
  */
 function openSources(connectionId: number | null): void {
-  const changed = seenConnection === undefined ? !tree.known : connectionId !== seenConnection
+  const changed =
+    seenConnection === undefined
+      ? navigatorStore.isNew(props.editorId)
+      : connectionId !== seenConnection
   seenConnection = connectionId
-  tree.known = true
   if (changed && connectionId !== null && !expandedKeys.value.includes(sourceKey(connectionId))) {
     expandedKeys.value = [...expandedKeys.value, sourceKey(connectionId)]
   }
@@ -665,7 +668,7 @@ watch(
   (active) => {
     if (active) {
       openSources(props.selectedId)
-      pendingScroll = tree.scrollTop
+      pendingScroll = tree.scroll_top
       retryScroll()
     }
   },

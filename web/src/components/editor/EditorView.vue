@@ -45,9 +45,8 @@
   the height it had when it closed, or, without one, shares the room in
   equal parts with the panel that fills. All three closed, the room shows
   the sunken background. A run opens the results, which show its tabs. The
-  heights and the closed panels are kept for this editor (`editorLayouts`
-  store). The
-  padding of the sides is inside the panels: a panel clips its content at
+  heights and the closed panels are part of the display of this editor,
+  saved with it (`editorDisplays` store). The padding of the sides is inside the panels: a panel clips its content at
   its edge, which may fall between two pixels, and would cut the left
   border of a field or of the grid set against it.
 -->
@@ -89,7 +88,7 @@ import PanelHeader from '@/components/panel/PanelHeader.vue'
 import PivotPanel from '@/components/pivot/PivotPanel.vue'
 import ResultView from '@/components/result/ResultView.vue'
 import { EDITOR_ID } from './editorId'
-import { useEditorLayoutsStore } from '@/stores/editorLayouts'
+import { useEditorDisplaysStore } from '@/stores/editorDisplays'
 import { type ViewPanel, fillingPanel } from './editorLayout'
 import ResultTab from '@/components/result/ResultTab.vue'
 import ResultTabActions from '@/components/result/ResultTabActions.vue'
@@ -197,13 +196,23 @@ const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
 provide(EDITOR_ID, props.editorId)
 
 /**
- * Layout of the view, kept for this editor (`editorLayouts` store): the
- * heights the user gave the results and the Pivoteur, in CSS pixels (`null`:
- * a share of the room), and the closed panels. The editor fills the height
- * when it is open, the highest panel open; the results and the Pivoteur
- * start closed.
+ * Panels of the editor's tab, part of its display (`editorDisplays` store):
+ * those of the view are open or closed, with the heights the user gave the
+ * results and the Pivoteur, in CSS pixels (`null`: a share of the room). The
+ * editor fills the height when it is open, the highest panel open; the
+ * results and the Pivoteur start closed.
  */
-const layout = useEditorLayoutsStore().layoutOf(props.editorId)
+const panels = useEditorDisplaysStore().displayOf(props.editorId).panels
+
+/**
+ * Opens or closes a panel of the view, as its splitter asks.
+ *
+ * @param panel Panel of the view.
+ * @param folded Is it closed?
+ */
+function setFolded(panel: ViewPanel, folded: boolean): void {
+  panels[panel].open = !folded
+}
 
 /**
  * Id of a panel, unique to the editor: the line that resizes it names it.
@@ -217,7 +226,7 @@ function panelId(panel: ViewPanel): string {
 /**
  * Panel that fills the height the others leave.
  */
-const fillPanel = computed(() => fillingPanel(layout))
+const fillPanel = computed(() => fillingPanel(panels))
 
 /**
  * Tab shown, whose buttons (refresh, filter, export) stand right of the
@@ -419,7 +428,7 @@ const exactTip = computed((): Tooltip => {
  */
 function launch(kind: typeof launcher.value, text: string, options: RunTarget): void {
   launcher.value = kind
-  layout.resultsFolded = false
+  panels.results.open = true
   session.run(text, options)
 }
 
@@ -757,15 +766,16 @@ defineExpose({
     -->
     <split-panel
       :id="panelId('editor')"
-      v-model:folded="layout.editorFolded"
+      :folded="!panels.editor.open"
       :fill="fillPanel === 'editor'"
       min-size="var(--editor-min-height)"
       folded-size="0px"
       class="flex flex-col"
+      @update:folded="setFolded('editor', $event)"
     >
       <div
         class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pt-2 pb-3"
-        :inert="layout.editorFolded"
+        :inert="!panels.editor.open"
       >
         <panel-header title="Éditeur">
           <template #inline>
@@ -869,7 +879,7 @@ defineExpose({
       results; below their smallest height, they close.
     -->
     <split-handle
-      v-if="!layout.editorFolded && !layout.resultsFolded"
+      v-if="panels.editor.open && panels.results.open"
       :controls="panelId('results')"
       tooltip="Glisser pour redimensionner le résultat, en deçà de sa hauteur minimale pour le fermer"
     />
@@ -880,12 +890,13 @@ defineExpose({
     -->
     <split-panel
       :id="panelId('results')"
-      v-model:size="layout.results"
-      v-model:folded="layout.resultsFolded"
+      v-model:size="panels.results.size"
+      :folded="!panels.results.open"
       :fill="fillPanel === 'results'"
       min-size="var(--results-min-height)"
       folded-size="0px"
       class="flex flex-col"
+      @update:folded="setFolded('results', $event)"
     >
       <!--
         The result grid must have a bounded height: otherwise its scroll area
@@ -899,7 +910,7 @@ defineExpose({
         v-model="selectedTab"
         :unmount-on-hide="false"
         class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pt-3 pb-3"
-        :inert="layout.resultsFolded"
+        :inert="!panels.results.open"
       >
         <div class="flex shrink-0 items-center gap-3">
           <h2 class="shrink-0 text-base font-semibold text-fg-strong">Résultat</h2>
@@ -985,7 +996,7 @@ defineExpose({
       Pivoteur; below its smallest height, it closes.
     -->
     <split-handle
-      v-if="!layout.pivotFolded && fillPanel !== 'pivot'"
+      v-if="panels.pivot.open && fillPanel !== 'pivot'"
       :controls="panelId('pivot')"
       tooltip="Glisser pour redimensionner le Pivoteur, en deçà de sa hauteur minimale pour le fermer"
     />
@@ -997,16 +1008,17 @@ defineExpose({
     -->
     <split-panel
       :id="panelId('pivot')"
-      v-model:size="layout.pivot"
-      v-model:folded="layout.pivotFolded"
+      v-model:size="panels.pivot.size"
+      :folded="!panels.pivot.open"
       :fill="fillPanel === 'pivot'"
       min-size="var(--pivot-min-height)"
       folded-size="0px"
       class="flex flex-col"
+      @update:folded="setFolded('pivot', $event)"
     >
       <pivot-panel
         :tab="shownTab"
-        :open="!layout.pivotFolded"
+        :open="panels.pivot.open"
         :connection-id="connection.id"
         :editor-id="editorId"
       />

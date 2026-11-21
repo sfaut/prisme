@@ -36,9 +36,9 @@ vi.mock('@/api/exports', () => ({
 
 // One saved editor, on connection 1.
 vi.mock('@/api/editors', () => ({
-  listEditors: async () => [{ id: 1, name: '', connection_id: 1, sql: '', navigator: null }],
+  listEditors: async () => [{ id: 1, name: '', connection_id: 1, sql: '', display: null }],
   updateEditor: async () => {},
-  saveNavigator: async () => {},
+  saveEditorDisplay: async () => {},
 }))
 
 /**

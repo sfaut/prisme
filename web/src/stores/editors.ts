@@ -18,8 +18,7 @@ import { computed, ref } from 'vue'
 import { clearPending, markPending } from '@/api/sync'
 import type { BatchProgress } from '@/api/querySession'
 import { useExplorerStore } from '@/stores/explorer'
-import { useEditorLayoutsStore } from '@/stores/editorLayouts'
-import { useNavigatorStore } from '@/stores/navigator'
+import { useEditorDisplaysStore } from '@/stores/editorDisplays'
 
 import {
   closeEditor,
@@ -151,13 +150,13 @@ export const useEditorsStore = defineStore('editors', () => {
   )
 
   /**
-   * Interface editor built from the server's, its navigator handed over to
-   * the navigator store.
+   * Interface editor built from the server's, its display handed over to
+   * the displays store.
    *
    * @param editor Editor received from the server.
    */
   function received(editor: Editor): EditorEntry {
-    useNavigatorStore().seed(editor.id, editor.navigator)
+    useEditorDisplaysStore().seed(editor.id, editor.display)
     return entryOf(editor)
   }
 
@@ -299,10 +298,9 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
-   * Closes an editor (can be reopened for 24 hours) and forgets the layout of
-   * its view and its explorer; its navigator, saved with it, comes back when
-   * it is reopened. Its neighbour becomes active. The last editor closed is
-   * replaced by an empty editor.
+   * Closes an editor (can be reopened for 24 hours); its display, saved with
+   * it, comes back when it is reopened. Its neighbour becomes active. The
+   * last editor closed is replaced by an empty editor.
    *
    * @param id Id of the editor.
    */
@@ -310,11 +308,10 @@ export const useEditorsStore = defineStore('editors', () => {
     if (timers.has(id)) {
       await save(id)
     }
-    await useNavigatorStore().flush(id)
+    await useEditorDisplaysStore().flush(id)
     await closeEditor(id)
-    useEditorLayoutsStore().forget(id)
     delete progress.value[id]
-    useNavigatorStore().forget(id)
+    useEditorDisplaysStore().forget(id)
     useExplorerStore().forget(id)
     const index = editors.value.findIndex((editor) => editor.id === id)
     editors.value = editors.value.filter((editor) => editor.id !== id)
