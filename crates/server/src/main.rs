@@ -23,6 +23,7 @@ mod error_detail;
 mod exports;
 mod master_key;
 mod navigator;
+mod navigator_state;
 mod profile;
 mod query_session;
 mod recorder;

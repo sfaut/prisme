@@ -8,8 +8,9 @@
   Each editor has its own navigator, in its tab, which acts on it: its
   connection is the chosen source, its session's database is the current
   one. Each navigator keeps its open nodes and its scroll, and its layout
-  (open or closed, its width), in the `navigator` store, which keeps them in
-  the browser; the catalogs read, the list of the connections and the
+  (open or closed, its width), in the `navigator` store, which saves them
+  with the editor on the server side, for a reload as for a reopening; the
+  catalogs read, the list of the connections and the
   windows are common to all. A navigator builds its tree only while its
   editor is active: the others wait, hidden, without following the catalogs
   as they arrive.

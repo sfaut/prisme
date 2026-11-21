@@ -181,7 +181,7 @@ The tab bar above the SQL editor holds several editors:
 - **Nouveau** (New), the blue button at the right of the top bar, opens an editor on the connection of the active one.
 - A **dot** and a **progress bar**, as on the [result tabs](#result-tabs), follow the last run of the editor's queries: pulsing while they run, then green once all are done, red if one failed.
 - **Double-click** a tab to rename it. Drag it to move it.
-- The **cross** (or a middle click) closes it. A closed editor can be reopened for 24 hours from the **Rouvrir** (Reopen) button, the clock icon.
+- The **cross** (or a middle click) closes it. A closed editor can be reopened for 24 hours from the **Rouvrir** (Reopen) button, the clock icon; its object navigator comes back as it was left (open levels, scroll, width).
 
 Each editor has its own connection, its own session (and therefore its own transactions, see [Transactions](#transactions)) and its own results. Everything is saved as you type: texts, editors, result tabs and rows. A page reload or a browser restart brings everything back. The result tabs show at once, and their rows arrive in the background, the tab shown first, the status bar counting them ("Chargement : 120 000 / 1 000 000 lignes"): the grid and the Pivoteur follow them as during a run, and the editor can run queries meanwhile.
 

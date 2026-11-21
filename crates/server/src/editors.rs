@@ -7,9 +7,10 @@
 //! itself as the run goes (`recorder.rs`): the browser never sends them back.
 //! Their rows are saved in chunks (`result_chunks`), which the page reads
 //! one by one: neither a value of the internal database nor an answer holds
-//! the rows of a whole result, whatever its size. Closing an editor marks it
-//! as closed (`closed_at`); it stays reopenable for 24 hours, then it is
-//! purged.
+//! the rows of a whole result, whatever its size. The state of its object
+//! navigator is saved with it (`navigator_state.rs`). Closing an editor marks
+//! it as closed (`closed_at`), with everything it holds; it stays reopenable
+//! for 24 hours, then it is purged.
 //!
 //! Routes:
 //!
@@ -18,6 +19,7 @@
 //! | `GET /api/editors`                       | Open editors, in order.                                 |
 //! | `POST /api/editors`                      | Creates an empty editor, after the others.              |
 //! | `PUT /api/editors/{id}`                  | Changes the name, the text or the connection (204).     |
+//! | `PUT /api/editors/{id}/navigator`        | Saves the state of the object navigator (204).          |
 //! | `DELETE /api/editors/{id}`               | Closes the editor; reopenable for 24 hours (204).       |
 //! | `PUT /api/editors/order`                 | Orders the open editors as given (204).                 |
 //! | `GET /api/editors/closed`                | Editors closed less than 24 hours ago.                  |
@@ -46,6 +48,7 @@ use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
 use crate::connections::count;
 use crate::error_detail::{ErrorDetail, Field};
+use crate::navigator_state::NavigatorState;
 use crate::query_session::LimitReport;
 use crate::tab_pivot::{ReplacedTab, TabPivot, carry_over};
 
@@ -87,6 +90,8 @@ pub struct Editor {
     pub connection_id: Option<i64>,
     /// SQL text of the editor.
     pub sql: String,
+    /// State of its object navigator, absent as long as none was saved.
+    pub navigator: Option<NavigatorState>,
 }
 
 /// Saved result tab.
@@ -253,20 +258,34 @@ pub fn purge(db: &Connection) -> Result<usize, EditorsError> {
 pub fn list_open(db: &Connection, user_id: i64) -> Result<Vec<Editor>, EditorsError> {
     purge(db)?;
     let mut statement = db.prepare(
-        "SELECT id, name, connection_id, sql FROM editors
+        "SELECT id, name, connection_id, sql, navigator FROM editors
          WHERE user_id = ?1 AND closed_at = '' ORDER BY position, id",
     )?;
-    let editors = statement
+    let rows = statement
         .query_map(params![user_id], |row| {
-            Ok(Editor {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                connection_id: row.get(2)?,
-                sql: row.get(3)?,
-            })
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get::<_, String>(4)?,
+            ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(editors)
+    rows.into_iter()
+        .map(|(id, name, connection_id, sql, navigator)| {
+            Ok(Editor {
+                id,
+                name,
+                connection_id,
+                sql,
+                // Empty string: no state saved yet.
+                navigator: (!navigator.is_empty())
+                    .then(|| serde_json::from_str(&navigator))
+                    .transpose()?,
+            })
+        })
+        .collect()
 }
 
 /// Result tabs of the open editor `editor_id`, if it belongs to the user;
@@ -389,6 +408,7 @@ pub fn create(db: &Connection, user_id: i64, new: &NewEditor) -> Result<Editor, 
         name: String::new(),
         connection_id: new.connection_id,
         sql: String::new(),
+        navigator: None,
     })
 }
 
@@ -413,6 +433,22 @@ pub fn update(
             changed.sql,
             changed.connection_id
         ],
+    )?;
+    Ok(updated == 1)
+}
+
+/// Saves the state of the object navigator of the open editor `id`. Returns
+/// `false` if it does not exist or belongs to another user.
+pub fn update_navigator(
+    db: &Connection,
+    user_id: i64,
+    id: i64,
+    state: &NavigatorState,
+) -> Result<bool, EditorsError> {
+    let updated = db.execute(
+        "UPDATE editors SET navigator = ?3
+         WHERE id = ?1 AND user_id = ?2 AND closed_at = ''",
+        params![id, user_id, serde_json::to_string(state)?],
     )?;
     Ok(updated == 1)
 }
@@ -694,6 +730,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/editors/closed", get(list_closed_editors))
         .route("/api/editors/{id}", put(update_editor).delete(close_editor))
         .route("/api/editors/{id}/reopen", post(reopen_editor))
+        .route("/api/editors/{id}/navigator", put(save_navigator))
         .route("/api/editors/{id}/results", get(list_results))
         .route("/api/editors/{id}/results/order", put(reorder_results))
         .route(
@@ -848,6 +885,20 @@ async fn read_chunk(
     Ok(([(header::CONTENT_TYPE, "application/json")], rows))
 }
 
+/// `PUT /api/editors/{id}/navigator`: saves the state of the object navigator
+/// of an editor.
+async fn save_navigator(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<i64>,
+    Json(navigator): Json<NavigatorState>,
+) -> Result<StatusCode, ApiError> {
+    let found = state
+        .with_db(move |db, _| update_navigator(db, user.id, id, &navigator))
+        .await?;
+    no_content_or_not_found(found)
+}
+
 /// `PUT /api/results/{id}/pivot`: saves the configuration of the Pivoteur of
 /// a result tab.
 async fn update_pivot(
@@ -940,6 +991,29 @@ mod tests {
         .unwrap();
         assert!(closed_recently(&db, user_id).unwrap().is_empty());
         assert!(!reopen(&db, user_id, editor.id).unwrap());
+    }
+
+    #[test]
+    fn keeps_the_navigator_of_an_editor_through_its_reopening() {
+        let (db, user_id) = setup();
+        let editor = create(&db, user_id, &NewEditor::default()).unwrap();
+        assert_eq!(list_open(&db, user_id).unwrap()[0].navigator, None);
+
+        let state = NavigatorState {
+            open: false,
+            width: Some(320.5),
+            expanded: vec!["sources".to_string(), "source:1".to_string()],
+            scroll_top: 48.0,
+        };
+        assert!(update_navigator(&db, user_id, editor.id, &state).unwrap());
+        let other = store::ensure_user(&db, "other@example.com").unwrap();
+        assert!(!update_navigator(&db, other, editor.id, &state).unwrap());
+
+        assert!(close(&db, user_id, editor.id).unwrap());
+        // A closed editor keeps its state, but does not take a new one.
+        assert!(!update_navigator(&db, user_id, editor.id, &state).unwrap());
+        assert!(reopen(&db, user_id, editor.id).unwrap());
+        assert_eq!(list_open(&db, user_id).unwrap()[0].navigator, Some(state));
     }
 
     #[test]

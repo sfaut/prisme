@@ -151,6 +151,17 @@ export const useEditorsStore = defineStore('editors', () => {
   )
 
   /**
+   * Interface editor built from the server's, its navigator handed over to
+   * the navigator store.
+   *
+   * @param editor Editor received from the server.
+   */
+  function received(editor: Editor): EditorEntry {
+    useNavigatorStore().seed(editor.id, editor.navigator)
+    return entryOf(editor)
+  }
+
+  /**
    * Makes an editor active, and remembers it.
    *
    * @param id Id of the editor.
@@ -168,7 +179,7 @@ export const useEditorsStore = defineStore('editors', () => {
    * Loads the open editors; with none, creates one.
    */
   async function load(): Promise<void> {
-    editors.value = (await listEditors()).map(entryOf)
+    editors.value = (await listEditors()).map(received)
     if (editors.value.length === 0) {
       await create(null)
       return
@@ -185,7 +196,7 @@ export const useEditorsStore = defineStore('editors', () => {
    */
   async function create(connectionId: number | null): Promise<void> {
     const editor = await createEditor(connectionId)
-    editors.value = [...editors.value, entryOf(editor)]
+    editors.value = [...editors.value, received(editor)]
     activate(editor.id)
   }
 
@@ -289,7 +300,8 @@ export const useEditorsStore = defineStore('editors', () => {
 
   /**
    * Closes an editor (can be reopened for 24 hours) and forgets the layout of
-   * its view, its navigator and its explorer; its neighbour becomes active. The last editor closed is
+   * its view and its explorer; its navigator, saved with it, comes back when
+   * it is reopened. Its neighbour becomes active. The last editor closed is
    * replaced by an empty editor.
    *
    * @param id Id of the editor.
@@ -298,6 +310,7 @@ export const useEditorsStore = defineStore('editors', () => {
     if (timers.has(id)) {
       await save(id)
     }
+    await useNavigatorStore().flush(id)
     await closeEditor(id)
     useEditorLayoutsStore().forget(id)
     delete progress.value[id]
@@ -340,7 +353,7 @@ export const useEditorsStore = defineStore('editors', () => {
     await reopenEditor(id)
     const reopened = (await listEditors()).find((editor) => editor.id === id)
     if (reopened) {
-      editors.value = [...editors.value, entryOf(reopened)]
+      editors.value = [...editors.value, received(reopened)]
       activate(id)
     }
     closed.value = closed.value.filter((editor) => editor.id !== id)

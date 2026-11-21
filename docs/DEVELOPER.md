@@ -76,13 +76,11 @@ Each area has its folder in `web/src/components/` (see "Repository layout"), wit
 
 ### Local storage
 
-The display preferences of a machine stay in the browser's local storage, under keys `prisme.<area>.<setting>`: the area is that of the folders of the components (`navigator`, `editor`, `console`, `explorer`), `app` for the whole application, the setting in camelCase. Each area keeps them in its store, read and written by `web/src/utils/storedValues.ts` (flags, sizes) or `split/storedLayout.ts` (layout of an editor, of its navigator, of its explorer). A missing or unreadable value gives its default.
+The display preferences of a machine stay in the browser's local storage, under keys `prisme.<area>.<setting>`: the area is that of the folders of the components (`navigator`, `editor`, `console`, `explorer`), `app` for the whole application, the setting in camelCase. Each area keeps them in its store, read and written by `web/src/utils/storedValues.ts` (flags, sizes) or `split/storedLayout.ts` (layout of an editor, of its explorer). A missing or unreadable value gives its default. The object navigator of an editor is an exception: its state (panel open and its width, open nodes, scroll) is saved with the editor on the server side (`editors.navigator`, `PUT /api/editors/{id}/navigator`), so that it comes back when a closed editor is reopened; the keys `prisme.navigator.*` that held it before are removed.
 
 | Key | Value |
 |---|---|
 | `prisme.app.colorMode` | `system`, `light` or `dark` |
-| `prisme.navigator.layout.<editor>` | the object navigator of an editor open, its width (JSON), forgotten when it closes |
-| `prisme.navigator.tree.<editor>` | open nodes and scroll of the object navigator of an editor (JSON), forgotten when it closes |
 | `prisme.editor.active` | id of the active editor |
 | `prisme.editor.layout.<editor>` | heights of the results and of the Pivoteur of an editor, and which of its three panels are closed (`…Folded`), then the height of its console and whether it is closed (`console`, `consoleFolded`), JSON, forgotten when it closes |
 | `prisme.console.allEditors` | the consoles show the elements of all the editors (`true`), or those of their editor |

@@ -1,8 +1,11 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { nextTick } from 'vue'
+
 import { syncState } from '@/api/sync'
 import { useEditorsStore } from '../editors'
+import { useNavigatorStore } from '../navigator'
 
 /**
  * Answers the next save with `status` (204 accepted, 500 refused).
@@ -16,7 +19,9 @@ beforeEach(() => {
     'fetch',
     vi.fn(async (_path: string, init: RequestInit) => {
       if (init.method === 'POST') {
-        return new Response(JSON.stringify({ id: 1, name: '', connection_id: null, sql: '' }))
+        return new Response(
+          JSON.stringify({ id: 1, name: '', connection_id: null, sql: '', navigator: null }),
+        )
       }
       if (saveStatus === 204) {
         return new Response(null, { status: 204 })
@@ -70,21 +75,29 @@ describe('closing an editor', () => {
     window.localStorage.clear()
   })
 
-  it('forgets its navigator and its explorer', async () => {
+  it('forgets its explorer', async () => {
     const editors = useEditorsStore()
     await editors.create(null)
     window.localStorage.setItem('prisme.explorer.layout.1', '{}')
-    window.localStorage.setItem('prisme.navigator.layout.1', '{}')
-    window.localStorage.setItem('prisme.navigator.tree.1', '{}')
-    window.localStorage.setItem('prisme.navigator.tree.2', '{}')
 
     await editors.close(1)
 
     expect(window.localStorage.getItem('prisme.explorer.layout.1')).toBeNull()
-    expect(window.localStorage.getItem('prisme.navigator.layout.1')).toBeNull()
-    expect(window.localStorage.getItem('prisme.navigator.tree.1')).toBeNull()
-    expect(window.localStorage.getItem('prisme.navigator.tree.2')).toBe('{}')
     window.localStorage.clear()
+  })
+
+  it('saves its navigator before closing, which keeps it for a reopening', async () => {
+    const editors = useEditorsStore()
+    await editors.create(null)
+    useNavigatorStore().layoutOf(1).width = 320
+    await nextTick()
+
+    await editors.close(1)
+
+    const calls = vi.mocked(fetch).mock.calls.map(([path, init]) => `${init!.method} ${path}`)
+    const saved = calls.indexOf('PUT /api/editors/1/navigator')
+    expect(saved).toBeGreaterThanOrEqual(0)
+    expect(saved).toBeLessThan(calls.indexOf('DELETE /api/editors/1'))
   })
 })
 

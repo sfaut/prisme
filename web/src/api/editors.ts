@@ -8,6 +8,7 @@ import type { Cell } from './querySession'
 import type { ClosedEditor } from './generated/ClosedEditor'
 import type { Editor } from './generated/Editor'
 import type { EditorUpdate } from './generated/EditorUpdate'
+import type { NavigatorState } from './generated/NavigatorState'
 import type { ResultTab } from './generated/ResultTab'
 import type { ResultTabUpdate } from './generated/ResultTabUpdate'
 import type { TabPivot } from './generated/TabPivot'
@@ -41,6 +42,21 @@ export async function updateEditor(
   options: RequestOptions = {},
 ): Promise<void> {
   await request('PUT', `/api/editors/${id}`, editor, options)
+}
+
+/**
+ * Saves the state of the object navigator of an editor.
+ *
+ * @param id Id of the editor.
+ * @param state Whole state of the navigator.
+ * @param options Options of the request, such as `keepalive` for a save made as the page closes.
+ */
+export async function saveNavigator(
+  id: number,
+  state: NavigatorState,
+  options: RequestOptions = {},
+): Promise<void> {
+  await request('PUT', `/api/editors/${id}/navigator`, state, options)
 }
 
 /**

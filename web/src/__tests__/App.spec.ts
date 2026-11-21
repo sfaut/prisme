@@ -40,14 +40,29 @@ vi.mock('@/api/exports', () => ({
  */
 const editorIds = vi.hoisted(() => ({ next: 1 }))
 
+/**
+ * Saves of the navigators' states.
+ */
+const saveNavigator = vi.hoisted(() =>
+  vi.fn<(typeof import('@/api/editors'))['saveNavigator']>(async () => {}),
+)
+
 // No saved editor: the interface creates one, without a connection.
 vi.mock('@/api/editors', () => ({
   listEditors: async () => [],
-  createEditor: async () => ({ id: editorIds.next++, name: '', connection_id: null, sql: '' }),
+  createEditor: async () => ({
+    id: editorIds.next++,
+    name: '',
+    connection_id: null,
+    sql: '',
+    navigator: null,
+  }),
+  saveNavigator,
 }))
 
 beforeEach(() => {
   editorIds.next = 1
+  saveNavigator.mockClear()
   setActivePinia(createPinia())
   // The navigator's tree (virtual scrolling) queries the media queries, missing
   // from jsdom. Without layout, it shows no node anyway.
@@ -110,7 +125,13 @@ describe('App', () => {
     await button('Navigateur d’objets').trigger('click')
     expect(objects()).toBe(false)
     expect(wrapper.find('[aria-controls^="navigator-panel-"]').exists()).toBe(false)
-    expect(JSON.parse(window.localStorage.getItem('prisme.navigator.layout.1')!).open).toBe(false)
+    await vi.waitFor(() =>
+      expect(saveNavigator).toHaveBeenLastCalledWith(
+        1,
+        expect.objectContaining({ open: false }),
+        expect.anything(),
+      ),
+    )
     await button('Navigateur d’objets').trigger('click')
     expect(objects()).toBe(true)
 
