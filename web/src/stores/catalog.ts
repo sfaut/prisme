@@ -27,15 +27,14 @@ import type { Flavor } from '@/api/generated/Flavor'
 import type { EventInfo } from '@/api/generated/EventInfo'
 import type { RoutineInfo } from '@/api/generated/RoutineInfo'
 import type { TableDetails } from '@/api/generated/TableDetails'
-import type { TableKind } from '@/api/generated/TableKind'
+import type { TableInfo } from '@/api/generated/TableInfo'
 import { describe } from '@/api/messages'
 
 /**
- * Table or view of the catalog.
+ * Table or view of the catalog: what the server sent of it (name, nature,
+ * estimated row count), then its details.
  */
-export interface CatalogTable {
-  name: string
-  kind: TableKind
+export interface CatalogTable extends TableInfo {
   /**
    * Columns, indexes, foreign keys and triggers, `null` as long as they are not received.
    */

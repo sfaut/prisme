@@ -30,6 +30,7 @@ const catalog: CatalogSchema[] = [
       {
         name: 'orders',
         kind: 'table',
+        rows: 1300,
         details: {
           table: 'orders',
           columns: [
@@ -65,8 +66,8 @@ const catalog: CatalogSchema[] = [
           triggers: [],
         },
       },
-      { name: 'pending', kind: 'table', details: null },
-      { name: 'v_orders', kind: 'view', details: null },
+      { name: 'pending', kind: 'table', rows: 0, details: null },
+      { name: 'v_orders', kind: 'view', rows: null, details: null },
     ],
     routines: [
       { name: 'purge', kind: 'procedure' },
@@ -216,6 +217,12 @@ describe('catalogNodes', () => {
     expect(labels(pending)).toEqual(['chargement…'])
   })
 
+  it('notes the estimated row count of a table, not of a view', () => {
+    const [tables, views] = catalogNodes(1, catalog)[0]?.children ?? []
+    expect(tables?.children?.map((node) => node.note)).toEqual(['1,3 k', '0'])
+    expect(views?.children?.[0]?.note).toBeUndefined()
+  })
+
   it('marks the current database', () => {
     const [shop, pending] = catalogNodes(1, catalog, 'shop')
     expect(shop?.current).toBe(true)
@@ -271,6 +278,7 @@ describe('catalogNodes', () => {
     const table = (name: string, keys: ForeignKeyInfo[]): CatalogTable => ({
       name,
       kind: 'table',
+      rows: null,
       details: { table: name, columns: [], indexes: [], foreign_keys: keys, triggers: [] },
     })
     const schemas: CatalogSchema[] = [
@@ -409,8 +417,8 @@ describe('applyCatalogEvent', () => {
       schema: 'a',
       objects: {
         tables: [
-          { name: 't', kind: 'table' },
-          { name: 'u', kind: 'table' },
+          { name: 't', kind: 'table', rows: 0 },
+          { name: 'u', kind: 'table', rows: 0 },
         ],
         routines: [{ name: 'p', kind: 'procedure' }],
         events: [],

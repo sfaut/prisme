@@ -308,14 +308,15 @@ async fn reads_the_catalog_schema_by_schema() {
                 let kinds: Vec<_> = objects
                     .tables
                     .iter()
-                    .map(|table| (table.name.as_str(), table.kind))
+                    .map(|table| (table.name.as_str(), table.kind, table.rows))
                     .collect();
+                // Empty tables are estimated at 0 rows; a view has no estimate.
                 assert_eq!(
                     kinds,
                     [
-                        ("p", TableKind::Table),
-                        ("t", TableKind::Table),
-                        ("v", TableKind::View)
+                        ("p", TableKind::Table, Some(0)),
+                        ("t", TableKind::Table, Some(0)),
+                        ("v", TableKind::View, None)
                     ]
                 );
                 let routines: Vec<_> = objects

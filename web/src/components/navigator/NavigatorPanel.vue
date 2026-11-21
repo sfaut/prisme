@@ -36,7 +36,9 @@
   session is ready, and disabled while queries run.
 
   Each source carries as a badge the flavor of its server (`mysql`,
-  `mariadb`), seen on the last connection or when reading the catalog.
+  `mariadb`), seen on the last connection or when reading the catalog. Each
+  table shows after its name its row count estimated by the server, in short
+  form (`345`, `1,3 k`); a view has none.
 
   Each line carries the icon of its level: roots, source, database, folder
   (open or closed), table, view, procedure, function, column, index, foreign

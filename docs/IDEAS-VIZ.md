@@ -5,7 +5,7 @@ This document gathers the ideas kept for drawing a database as a graph: its tabl
 ## 1. Starting point
 
 - The catalog already holds what the graph needs. For a database, `details()` (`crates/connectors/src/mysql/catalog.rs`) reads in one go the columns, indexes and foreign keys of all its tables; each `ForeignKeyInfo` gives its columns, the referenced table, its database (`referenced_schema`) and the referenced columns.
-- The row count of the tables is not read: `TABLE_ROWS` would force the server to open each table, which is very slow on a large server (module comment of `catalog.rs`). Sizing the tables by their volume therefore needs a dedicated read (section 8).
+- The row count of the tables is read with the objects of each database (`TABLE_ROWS`, `TableInfo.rows`), and shown in the object navigator; its cost is measured in section 9.2.
 - Relations come from the declared foreign keys only **[decided]**. Relations guessed from the names (`user_id`), or tables without foreign keys (MyISAM), are left for later.
 
 ## 2. The graph
@@ -146,7 +146,7 @@ The « Visualiseur d’objets » (`web/src/components/ObjectVisualizer.vue`) sha
 
 ### 9.2 Cost of `TABLE_ROWS`
 
-Measured on 2,000 InnoDB tables (MySQL 8.4.11, MariaDB 10.6.28 and 11.4.13): 20 to 40 ms when the tables are warm, as for the names alone; 3 to 8 s cold (after a restart). MariaDB then opens each table (`Open_full_table` instead of `Open_frm_only`), and does so on every read when the database has more tables than `table_open_cache` (146 to 226 ms with a cache of 400), evicting the server's own cache. MySQL 8.4 opens nothing but writes its statistics cache (`information_schema_stats_expiry`, 24 h by default): its values can be a day old; `SET SESSION information_schema_stats_expiry = 0` gives fresh values (140 ms cold), the `SET_VAR` hint being refused (warning 3637). Views give `NULL`. The estimates measured are close to the real counts.
+Measured on 2,000 InnoDB tables (MySQL 8.4.11, MariaDB 10.6.28 and 11.4.13): 20 to 40 ms when the tables are warm, as for the names alone; 3 to 8 s cold (after a restart). MariaDB then opens each table (`Open_full_table` instead of `Open_frm_only`), and does so on every read when the database has more tables than `table_open_cache` (146 to 226 ms with a cache of 400), evicting the server's own cache. MySQL 8.4 opens nothing but writes its statistics cache (`information_schema_stats_expiry`, 24 h by default): its values can be a day old; `SET SESSION information_schema_stats_expiry = 0` gives fresh values (140 ms cold), the `SET_VAR` hint being refused (warning 3637). Views give `NULL`, except on MySQL up to 8.0.16, which gives 0 (measured on 2026-11-21 on every image from 8.0.11 to 8.0.19, 8.0.26, 8.0.34, 8.0.42, 8.4.11, 9.7.4, 26.10.0, and MariaDB 10.6.3, 12.3.3, 13.0.2): the connector leaves views without an estimate. The estimates measured are close to the real counts.
 
 ### 9.3 Not done yet
 

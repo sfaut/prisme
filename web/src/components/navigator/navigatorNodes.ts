@@ -39,6 +39,7 @@ import type { TableDetails } from '@/api/generated/TableDetails'
 import type { TableKind } from '@/api/generated/TableKind'
 import type { TriggerInfo } from '@/api/generated/TriggerInfo'
 import type { Catalog, CatalogSchema, CatalogTable } from '@/stores/catalog'
+import { compactCount } from '@/utils/compactCount'
 
 /**
  * Place of a node: its connection and its database.
@@ -175,8 +176,9 @@ export interface NavigatorNode extends Place {
    */
   badgeTooltip?: string
   /**
-   * Note shown after the label, in capitals, smaller and lighter:
-   * `PRIMARY KEY` for the primary key, `UNIQUE` for a unique index.
+   * Note shown after the label, smaller and lighter: `PRIMARY KEY` for the
+   * primary key, `UNIQUE` for a unique index, the estimated row count of a
+   * table (`345`, `1,3 k`).
    */
   note?: string
   /**
@@ -490,7 +492,9 @@ function schemaFolders(
 }
 
 /**
- * Node of a table or a view, with its detail folders.
+ * Node of a table or a view, with its detail folders. A table shows as a
+ * note its row count estimated by the server, in short form; a view has no
+ * estimate.
  *
  * @param place Connection and database.
  * @param table Table or view.
@@ -505,6 +509,7 @@ function tableNode(place: Place, table: CatalogTable, references: Reference[]): 
     entry: table.kind === 'view' ? 'view' : 'table',
     ...place,
     table: table.name,
+    note: table.kind === 'table' && table.rows !== null ? compactCount(table.rows) : undefined,
     children:
       table.details === null
         ? [loadingNode(key, place)]

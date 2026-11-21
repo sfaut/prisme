@@ -13,4 +13,9 @@ export type TableInfo = {
    * Nature of the object.
    */
   kind: TableKind;
+  /**
+   * Row count estimated by the server (`TABLE_ROWS`, up to a day old on
+   * MySQL 8.4); `None` for a view, or a table without statistics.
+   */
+  rows: number | null;
 };

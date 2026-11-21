@@ -9,9 +9,10 @@
 //!    a database.
 //!
 //! Each read filters on a database, which saves the server from walking all
-//! the tables at once. The queries only ask for dictionary information:
-//! asking for the row count as well (`TABLE_ROWS`) would force the server to
-//! open each table, which is very slow on a large server. Database names are
+//! the tables at once. The objects carry the row count estimated by the
+//! server (`TABLE_ROWS`): fast while the tables are warm, it costs seconds on
+//! a server whose tables are cold, which MariaDB then opens one by one; this
+//! cost is accepted (`docs/IDEAS-VIZ.md`, section 9.2). Database names are
 //! passed as parameters of prepared statements, never concatenated to the
 //! SQL text.
 
@@ -31,6 +32,9 @@ pub struct TableInfo {
     pub name: String,
     /// Nature of the object.
     pub kind: TableKind,
+    /// Row count estimated by the server (`TABLE_ROWS`, up to a day old on
+    /// MySQL 8.4); `None` for a view, or a table without statistics.
+    pub rows: Option<u64>,
 }
 
 /// Nature of a table-like object.
@@ -203,9 +207,9 @@ pub async fn objects(
     connection: &mut Connection,
     schema: &str,
 ) -> Result<SchemaObjects, MysqlError> {
-    let tables: Vec<(String, String)> = rows_of(
+    let tables: Vec<(String, String, Option<u64>)> = rows_of(
         connection,
-        "SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES
+        "SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS FROM information_schema.TABLES
              WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME",
         schema,
     )
@@ -234,9 +238,14 @@ pub async fn objects(
             .collect(),
         tables: tables
             .into_iter()
-            .map(|(name, table_type)| TableInfo {
-                name,
-                kind: table_kind(&table_type),
+            .map(|(name, table_type, rows)| {
+                let kind = table_kind(&table_type);
+                TableInfo {
+                    name,
+                    kind,
+                    // A view has no estimate: NULL, but 0 up to MySQL 8.0.16.
+                    rows: rows.filter(|_| kind != TableKind::View),
+                }
             })
             .collect(),
         routines: routines

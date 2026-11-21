@@ -240,7 +240,8 @@ function iconLabel(node: NavigatorNode): string | undefined {
     </span>
   </span>
   <!--
-    Other nodes: label, then the note if any (UNIQUE, chargement…), and for a
+    Other nodes: label, then the note if any (UNIQUE, chargement…, row count
+    of a table, its digits of equal width), and for a
     source the badge of the server's flavor, right after the name, whose
     tooltip gives the name and version of the server. The whole takes the
     room left, which pushes the menu to the end of the line.
@@ -256,7 +257,10 @@ function iconLabel(node: NavigatorNode): string | undefined {
       }"
     >
       <span class="truncate text-trim">{{ node.label }}</span>
-      <span v-if="node.note" class="shrink-0 text-sm font-normal text-fg-faint text-trim">
+      <span
+        v-if="node.note"
+        class="shrink-0 text-sm font-normal text-fg-faint tabular-nums text-trim"
+      >
         {{ node.note }}
       </span>
     </span>

@@ -163,6 +163,7 @@ How it behaves:
 - **Déconnecter** (Disconnect), the **unplugged plug** on hovering a source or the current database, or the **⋮** menu of the source, closes the session of the editor at once: its connection to the server closes, and the editor shows **Session fermée** (Session closed) with **Reconnecter** (Reconnect). It is only available on the source of the editor, once its session is open, and stays disabled while queries run: stop them first. Afterwards, choosing the source again, making one of its databases current or opening one of its tables also opens a new session; a database made current opens it on that database directly.
 - The catalog loads progressively, and the source of the editor opens by itself, in a new navigator and when the editor changes its connection. **Tout rafraîchir** (Refresh all) in the root menu reloads the catalogs already read.
 - The current database is in **bold**.
+- Each table shows, after its name, its row count as estimated by the server: exact below 1,000 (`345`), shortened above (`1,3 k`, `4,5 M`). The estimate can differ from the real count, and on MySQL can be up to a day old. Views show none.
 - While the tree scrolls, the source, the database and the table of the rows on screen stay pinned at the top; they open, close and act like the rows of the tree.
 
 Columns show, on three aligned columns: a symbol, the name, then the type, nullability and `AUTO_INCREMENT`.
