@@ -99,8 +99,8 @@
   --resize-hover: --alpha(var(--color-primary) / 30%);
   --selection: --alpha(var(--color-primary) / 18%);
 
-  /* Tooltips (`UiTooltip.vue`): dark in both modes, light text; subtle, the
-     keyboard shortcut after the text. */
+  /* Tooltips (`UiTooltip.vue`): dark in both modes, light title; subtle, the
+     keyboard shortcut after the title and the description under it. */
   --tooltip-bg: light-dark(var(--color-zinc-800), var(--color-zinc-700));
   --tooltip-fg: light-dark(var(--color-zinc-100), var(--color-zinc-100));
   --tooltip-fg-subtle: light-dark(var(--color-zinc-400), var(--color-zinc-400));

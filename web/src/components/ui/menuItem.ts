@@ -6,6 +6,8 @@
 
 import type { Component } from 'vue'
 
+import type { Tooltip } from './tooltip'
+
 /**
  * A menu choice: label, Lucide icon and action.
  */
@@ -25,7 +27,7 @@ export interface MenuItem {
   /**
    * Explanation of the choice, in its tooltip.
    */
-  hint?: string
+  hint?: string | Tooltip
   /**
    * Is it the choice made, among the exclusive choices of its group
    * (`MenuGroup`)? Set on each choice of such a group, which becomes a group

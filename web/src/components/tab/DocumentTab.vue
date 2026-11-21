@@ -41,7 +41,7 @@ import type { TabProgress } from '@/api/querySession'
 import type { TabDrag } from './tabDrag'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiProgressDot from '@/components/ui/UiProgressDot.vue'
-import { vTooltip } from '@/components/ui/tooltip'
+import { type Tooltip, vTooltip } from '@/components/ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -67,7 +67,7 @@ const props = defineProps<{
   /**
    * Tooltip of the cross.
    */
-  closeTooltip: string
+  closeTooltip: string | Tooltip
   /**
    * Progress of the work the tab follows; absent, neither dot nor bar.
    */

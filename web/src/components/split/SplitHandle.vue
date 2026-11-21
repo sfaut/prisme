@@ -17,7 +17,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef } from 'vue'
 
-import { vTooltip } from '../ui/tooltip'
+import { type Tooltip, vTooltip } from '../ui/tooltip'
 import {
   type DragPanel,
   type DragResult,
@@ -38,7 +38,7 @@ const props = withDefaults(
     /**
      * Tooltip: what dragging and the double click do.
      */
-    tooltip: string
+    tooltip: string | Tooltip
     /**
      * Does the line show its grip, in its middle? Without it, only the band
      * of the hover shows where to grab it.

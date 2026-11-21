@@ -2,7 +2,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { defineComponent, nextTick, ref } from 'vue'
 
-import { shownTooltip, tooltipSideOf, vTooltip } from '../tooltip'
+import { shownTooltip, tooltipParts, tooltipSideOf, vTooltip } from '../tooltip'
 
 /**
  * Button whose tooltip is `text`, shown while `visible`.
@@ -44,14 +44,25 @@ describe('v-tooltip', () => {
     expect(tooltipSideOf(wrapper.find('a').element as HTMLElement)).toBe('top')
   })
 
-  it('keeps the shortcut of a tooltip apart from its text', () => {
-    const Shortcut = defineComponent({
+  it('keeps the parts of a tooltip apart', () => {
+    const Parts = defineComponent({
       directives: { tooltip: vTooltip },
-      template: "<button v-tooltip=\"{ text: 'Console', shortcut: 'Ctrl-K puis C' }\">C</button>",
+      template: `<button v-tooltip="{ title: 'Arrêter la requête', description: 'Les lignes reçues restent', shortcut: 'Échap' }">S</button>`,
     })
-    const button = mount(Shortcut).find('button')
-    expect(button.attributes('data-tooltip')).toBe('Console')
-    expect(button.attributes('data-tooltip-shortcut')).toBe('Ctrl-K puis C')
+    const button = mount(Parts).find('button')
+    expect(button.attributes('data-tooltip')).toBe('Arrêter la requête')
+    expect(button.attributes('data-tooltip-description')).toBe('Les lignes reçues restent')
+    expect(button.attributes('data-tooltip-shortcut')).toBe('Échap')
+  })
+
+  it('gives a string as a title alone, and no other part without a title', () => {
+    expect(tooltipParts('Exporter')).toEqual({ title: 'Exporter', description: '', shortcut: '' })
+    expect(tooltipParts({ title: '', description: 'Orpheline', shortcut: 'X' })).toEqual({
+      title: '',
+      description: '',
+      shortcut: '',
+    })
+    expect(tooltipParts(null).title).toBe('')
   })
 
   it('cuts a long text', () => {
@@ -65,11 +76,11 @@ describe('v-tooltip', () => {
     visible.value = true
     const wrapper = mount(Host)
     shownTooltip.element = wrapper.find('button').element as HTMLElement
-    shownTooltip.text = 'Exécuter'
+    shownTooltip.title = 'Exécuter'
 
     text.value = 'Arrêter'
     await nextTick()
-    expect(shownTooltip.text).toBe('Arrêter')
+    expect(shownTooltip.title).toBe('Arrêter')
 
     visible.value = false
     await nextTick()
