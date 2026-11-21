@@ -5,7 +5,7 @@ import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
-import { NO_FILTER, type UserFilter } from '@/api/querySession'
+import { type GridLayout, NO_FILTER, type UserFilter } from '@/api/querySession'
 import { useExplorerStore } from '@/stores/explorer'
 
 import ResultGrid from '../ResultGrid.vue'
@@ -17,14 +17,14 @@ beforeEach(() => setActivePinia(createPinia()))
  *
  * @param columns Names of the columns.
  * @param rows Rows of the result.
- * @param sql Text of the query.
+ * @param layout Saved layout, none by default.
  * @param columnTypes Types of the columns, none by default.
  * @param filter User filter, none by default.
  */
 function mountGrid(
   columns: string[],
   rows: (string | null)[][],
-  sql = 'SELECT 1',
+  layout: GridLayout | null = null,
   columnTypes: ColumnTypeInfo[] = [],
   filter: UserFilter = NO_FILTER,
 ) {
@@ -36,7 +36,7 @@ function mountGrid(
       columnTypes,
       rows,
       rowCount: rows.length,
-      sql,
+      layout,
       filter,
     },
   })
@@ -44,7 +44,7 @@ function mountGrid(
 
 describe('ResultGrid', () => {
   it('shows the type of each column with an icon, its name and type on hover', () => {
-    const wrapper = mountGrid(['id', 'name'], [['1', 'a']], 'SELECT id, name FROM t', [
+    const wrapper = mountGrid(['id', 'name'], [['1', 'a']], null, [
       { family: 'integer', name: 'INT UNSIGNED' },
       { family: 'text', name: 'VARCHAR(20)' },
     ])
@@ -112,7 +112,7 @@ describe('ResultGrid', () => {
   })
 
   it('fits a column to its content, then gives back its estimated width', async () => {
-    const wrapper = mountGrid(['texte'], [['x'.repeat(100)]], 'SELECT texte FROM double_clic')
+    const wrapper = mountGrid(['texte'], [['x'.repeat(100)]])
     // The width of the only column: the template after the row numbers.
     const width = () =>
       (wrapper.find('.grid-header').element as HTMLElement).style.gridTemplateColumns.replace(
@@ -181,6 +181,36 @@ describe('ResultGrid after a new result', () => {
     expect(wrapper.find('.grid-sort').text()).toBe('▲')
   })
 
+  it('opens with the layout saved on its columns', () => {
+    const wrapper = mountGrid(['id', 'name'], [['1', 'a']], {
+      columns: ['id', 'name'],
+      widths: [null, null],
+      order: [1, 0],
+      sort: { column: 0, direction: 'desc' },
+      scroll_top: 0,
+      scroll_left: 0,
+    })
+    const names = wrapper.findAll('.grid-header .grid-column-label').map((name) => name.text())
+    expect(names).toEqual(['name', 'id'])
+    expect(wrapper.findAll('.grid-sort')[1]!.text()).toBe('▼')
+  })
+
+  it('gives its new layout to the tab', async () => {
+    const wrapper = mountGrid(['id'], [['2'], ['1']])
+    await wrapper.find('.grid-sort').trigger('click')
+    const emitted = wrapper.emitted('update:layout') ?? []
+    expect(emitted[emitted.length - 1]).toEqual([
+      {
+        columns: ['id'],
+        widths: [null],
+        order: [0],
+        sort: { column: 0, direction: 'asc' },
+        scroll_top: 0,
+        scroll_left: 0,
+      },
+    ])
+  })
+
   it('drops the sort when the columns change', async () => {
     const wrapper = mountGrid(['id'], [['2'], ['1']])
     await wrapper.find('.grid-sort').trigger('click')
@@ -207,7 +237,7 @@ describe('ResultGrid with a large result', () => {
   })
 
   it('computes a filtered view a chunk per frame, up to every kept row', async () => {
-    const wrapper = mountGrid(['id'], rows, 'SELECT 1', [], { text: 'row', column: null })
+    const wrapper = mountGrid(['id'], rows, null, [], { text: 'row', column: null })
     expect(viewLength(wrapper)).toBe(2000)
     await vi.waitFor(() => expect(viewLength(wrapper)).toBe(5000), { timeout: 5000 })
   })
@@ -238,7 +268,6 @@ describe('ResultGrid and the data explorer', () => {
         columnTypes,
         rows,
         rowCount: 2,
-        sql: 'SELECT id, doc FROM t',
         displayed: true,
         filter: NO_FILTER,
       },
@@ -273,7 +302,6 @@ describe('ResultGrid and the data explorer', () => {
         columnTypes: [{ family: 'json', name: 'JSON' }],
         rows: [['1.50']],
         rowCount: 1,
-        sql: 'SELECT JSON_EXTRACT(doc, "$.a") AS value FROM t',
         displayed: true,
         filter: NO_FILTER,
       },
@@ -298,7 +326,6 @@ describe('ResultGrid and the data explorer', () => {
         columnTypes,
         rows,
         rowCount: 2,
-        sql: 'SELECT id, doc FROM t',
         filter: NO_FILTER,
       },
     })

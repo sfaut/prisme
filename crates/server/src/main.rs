@@ -22,6 +22,7 @@ mod editor_display;
 mod editors;
 mod error_detail;
 mod exports;
+mod grid_display;
 mod master_key;
 mod navigator;
 mod profile;

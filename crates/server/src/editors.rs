@@ -29,6 +29,7 @@
 //! | `PUT /api/results/{id}`                  | Renames or pins a result tab (204).                     |
 //! | `GET /api/results/{id}/chunks/{position}`| A chunk of the rows of a result tab, as saved.          |
 //! | `PUT /api/results/{id}/pivot`            | Saves the configuration of the Pivoteur of a tab (204). |
+//! | `PUT /api/results/{id}/grid`             | Saves the display of the grid of a tab (204).           |
 //! | `DELETE /api/results/{id}`               | Deletes a result tab and its rows (204).                |
 
 use axum::extract::{Path, State};
@@ -49,6 +50,7 @@ use crate::auth::CurrentUser;
 use crate::connections::count;
 use crate::editor_display::EditorDisplay;
 use crate::error_detail::{ErrorDetail, Field};
+use crate::grid_display::GridDisplay;
 use crate::query_session::LimitReport;
 use crate::tab_pivot::{ReplacedTab, TabPivot, carry_over};
 
@@ -110,6 +112,8 @@ pub struct ResultTab {
     pub pinned: bool,
     /// Configuration of the Pivoteur of the tab.
     pub pivot: TabPivot,
+    /// Display of its grid, absent as long as none was saved.
+    pub grid: Option<GridDisplay>,
     /// State of the result.
     pub result: SavedResult,
     /// Number of chunks of its saved rows, read one by one
@@ -307,7 +311,8 @@ fn result_tabs(db: &Connection, editor_id: i64) -> Result<Vec<ResultTab>, Editor
     let mut statement = db.prepare(
         "SELECT id, query, sql, name, pinned, pivot, result,
              (SELECT COUNT(*) FROM result_chunks
-              WHERE tab_id = result_tabs.id AND run = result_tabs.run)
+              WHERE tab_id = result_tabs.id AND run = result_tabs.run),
+             grid
          FROM result_tabs
          WHERE editor_id = ?1 ORDER BY position, id",
     )?;
@@ -321,11 +326,12 @@ fn result_tabs(db: &Connection, editor_id: i64) -> Result<Vec<ResultTab>, Editor
             row.get::<_, String>(5)?,
             row.get::<_, String>(6)?,
             row.get::<_, u32>(7)?,
+            row.get::<_, String>(8)?,
         ))
     })?;
     let mut tabs = Vec::new();
     for row in rows {
-        let (id, query, sql, name, pinned, pivot, result, chunks) = row?;
+        let (id, query, sql, name, pinned, pivot, result, chunks, grid) = row?;
         tabs.push(ResultTab {
             id,
             query,
@@ -333,6 +339,7 @@ fn result_tabs(db: &Connection, editor_id: i64) -> Result<Vec<ResultTab>, Editor
             name,
             pinned,
             pivot: serde_json::from_str(&pivot)?,
+            grid: read_grid(&grid)?,
             result: serde_json::from_str(&result)?,
             chunks,
         });
@@ -527,6 +534,29 @@ pub fn update_result_tab(
     Ok(updated == 1)
 }
 
+/// Display of a grid as saved; `None` for the empty string, none saved.
+fn read_grid(grid: &str) -> Result<Option<GridDisplay>, serde_json::Error> {
+    (!grid.is_empty())
+        .then(|| serde_json::from_str(grid))
+        .transpose()
+}
+
+/// Saves the display of the grid of the result tab `id`, if it belongs to an
+/// editor of the user. Returns `false` otherwise.
+pub fn update_result_grid(
+    db: &Connection,
+    user_id: i64,
+    id: i64,
+    grid: &GridDisplay,
+) -> Result<bool, EditorsError> {
+    let updated = db.execute(
+        "UPDATE result_tabs SET grid = ?3
+         WHERE id = ?1 AND editor_id IN (SELECT id FROM editors WHERE user_id = ?2)",
+        params![id, user_id, serde_json::to_string(grid)?],
+    )?;
+    Ok(updated == 1)
+}
+
 /// Saves the configuration of the Pivoteur of the result tab `id`, if it
 /// belongs to an editor of the user. Returns `false` otherwise.
 pub fn update_result_pivot(
@@ -575,7 +605,7 @@ pub fn reorder_result_tabs(
 /// Unpinned result tabs of an editor, which the next batch replaces.
 fn replaced_tabs(db: &Connection, editor_id: i64) -> Result<Vec<ReplacedTab>, EditorsError> {
     let mut statement = db.prepare(
-        "SELECT query, sql, pivot FROM result_tabs
+        "SELECT query, sql, pivot, grid FROM result_tabs
          WHERE editor_id = ?1 AND pinned = 0 ORDER BY position, id",
     )?;
     let rows = statement.query_map(params![editor_id], |row| {
@@ -583,15 +613,17 @@ fn replaced_tabs(db: &Connection, editor_id: i64) -> Result<Vec<ReplacedTab>, Ed
             row.get::<_, u32>(0)?,
             row.get::<_, String>(1)?,
             row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
         ))
     })?;
     let mut tabs = Vec::new();
     for row in rows {
-        let (query, sql, pivot) = row?;
+        let (query, sql, pivot, grid) = row?;
         tabs.push(ReplacedTab {
             query,
             sql,
             pivot: serde_json::from_str(&pivot)?,
+            grid: read_grid(&grid)?,
         });
     }
     Ok(tabs)
@@ -599,14 +631,15 @@ fn replaced_tabs(db: &Connection, editor_id: i64) -> Result<Vec<ReplacedTab>, Ed
 
 /// Start of a batch in editor `editor_id`: the unpinned tabs disappear, one
 /// tab per query is created after the pinned tabs, with the configuration of
-/// the Pivoteur of the tab it replaces. Returns the id and the configuration
-/// of the new tabs, in the order of the queries.
+/// the Pivoteur and the display of the grid of the tab it replaces. Returns
+/// the id, the configuration and the display of the new tabs, in the order
+/// of the queries.
 pub fn start_batch(
     db: &Connection,
     editor_id: i64,
     queries: &[(u32, String)],
-) -> Result<Vec<(i64, TabPivot)>, EditorsError> {
-    let pivots = carry_over(replaced_tabs(db, editor_id)?, queries);
+) -> Result<Vec<(i64, TabPivot, Option<GridDisplay>)>, EditorsError> {
+    let carried = carry_over(replaced_tabs(db, editor_id)?, queries);
     db.execute(
         "DELETE FROM result_tabs WHERE editor_id = ?1 AND pinned = 0",
         params![editor_id],
@@ -617,19 +650,24 @@ pub fn start_batch(
         |row| row.get(0),
     )?;
     let mut tabs = Vec::with_capacity(queries.len());
-    for ((position, (query, sql)), pivot) in (first..).zip(queries).zip(pivots) {
+    for ((position, (query, sql)), replaced) in (first..).zip(queries).zip(carried) {
+        let (pivot, grid) = replaced.map_or_else(Default::default, |tab| (tab.pivot, tab.grid));
         db.execute(
-            "INSERT INTO result_tabs (editor_id, position, query, sql, pivot)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT INTO result_tabs (editor_id, position, query, sql, pivot, grid)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 editor_id,
                 position,
                 query,
                 sql,
-                serde_json::to_string(&pivot)?
+                serde_json::to_string(&pivot)?,
+                grid.as_ref()
+                    .map(serde_json::to_string)
+                    .transpose()?
+                    .unwrap_or_default()
             ],
         )?;
-        tabs.push((db.last_insert_rowid(), pivot));
+        tabs.push((db.last_insert_rowid(), pivot, grid));
     }
     Ok(tabs)
 }
@@ -739,6 +777,7 @@ pub fn routes() -> Router<AppState> {
         )
         .route("/api/results/{id}/chunks/{position}", get(read_chunk))
         .route("/api/results/{id}/pivot", put(update_pivot))
+        .route("/api/results/{id}/grid", put(update_grid))
 }
 
 /// `GET /api/editors`: open editors, in order.
@@ -898,6 +937,20 @@ async fn save_display(
     no_content_or_not_found(found)
 }
 
+/// `PUT /api/results/{id}/grid`: saves the display of the grid of a result
+/// tab.
+async fn update_grid(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<i64>,
+    Json(grid): Json<GridDisplay>,
+) -> Result<StatusCode, ApiError> {
+    let found = state
+        .with_db(move |db, _| update_result_grid(db, user.id, id, &grid))
+        .await?;
+    no_content_or_not_found(found)
+}
+
 /// `PUT /api/results/{id}/pivot`: saves the configuration of the Pivoteur of
 /// a result tab.
 async fn update_pivot(
@@ -928,6 +981,7 @@ async fn delete_result(
 mod tests {
     use super::*;
     use crate::editor_display::{NavigatorTree, Panel, Panels, SqlPosition};
+    use crate::grid_display::{GridFilter, GridSort, SortDirection};
     use crate::store;
     use crate::tab_pivot::{DatePrecision, PivotConfig, PivotForm, PivotLevel, PivotValueSort};
 
@@ -1044,7 +1098,7 @@ mod tests {
         )
         .unwrap()
         .into_iter()
-        .map(|(id, _)| id)
+        .map(|(id, _, _)| id)
         .collect();
         let result = SavedResult {
             started: true,
@@ -1129,6 +1183,46 @@ mod tests {
     }
 
     #[test]
+    fn saves_the_grid_of_a_tab_and_carries_it_over_to_the_tab_that_replaces_it() {
+        let (db, user_id) = setup();
+        let editor = create(&db, user_id, &NewEditor::default()).unwrap();
+        let queries = [(0, "SELECT a, b FROM t".to_string())];
+        let (first, _, none) = start_batch(&db, editor.id, &queries).unwrap().remove(0);
+        assert_eq!(none, None);
+        assert_eq!(
+            results_of(&db, user_id, editor.id).unwrap().unwrap()[0].grid,
+            None
+        );
+
+        let grid = GridDisplay {
+            columns: vec!["a".to_string(), "b".to_string()],
+            widths: vec![None, Some("12rem".to_string())],
+            order: vec![1, 0],
+            sort: Some(GridSort {
+                column: 1,
+                direction: SortDirection::Desc,
+            }),
+            filter: GridFilter {
+                text: "paris".to_string(),
+                column: Some(0),
+            },
+            filter_open: true,
+            scroll_top: 220.0,
+            scroll_left: 40.5,
+        };
+        let other = store::ensure_user(&db, "other@example.com").unwrap();
+        assert!(!update_result_grid(&db, other, first, &grid).unwrap());
+        assert!(update_result_grid(&db, user_id, first, &grid).unwrap());
+        let tabs = results_of(&db, user_id, editor.id).unwrap().unwrap();
+        assert_eq!(tabs[0].grid.as_ref(), Some(&grid));
+
+        let (second, _, carried) = start_batch(&db, editor.id, &queries).unwrap().remove(0);
+        assert_eq!(carried.as_ref(), Some(&grid));
+        let tabs = results_of(&db, user_id, editor.id).unwrap().unwrap();
+        assert_eq!((tabs[0].id, tabs[0].grid.as_ref()), (second, Some(&grid)));
+    }
+
+    #[test]
     fn saves_the_pivot_of_a_tab_and_carries_it_over_to_the_tab_that_replaces_it() {
         let (db, user_id) = setup();
         let editor = create(&db, user_id, &NewEditor::default()).unwrap();
@@ -1156,7 +1250,7 @@ mod tests {
             },
         };
         let queries = [(0, "SELECT region FROM t".to_string())];
-        let (first, empty) = start_batch(&db, editor.id, &queries).unwrap().remove(0);
+        let (first, empty, _) = start_batch(&db, editor.id, &queries).unwrap().remove(0);
         assert_eq!(empty, TabPivot::default());
 
         let other = store::ensure_user(&db, "other@example.com").unwrap();
@@ -1166,14 +1260,14 @@ mod tests {
         assert_eq!(tabs[0].pivot, pivot);
 
         // A pinned tab keeps its configuration, and gives it to no other.
-        let (second, carried) = start_batch(&db, editor.id, &queries).unwrap().remove(0);
+        let (second, carried, _) = start_batch(&db, editor.id, &queries).unwrap().remove(0);
         assert_eq!(carried, pivot);
         let pin = ResultTabUpdate {
             name: String::new(),
             pinned: true,
         };
         assert!(update_result_tab(&db, user_id, second, &pin).unwrap());
-        let (third, none) = start_batch(&db, editor.id, &queries).unwrap().remove(0);
+        let (third, none, _) = start_batch(&db, editor.id, &queries).unwrap().remove(0);
         assert_eq!(none, TabPivot::default());
         let tabs = results_of(&db, user_id, editor.id).unwrap().unwrap();
         assert_eq!(

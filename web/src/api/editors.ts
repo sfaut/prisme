@@ -9,6 +9,7 @@ import type { ClosedEditor } from './generated/ClosedEditor'
 import type { Editor } from './generated/Editor'
 import type { EditorDisplay } from './generated/EditorDisplay'
 import type { EditorUpdate } from './generated/EditorUpdate'
+import type { GridDisplay } from './generated/GridDisplay'
 import type { ResultTab } from './generated/ResultTab'
 import type { ResultTabUpdate } from './generated/ResultTabUpdate'
 import type { TabPivot } from './generated/TabPivot'
@@ -142,6 +143,21 @@ export async function reorderResults(editorId: number, ids: number[]): Promise<v
  */
 export async function updateResult(id: number, tab: ResultTabUpdate): Promise<void> {
   await request('PUT', `/api/results/${id}`, tab)
+}
+
+/**
+ * Saves the display of the grid of a result tab.
+ *
+ * @param id Id of the tab.
+ * @param grid Display, with the columns it was made on.
+ * @param options Options of the request (`keepalive` as the page closes).
+ */
+export async function saveResultGrid(
+  id: number,
+  grid: GridDisplay,
+  options: RequestOptions = {},
+): Promise<void> {
+  await request('PUT', `/api/results/${id}/grid`, grid, options)
 }
 
 /**

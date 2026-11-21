@@ -115,6 +115,7 @@ import { versionAtLeast } from '@/components/navigator/indexOperations'
 import { frameIsFull, sameColumns } from './resultGrid'
 import ResultFilter from './ResultFilter.vue'
 import ResultGrid from './ResultGrid.vue'
+import { keepGridLayout, scheduleGridSave } from './gridDisplay'
 import type { MenuGroup, MenuItem } from '@/components/ui/menuItem'
 import { notify } from '@/components/ui/toasts'
 import UiAlert from '@/components/ui/UiAlert.vue'
@@ -251,19 +252,29 @@ const cut = computed(() => props.tab.interrupted && showsGrid(props.tab))
 const attached = computed(() => !shownError.value && !props.tab.filterOpen && showsGrid(props.tab))
 
 // New columns: a targeted filter becomes global, its text kept. The same
-// columns again (a session resumed after a reconnection) keep it.
+// columns again (a session resumed after a reconnection) keep it. The
+// filter carried over from the tab a new run replaced (`grid`) keeps its
+// column only if the columns are the same.
 watch(
   () => shown.value?.columns,
   (columns, previous) => {
+    const made = previous ?? props.tab.grid?.columns
     if (
       columns !== undefined &&
-      previous !== undefined &&
-      !sameColumns(columns, previous) &&
+      made !== undefined &&
+      !sameColumns(columns, made) &&
       filter.value.column !== null
     ) {
       filter.value = { ...filter.value, column: null }
     }
   },
+  { immediate: true },
+)
+
+// The filter and its form are saved with the display of the grid.
+watch(
+  () => [props.tab.filter, props.tab.filterOpen],
+  () => scheduleGridSave(props.tab),
 )
 
 const grid = useTemplateRef<InstanceType<typeof ResultGrid>>('grid')
@@ -730,8 +741,9 @@ defineExpose({ exportGroups })
       :column-types="shown.columnTypes"
       :rows="shown.rows"
       :row-count="shown.rowCount"
-      :sql="tab.sql"
+      :layout="tab.grid"
       :displayed="displayed"
+      @update:layout="(layout) => keepGridLayout(tab, layout)"
     />
     <!--
       Without a grid, this block takes its room and keeps the status bar at the

@@ -495,6 +495,7 @@ describe('stop of a query', () => {
         name: '',
         pinned: false,
         pivot: NO_PIVOT,
+        grid: null,
         result: {
           started: true,
           done: true,
@@ -779,6 +780,7 @@ describe('savedTab', () => {
         name: 'Gardé',
         pinned: true,
         pivot: PIVOT,
+        grid: null,
         result: {
           started: true,
           done: true,
@@ -828,6 +830,7 @@ describe('resume', () => {
           name: 'Mon onglet',
           pinned: false,
           pivot: PIVOT,
+          grid: null,
           result: {
             started: false,
             done: false,
@@ -1179,6 +1182,7 @@ function saved(id: number, rows: number, chunks: number): ResultTab {
     name: '',
     pinned: false,
     pivot: NO_PIVOT,
+    grid: null,
     result: {
       started: true,
       done: true,

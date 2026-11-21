@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::error_detail::ErrorDetail;
+use crate::grid_display::GridDisplay;
 use crate::recorder::ResumedQuery;
 use crate::tab_pivot::TabPivot;
 
@@ -101,6 +102,11 @@ pub(crate) struct BatchQuery {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub(crate) pivot: Option<TabPivot>,
+    /// Display of the grid its new tab takes from the tab it replaces, when
+    /// that tab saved one; absent otherwise, as `pivot`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub(crate) grid: Option<GridDisplay>,
 }
 
 /// Handling of the limit, as announced to the client.

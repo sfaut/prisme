@@ -34,13 +34,17 @@
     displayed order.
   - Width: dragging the right edge of a header changes the width of the
     column; a double click on this edge fits it to its longest value (with a
-    cap), a second one gives back its estimated width. The chosen widths are
-    found again when the same query is run again
-    (`gridWidths.ts`). A text too long is truncated (…): widening its column
-    shows it in full.
-  - Order: dragging a column name moves it. A new run restores the order of
-    the `SELECT`. Selection and copy follow the displayed order; sort, user filter
-    and widths stay attached to the column.
+    cap), a second one gives back its estimated width. A text too long is
+    truncated (…): widening its column shows it in full.
+  - Order: dragging a column name moves it. Selection and copy follow the
+    displayed order; sort, user filter and widths stay attached to the column.
+  - Saved layout: widths, order, sort and scroll go to the tab
+    (`v-model:layout`), which saves them (`gridDisplay.ts`). The grid opens
+    with them on the columns they were made on: after a page reload, and in
+    the tab of the same query run again; other columns start from the
+    estimated widths, the order of the `SELECT`, no sort, the top left. The
+    scroll comes back once the rows that reach it are there, unless the user
+    moves first.
   - Alignment: numbers, dates and times on the right, after the type
     announced by the server.
   - Types: each header shows the icon of the family of its column's type
@@ -110,7 +114,8 @@ import {
   updateView,
   viewFrame,
 } from './resultGrid'
-import { rememberWidths, rememberedWidths } from './gridWidths'
+import { startingLayout } from './gridDisplay'
+import type { GridLayout } from '@/api/querySession'
 import { type ContentKind, detectContent, isWebAddress } from './contentKind'
 import { columnIcon } from './typeIcons'
 import { notify } from '@/components/ui/toasts'
@@ -140,11 +145,6 @@ const props = defineProps<{
    */
   rowCount: number
   /**
-   * Text of the query: the chosen widths are remembered for it, and found
-   * again if it is run again.
-   */
-  sql: string
-  /**
    * Is the grid on screen (active result tab of the active editor)? Only
    * this grid feeds the data explorer.
    */
@@ -173,7 +173,14 @@ const ROW_HEIGHT = cssPixels('--grid-row-height', 22)
 
 const scroller = useTemplateRef<HTMLDivElement>('scroller')
 
-const sort = ref<SortState | null>(null)
+const layout = defineModel<GridLayout | null>('layout', { default: null })
+
+/**
+ * State the grid opens with: the saved layout, if made on these columns.
+ */
+const starting = startingLayout(layout.value, props.columns)
+
+const sort = ref<SortState | null>(starting.sort)
 const selection = shallowRef(emptySelection())
 
 /**
@@ -271,10 +278,10 @@ onBeforeUnmount(() => {
  * Widths chosen with the mouse, by column index; the other columns keep
  * their estimated width.
  */
-const resized = ref<Record<number, string>>(rememberedWidths(props.sql, props.columns))
+const resized = ref<Record<number, string>>(starting.widths)
 
-// New columns: the widths remembered for the query, the order of the SELECT,
-// and no sort. The same columns again (a session resumed after a
+// New columns: the saved layout if it was made on them, the defaults
+// otherwise. The same columns again (a session resumed after a
 // reconnection) keep everything, as chosen by the user.
 watch(
   () => props.columns,
@@ -282,14 +289,13 @@ watch(
     if (previous !== undefined && sameColumns(columns, previous)) {
       return
     }
-    resized.value = rememberedWidths(props.sql, columns)
-    order.value = columns.map((_, index) => index)
-    sort.value = null
+    const next = startingLayout(layout.value, columns)
+    resized.value = next.widths
+    order.value = next.order
+    sort.value = next.sort
+    awaitScroll(next.scroll)
   },
 )
-
-// Every chosen width is remembered for the query.
-watch(resized, (widths) => rememberWidths(props.sql, props.columns, widths))
 
 /**
  * Display order: index in the `SELECT` of each displayed column. The
@@ -297,7 +303,7 @@ watch(resized, (widths) => rememberWidths(props.sql, props.columns, widths))
  * serve the sort, the user filter and the widths. The full export of the
  * result writes its columns in this order.
  */
-const order = ref(props.columns.map((_, index) => index))
+const order = ref(starting.order)
 
 /**
  * Estimated widths of the columns, on the header and the first rows.
@@ -477,6 +483,52 @@ const OVERSCAN = 20
 const scrollTop = ref(0)
 
 /**
+ * Horizontal scroll position of the grid, in pixels.
+ */
+const scrollLeft = ref(0)
+
+/**
+ * Saved scroll still to give back: the rows that reach it may not be there
+ * yet. `null` once given back, or once the user scrolls, clicks or types.
+ */
+let awaitedScroll: { top: number; left: number } | null = null
+
+/**
+ * Waits for the rows that reach a saved scroll, to give it back.
+ *
+ * @param scroll Saved scroll; top left: nothing to wait for.
+ */
+function awaitScroll(scroll: { top: number; left: number }): void {
+  awaitedScroll = scroll.top > 0 || scroll.left > 0 ? { ...scroll } : null
+  restoreScroll()
+}
+
+/**
+ * Gives back the saved scroll, as far as the rows there allow.
+ */
+function restoreScroll(): void {
+  const element = scroller.value
+  if (awaitedScroll === null || !element) {
+    return
+  }
+  element.scrollTop = awaitedScroll.top
+  element.scrollLeft = awaitedScroll.left
+  if (
+    Math.abs(element.scrollTop - awaitedScroll.top) < 1 &&
+    Math.abs(element.scrollLeft - awaitedScroll.left) < 1
+  ) {
+    awaitedScroll = null
+  }
+}
+
+/**
+ * The user moves in the grid: the saved scroll is no longer given back.
+ */
+function stopRestoring(): void {
+  awaitedScroll = null
+}
+
+/**
  * Height of the visible area of the grid, in pixels.
  */
 const viewportHeight = ref(0)
@@ -486,6 +538,7 @@ const viewportHeight = ref(0)
  */
 function onScroll(): void {
   scrollTop.value = scroller.value?.scrollTop ?? 0
+  scrollLeft.value = scroller.value?.scrollLeft ?? 0
 }
 
 /**
@@ -501,6 +554,7 @@ onMounted(() => {
   if (scroller.value) {
     resizeObserver.observe(scroller.value)
   }
+  awaitScroll(starting.scroll)
 })
 
 onBeforeUnmount(() => resizeObserver?.disconnect())
@@ -519,6 +573,22 @@ const drawnRows = computed(() => {
     OVERSCAN,
   )
   return Array.from({ length: end - start }, (_, offset) => start + offset)
+})
+
+// Rows arrived, grid shown or widened: the saved scroll may be reached.
+watch([() => view.value.length, viewportHeight, template], restoreScroll, { flush: 'post' })
+
+// Widths, order, sort or scroll changed: the tab saves the new layout. A
+// scroll still awaited is saved as it was, not where the grid stands.
+watch([resized, order, sort, scrollTop, scrollLeft], () => {
+  layout.value = {
+    columns: [...props.columns],
+    widths: props.columns.map((_, column) => resized.value[column] ?? null),
+    order: [...order.value],
+    sort: sort.value === null ? null : { ...sort.value },
+    scroll_top: awaitedScroll?.top ?? scrollTop.value,
+    scroll_left: awaitedScroll?.left ?? scrollLeft.value,
+  }
 })
 
 // Sort or user filter changed: the positions change, the selection no longer makes sense.
@@ -843,6 +913,9 @@ defineExpose({ keptCount, selectedSize, selectedFull, exportFrame, order })
     :style="{ '--row-digits': rowDigits }"
     tabindex="0"
     @keydown="onKeydown"
+    @keydown.capture="stopRestoring"
+    @pointerdown.capture="stopRestoring"
+    @wheel.passive="stopRestoring"
     @scroll.passive="onScroll"
   >
     <div class="grid-row grid-header" :style="{ gridTemplateColumns: template }">
