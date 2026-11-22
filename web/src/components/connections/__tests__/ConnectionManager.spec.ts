@@ -220,7 +220,7 @@ describe('ConnectionManager', () => {
     expect(listText()).not.toContain('modifiée')
   })
 
-  it('creates a connection in three steps, the test before saving', async () => {
+  it('creates a connection in three steps, its test shown before saving', async () => {
     await openManager('new')
     expect(document.body.textContent).toContain('Quel type de source ?')
     // The kinds not supported yet cannot be chosen.
@@ -231,14 +231,17 @@ describe('ConnectionManager', () => {
     await type('Nom', 'recette')
     expect(listText()).toContain('création en cours, étape 2 sur 3')
 
-    // A failed test stays at the settings, with its message.
-    api.probeSettings.mockRejectedValueOnce(new Error('Connexion refusée'))
-    await click('Tester')
-    expect(document.body.textContent).toContain('Connexion refusée')
-    expect(api.createConnection).not.toHaveBeenCalled()
-
     await click('Tester')
     expect(document.body.textContent).toContain('Étape 3 sur 3')
+    expect(document.body.textContent).toContain('Prisme a testé la connexion')
+
+    // A failed test shows at the last step too, and does not prevent saving.
+    await click('Retour')
+    api.probeSettings.mockRejectedValueOnce(new Error('Connexion refusée'))
+    await click('Tester')
+    expect(document.body.textContent).toContain('Étape 3 sur 3')
+    expect(document.body.textContent).toContain('Connexion refusée')
+    expect(document.body.textContent).toContain('Le test a échoué')
     await click('Enregistrer')
     expect(api.createConnection).toHaveBeenCalledWith(expect.objectContaining({ name: 'recette' }))
     expect(field('Nom').value).toBe('recette')

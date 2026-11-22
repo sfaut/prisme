@@ -24,7 +24,8 @@
 
   A creation goes in three steps (`ConnectionManagerSteps`): the kind of
   source (`ConnectionManagerTypes`, MySQL / MariaDB only for now), the
-  settings, then their test, which must succeed before saving. It stays
+  settings, then the result of their test before saving: a failed test does
+  not prevent saving (a server not reachable yet). It stays
   under the "Nouvelle connexion" button while another connection is shown.
   "Dupliquer" starts a creation at the settings, from the input of the
   connection shown under another name; its password, left empty, is that of
@@ -234,7 +235,13 @@ const stepHeading = computed(() => {
       subtitle: 'Un serveur de bases de données, ou un fichier lu par le serveur de Prisme.',
     },
     { title: `Réglages · ${type.label}`, subtitle: type.description },
-    { title: 'Vérification', subtitle: 'Prisme a testé la connexion avec ces réglages.' },
+    {
+      title: 'Vérification',
+      subtitle:
+        error.value === null
+          ? 'Prisme a testé la connexion avec ces réglages.'
+          : 'Le test a échoué : la connexion peut être enregistrée quand même, et testée plus tard.',
+    },
   ][step.step - 1]!
 })
 
@@ -430,8 +437,8 @@ function duplicate(): void {
 }
 
 /**
- * Goes to the next step of the creation. From the settings, tests them
- * first: a failed test stays at the settings, with its message.
+ * Goes to the next step of the creation. From the settings, tests them, and
+ * shows the result at the last step, success or failure.
  */
 async function next(): Promise<void> {
   const current = creation.value
@@ -449,13 +456,13 @@ async function next(): Promise<void> {
       connection: { ...current.form },
       saved_id: current.copyOf ?? undefined,
     })
-    current.step = 3
     probed.value = probeMessage(info)
   } catch (failure) {
     error.value = errorMessage(failure)
   } finally {
     probing.value = false
   }
+  current.step = 3
 }
 
 /**
