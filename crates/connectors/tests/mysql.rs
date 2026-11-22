@@ -8,9 +8,10 @@
 
 use std::time::{Duration, Instant};
 
+use prisme_connectors::flavor::Flavor;
 use prisme_connectors::mysql::catalog::{self, RoutineKind, TableKind};
 use prisme_connectors::mysql::{
-    Connection, Flavor, connect, execute, in_transaction, kill_query, probe, read_warnings,
+    Connection, connect, execute, in_transaction, kill_query, probe, read_warnings,
 };
 use prisme_connectors::outcome::{NoticeLevel, OutcomeCounts, StatementOutcome};
 use prisme_connectors::test_servers::SERVERS;

@@ -11,7 +11,9 @@
 
 use std::path::PathBuf;
 
-use prisme_connectors::mysql::{Cell, Connection, Flavor, TypeFamily, connect, execute};
+use prisme_connectors::columns::{Cell, TypeFamily};
+use prisme_connectors::flavor::Flavor;
+use prisme_connectors::mysql::{Connection, connect, execute};
 use prisme_connectors::test_servers;
 use serde::Deserialize;
 

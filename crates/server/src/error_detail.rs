@@ -10,7 +10,9 @@
 
 use std::fmt;
 
-use prisme_connectors::mysql::{ConnectFailure, FailureCause, Flavor, MysqlError};
+use prisme_connectors::failure::{ConnectFailure, FailureCause};
+use prisme_connectors::flavor::Flavor;
+use prisme_connectors::mysql::MysqlError;
 use prisme_dialects::classify::WriteKind;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

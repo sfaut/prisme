@@ -37,7 +37,7 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use prisme_connectors::mysql::Cell;
+use prisme_connectors::columns::Cell;
 use serde::Serialize;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -49,7 +49,7 @@ use crate::editors::{self, SavedColumns, SavedResult};
 use crate::error_detail::ErrorDetail;
 use crate::query_session::ServerMessage;
 use crate::query_session::protocol::BatchQuery;
-use prisme_connectors::mysql::ConnectFailure;
+use prisme_connectors::failure::ConnectFailure;
 
 /// Rows of a chunk: the rows received are written once they reach this
 /// number, at the end of the `rows` message that reaches it. About 1 MB of

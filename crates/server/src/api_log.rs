@@ -213,7 +213,8 @@ mod tests {
     use axum::http::StatusCode;
     use axum::middleware;
     use axum::routing::post;
-    use prisme_connectors::mysql::{Flavor, ServerInfo};
+    use prisme_connectors::flavor::Flavor;
+    use prisme_connectors::mysql::ServerInfo;
     use tower::ServiceExt;
 
     use super::*;

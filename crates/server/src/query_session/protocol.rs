@@ -1,7 +1,8 @@
 //! Messages of the query session, as JSON text: what the client sends, and
 //! what the session answers. The types are exported to the interface by `ts-rs`.
 
-use prisme_connectors::mysql::{Cell, ColumnTypeInfo, ServerInfo};
+use prisme_connectors::columns::{Cell, ColumnTypeInfo};
+use prisme_connectors::mysql::ServerInfo;
 use prisme_connectors::outcome::StatementOutcome;
 use prisme_dialects::verb::StatementVerb;
 use serde::{Deserialize, Serialize};

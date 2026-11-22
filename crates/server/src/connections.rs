@@ -15,7 +15,8 @@
 //! (MySQL or MariaDB) and version seen on the last successful connection,
 //! with its date.
 
-use prisme_connectors::mysql::{Flavor, MysqlTarget, ServerInfo};
+use prisme_connectors::flavor::Flavor;
+use prisme_connectors::mysql::{MysqlTarget, ServerInfo};
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{SettingRefusal, session_setting_refusal};
 use rusqlite::{Connection, OptionalExtension, ffi, params};

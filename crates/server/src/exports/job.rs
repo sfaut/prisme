@@ -25,8 +25,10 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-use prisme_connectors::mysql::sql_log::{self, Sent};
-use prisme_connectors::mysql::{self, Connection, Flavor, MysqlError, ResultStream, TypeFamily};
+use prisme_connectors::columns::TypeFamily;
+use prisme_connectors::flavor::Flavor;
+use prisme_connectors::mysql::{self, Connection, MysqlError, ResultStream};
+use prisme_connectors::sql_log::{self, Sent};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 

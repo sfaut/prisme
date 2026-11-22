@@ -15,7 +15,7 @@
 use std::fmt::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use prisme_connectors::mysql::sql_log::TARGET;
+use prisme_connectors::sql_log::TARGET;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;

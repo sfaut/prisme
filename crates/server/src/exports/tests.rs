@@ -19,7 +19,8 @@ use crate::api::{AppState, router};
 use crate::connections::{self, NewConnection};
 use crate::master_key::MasterKey;
 use crate::store;
-use prisme_connectors::mysql::{Flavor, MysqlTarget};
+use prisme_connectors::flavor::Flavor;
+use prisme_connectors::mysql::MysqlTarget;
 use prisme_connectors::test_servers;
 
 /// Application whose exports go to a temporary folder.

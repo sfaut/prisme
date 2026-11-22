@@ -8,8 +8,9 @@ use std::task::Poll;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures_util::future::join_all;
-use prisme_connectors::mysql::sql_log::{self, Sent};
-use prisme_connectors::mysql::{self, Cell, Connection, MysqlTarget};
+use prisme_connectors::columns::Cell;
+use prisme_connectors::mysql::{self, Connection, MysqlTarget};
+use prisme_connectors::sql_log::{self, Sent};
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{StatementKind, changes_database, classify, classify_with};
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit, written_limit};

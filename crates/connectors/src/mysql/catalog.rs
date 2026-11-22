@@ -22,7 +22,8 @@ use mysql_async::prelude::{FromRow, Queryable};
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::{Connection, MysqlError, sql_log};
+use super::{Connection, MysqlError};
+use crate::sql_log;
 
 /// Table or view of a database.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]

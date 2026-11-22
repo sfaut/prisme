@@ -9,7 +9,7 @@
 //! units, like the editor's.
 
 use crate::error_detail::ErrorDetail;
-use prisme_connectors::mysql::Flavor;
+use prisme_connectors::flavor::Flavor;
 use prisme_dialects::Dialect;
 use prisme_dialects::syntax::syntax_error;
 use prisme_splitter::{Statement, split, text_end};

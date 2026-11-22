@@ -9,7 +9,7 @@
 //! loading the whole result in memory. The catalog (databases, tables,
 //! columns) is in the `catalog` submodule, the type of a result's columns in
 //! `column_type`. Each statement sent is traced for the history of the
-//! queries (`sql_log`).
+//! queries (`crate::sql_log`).
 
 use std::time::Duration;
 
@@ -18,11 +18,15 @@ use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, OptsBuilder, QueryResult, TextProtocol, Value};
 use prisme_dialects::verb::StatementVerb;
 use secrecy::{ExposeSecret, SecretString};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use ts_rs::TS;
 
+use crate::columns::{Cell, ColumnTypeInfo};
+use crate::failure::{ConnectFailure, FailureCause};
+use crate::flavor::Flavor;
 use crate::number_text;
 use crate::outcome::{Notice, StatementOutcome};
+use crate::sql_log;
 
 /// Open connection to a MySQL or MariaDB server.
 pub use mysql_async::Conn as Connection;
@@ -31,11 +35,6 @@ pub mod catalog;
 mod column_type;
 mod connect_error;
 mod outcome;
-mod secret_mask;
-pub mod sql_log;
-
-pub use column_type::{ColumnTypeInfo, TypeFamily};
-pub use connect_error::{ConnectFailure, FailureCause};
 
 /// Maximum delay to open a connection to the server.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -56,29 +55,6 @@ pub struct MysqlTarget {
     /// Queries run when each connection opens, in order
     /// (`SET NAMES utf8mb4`, `SET SESSION sql_mode = ...`).
     pub init_statements: Vec<String>,
-}
-
-/// Flavor of the server, detected on connection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
-#[serde(rename_all = "lowercase")]
-pub enum Flavor {
-    /// MySQL server (Oracle).
-    MySql,
-    /// MariaDB server.
-    MariaDb,
-}
-
-impl Flavor {
-    /// Oldest version of the flavor that Prisme supports: the first general
-    /// availability release of MySQL 8.0 and of MariaDB 10.6. An older server
-    /// still works, with a warning (`docs/V1.md`, section 2.10).
-    pub fn oldest_supported(self) -> &'static str {
-        match self {
-            Self::MySql => "8.0.11",
-            Self::MariaDb => "10.6.3",
-        }
-    }
 }
 
 /// Identity of a server, obtained on connection.
@@ -332,13 +308,6 @@ pub async fn kill_connection(target: &MysqlTarget, connection_id: u32) -> Result
 fn first_row<T>(row: &Option<T>) -> Option<u64> {
     Some(u64::from(row.is_some()))
 }
-
-/// Value of a result cell: `None` for NULL, otherwise text.
-///
-/// Everything is sent as text, numbers included: no loss of precision on a
-/// `BIGINT UNSIGNED` or a `DECIMAL`. Fine typing will come with the `types`
-/// crate.
-pub type Cell = Option<String>;
 
 /// Result of a query being read, row by row.
 pub struct ResultStream<'a> {

@@ -11,7 +11,8 @@
 
 use secrecy::SecretString;
 
-use crate::mysql::{Connection, Flavor, MysqlTarget, connect, execute};
+use crate::flavor::Flavor;
+use crate::mysql::{Connection, MysqlTarget, connect, execute};
 
 /// A development server of `compose.yaml`.
 #[derive(Debug, Clone, Copy)]

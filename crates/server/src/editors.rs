@@ -37,7 +37,7 @@ use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
-use prisme_connectors::mysql::ColumnTypeInfo;
+use prisme_connectors::columns::ColumnTypeInfo;
 use prisme_connectors::outcome::StatementOutcome;
 use prisme_dialects::verb::StatementVerb;
 use rusqlite::{Connection, OptionalExtension, params};

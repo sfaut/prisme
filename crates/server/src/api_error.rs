@@ -11,7 +11,8 @@ use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use ts_rs::TS;
 
-use prisme_connectors::mysql::{ConnectFailure, MysqlError};
+use prisme_connectors::failure::ConnectFailure;
+use prisme_connectors::mysql::MysqlError;
 
 use crate::connections::ConnectionsError;
 use crate::editors::EditorsError;

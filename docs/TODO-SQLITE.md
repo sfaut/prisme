@@ -54,7 +54,7 @@ Architecture:
 ## 1. Connector contracts, MySQL alone
 
 - ⬜ Module `api`: traits, registry, `Capabilities`, `SourceInfo`, errors
-- ⬜ Neutral types moved out of `mysql::`, serialization unchanged
+- ✅ Neutral types moved out of `mysql::`, serialization unchanged
 - ⬜ Catalog in namespaces and open kinds of objects
 - ⬜ MySQL connector behind the traits, read-only moved into it
 - ⬜ Contract suite, on MySQL and MariaDB

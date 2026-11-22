@@ -3,7 +3,7 @@
 //! interruptions).
 //!
 //! The connector traces each statement as a `tracing` event of the target
-//! `sql_log::TARGET` (`prisme_connectors::mysql::sql_log`). Spans of the same
+//! `sql_log::TARGET` (`prisme_connectors::sql_log`). Spans of the same
 //! target give it its context: the user and the connection
 //! (`connection_span`), then what sent it (`action_span`). The layer of this
 //! module (`HistoryLayer`) gathers the event and its context, and hands the
@@ -12,7 +12,7 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use prisme_connectors::mysql::sql_log::TARGET;
+use prisme_connectors::sql_log::TARGET;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
