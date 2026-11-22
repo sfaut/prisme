@@ -3,7 +3,8 @@
   the application with its version next to it (that of the executable, read
   from the server), on the left; on the right, the "Nouveau" button, the
   main action, filled in the primary color, which opens an editor on the
-  connection of the active one (later, a menu: editor or notebook), exports
+  connection of the active one, its chevron a menu of what it creates: an
+  editor, or a connection in the connections manager (later, a notebook), exports
   manager (`ExportManager`), synchronisation state
   (`SyncStatus`), theme choice, and the account menu, headed by the user
   (initials, name, email address), which opens the user's profile
@@ -15,7 +16,7 @@
   it too.
 -->
 <script setup lang="ts">
-import { Monitor, Moon, Plus, Server, Settings, Sun, User } from '@lucide/vue'
+import { Code, Monitor, Moon, Plus, Server, Settings, Sun, User } from '@lucide/vue'
 import { onMounted, ref } from 'vue'
 
 import { getVersion } from '@/api/version'
@@ -30,8 +31,8 @@ import ProfileDialog from './ProfileDialog.vue'
 import SyncStatus from './SyncStatus.vue'
 import ConnectionManager from '@/components/connections/ConnectionManager.vue'
 import UiDropdownMenu from '@/components/ui/UiDropdownMenu.vue'
-import UiButton from '@/components/ui/UiButton.vue'
 import UiChoiceSwitch from '@/components/ui/UiChoiceSwitch.vue'
+import UiSplitButton from '@/components/ui/UiSplitButton.vue'
 import type { MenuItem } from '@/components/ui/menuItem'
 
 /**
@@ -80,6 +81,21 @@ const profileOpen = ref(false)
 const preferencesOpen = ref(false)
 
 /**
+ * Opens a new editor, on the connection of the active one.
+ */
+function newEditor(): void {
+  void editors.create(editors.active?.connectionId ?? null)
+}
+
+/**
+ * Choices of the menu of the "Nouveau" button: what it creates.
+ */
+const newItems: MenuItem[] = [
+  { label: 'Éditeur', icon: Code, onSelect: newEditor },
+  { label: 'Connexion', icon: Server, onSelect: () => connections.openManager('new') },
+]
+
+/**
  * Choices of the account menu, opened from the avatar.
  */
 const menuItems: MenuItem[] = [
@@ -97,13 +113,12 @@ const menuItems: MenuItem[] = [
       <span v-if="version" class="text-xs leading-none text-fg-faint">{{ version }}</span>
     </div>
     <div class="flex items-center gap-3">
-      <ui-button
+      <ui-split-button
         :icon="Plus"
         label="Nouveau"
-        variant="solid"
-        tone="primary"
-        wide
-        @click="editors.create(editors.active?.connectionId ?? null)"
+        :items="newItems"
+        menu-label="Choisir quoi créer"
+        @click="newEditor"
       />
       <export-manager />
       <sync-status />
