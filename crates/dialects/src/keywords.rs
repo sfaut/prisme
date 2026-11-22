@@ -152,12 +152,9 @@ struct NameIndex {
 
 /// Lookup tables of a dialect, read only once.
 fn index_of(dialect: Dialect) -> &'static NameIndex {
-    static MYSQL: OnceLock<NameIndex> = OnceLock::new();
-    static MARIADB: OnceLock<NameIndex> = OnceLock::new();
-    match dialect {
-        Dialect::MySql => MYSQL.get_or_init(|| name_index(file_of(dialect))),
-        Dialect::MariaDb => MARIADB.get_or_init(|| name_index(file_of(dialect))),
-    }
+    static INDEXES: [OnceLock<NameIndex>; Dialect::ALL.len()] =
+        [const { OnceLock::new() }; Dialect::ALL.len()];
+    INDEXES[dialect.index()].get_or_init(|| name_index(file_of(dialect)))
 }
 
 /// Builds the lookup tables of a keyword file, read once for the whole program.
@@ -183,12 +180,9 @@ fn name_index(file: &'static KeywordFile) -> NameIndex {
 
 /// Keyword file of a dialect, read only once.
 fn file_of(dialect: Dialect) -> &'static KeywordFile {
-    static MYSQL: OnceLock<KeywordFile> = OnceLock::new();
-    static MARIADB: OnceLock<KeywordFile> = OnceLock::new();
-    match dialect {
-        Dialect::MySql => MYSQL.get_or_init(|| parse(include_str!("../keywords/mysql.yaml"))),
-        Dialect::MariaDb => MARIADB.get_or_init(|| parse(include_str!("../keywords/mariadb.yaml"))),
-    }
+    static FILES: [OnceLock<KeywordFile>; Dialect::ALL.len()] =
+        [const { OnceLock::new() }; Dialect::ALL.len()];
+    FILES[dialect.index()].get_or_init(|| parse(dialect.spec().keywords))
 }
 
 /// Reads a keyword file. The files are part of the program: a format error is

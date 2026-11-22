@@ -86,7 +86,8 @@ pub fn dialect_of(flavor: Flavor) -> Dialect {
 /// Analyses the editor's text.
 pub fn analyze(request: &AnalyzeRequest) -> Analysis {
     let dialect = dialect_of(request.flavor);
-    let statements = split(&request.sql);
+    let rules = dialect.lexical_rules();
+    let statements = split(&request.sql, rules);
     Analysis {
         errors: statements
             .iter()
@@ -100,7 +101,7 @@ pub fn analyze(request: &AnalyzeRequest) -> Analysis {
             })
             .collect(),
         text_end: {
-            let end = text_end(&request.sql);
+            let end = text_end(&request.sql, rules);
             TextEnd {
                 delimiter: end.delimiter,
                 open_end: end.open_end,

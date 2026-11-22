@@ -286,7 +286,7 @@ impl NewServerSettings {
 
 /// On-connect queries, split as in the editor (`splitter` crate).
 fn init_statements(init_sql: &str) -> Vec<String> {
-    prisme_splitter::split(init_sql)
+    prisme_splitter::split(init_sql, Dialect::MySql.lexical_rules())
         .into_iter()
         .map(|statement| statement.sql)
         .collect()

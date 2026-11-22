@@ -1910,6 +1910,10 @@ dependencies = [
 [[package]]
 name = "prisme-splitter"
 version = "0.14.1"
+dependencies = [
+ "serde",
+ "ts-rs",
+]
 
 [[package]]
 name = "prisme-store"

@@ -5,4 +5,10 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+ts-rs = "12.0.1"
+
+[dev-dependencies]
+# Generated TypeScript types formatted (dprint), only in the tests that write them.
+ts-rs = { version = "12.0.1", features = ["format"] }
 

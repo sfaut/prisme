@@ -195,7 +195,10 @@ fn chooses_the_statement_under_the_cursor_those_of_the_selection_or_all() {
     use super::protocol::SelectionRange;
 
     // Queries at 0..9, 10..19 and 20..29.
-    let statements = prisme_splitter::split("SELECT 1;\nSELECT 2;\nSELECT 3;");
+    let statements = prisme_splitter::split(
+        "SELECT 1;\nSELECT 2;\nSELECT 3;",
+        Dialect::MySql.lexical_rules(),
+    );
     let sql = |chosen: Vec<&prisme_splitter::Statement>| {
         chosen
             .into_iter()
@@ -240,7 +243,7 @@ FROM product;
 SELECT ALL id, name, email
 FROM user
 WHERE email LIKE '%.fr';";
-    let statements = prisme_splitter::split(text);
+    let statements = prisme_splitter::split(text, Dialect::MySql.lexical_rules());
     let range = |start, end| SelectionRange { start, end };
     let pieces = |selection: &[SelectionRange]| {
         selected_pieces(&statements, selection)

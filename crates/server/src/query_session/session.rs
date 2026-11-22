@@ -292,7 +292,7 @@ impl Session<'_> {
             Ok(limits) => limits,
             Err(detail) => return self.outbox.error(None, detail).await,
         };
-        let statements = split(&request.sql);
+        let statements = split(&request.sql, dialect_of(flavor).lexical_rules());
         let cursor = request.tab.map_or(request.cursor, |_| Some(0));
         let selection = request.selection.as_deref().unwrap_or_default();
         let exact = request.exact == Some(true) && cursor.is_none();
