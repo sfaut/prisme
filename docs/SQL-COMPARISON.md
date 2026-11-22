@@ -518,3 +518,14 @@ Triggers, whose body holds statements each ended by `;`:
 | `CREATE TABLE trigger_log (a); SELECT 1;` | complete: a name holding `trigger` opens no body |
 
 A trigger whose body holds `CASE … END;` is created, and runs: SQLite ends the body at the `END` that follows a `;`.
+
+`LIMIT` after a `VALUES`, where Prisme adds its default limit (`crates/dialects/src/limit.rs`):
+
+| Query | SQLite |
+|---|---|
+| `VALUES (1), (2) LIMIT 1` | error: near `LIMIT` |
+| `SELECT 1 UNION VALUES (2) LIMIT 1` | error: near `LIMIT` |
+| `VALUES (2) UNION SELECT 1 LIMIT 1` | 1 row |
+| `SELECT * FROM (VALUES (1), (2)) LIMIT 1` | 1 row |
+
+A `LIMIT` follows a `SELECT` only: a query whose last term is a `VALUES` takes none, and Prisme stops reading it after the extra row.

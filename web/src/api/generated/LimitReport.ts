@@ -7,4 +7,5 @@ export type LimitReport =
   | "added"
   | "user_limit"
   | "not_applicable"
-  | "unparsed";
+  | "unparsed"
+  | "capped";

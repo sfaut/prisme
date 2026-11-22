@@ -123,6 +123,9 @@ pub(crate) enum LimitReport {
     NotApplicable,
     /// Query not parsed: reading stops by itself after N rows.
     Unparsed,
+    /// Query that takes no `LIMIT` (`VALUES` of SQLite): reading stops by
+    /// itself after N rows.
+    Capped,
 }
 
 /// Message sent to the client.

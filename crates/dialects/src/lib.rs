@@ -57,6 +57,9 @@ pub struct DialectSpec {
     keywords: &'static str,
     /// Statements Prisme parses itself, which `sqlparser` misses.
     statements: Statements,
+    /// Does a `LIMIT` follow a `VALUES` (MySQL, MariaDB)? SQLite refuses it:
+    /// its `LIMIT` belongs to a `SELECT`.
+    values_take_limit: bool,
 }
 
 /// Statements of a dialect that Prisme parses itself (`parse.rs`).
@@ -90,6 +93,7 @@ static MYSQL: DialectSpec = DialectSpec {
     parser: || Box::new(mysql_parser::MySqlParserDialect::default()),
     keywords: include_str!("../keywords/mysql.yaml"),
     statements: Statements::MySql,
+    values_take_limit: true,
 };
 
 /// MariaDB, read as MySQL with keywords of its own.
@@ -98,6 +102,7 @@ static MARIADB: DialectSpec = DialectSpec {
     parser: || Box::new(mysql_parser::MySqlParserDialect::default()),
     keywords: include_str!("../keywords/mariadb.yaml"),
     statements: Statements::MySql,
+    values_take_limit: true,
 };
 
 /// SQLite, as measured on the library Prisme ships (`docs/SQL-COMPARISON.md`,
@@ -117,6 +122,7 @@ static SQLITE: DialectSpec = DialectSpec {
     parser: || Box::new(sqlparser::dialect::SQLiteDialect {}),
     keywords: include_str!("../keywords/sqlite.yaml"),
     statements: Statements::Sqlite,
+    values_take_limit: false,
 };
 
 impl Dialect {

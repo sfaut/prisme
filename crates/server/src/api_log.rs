@@ -186,6 +186,7 @@ fn limit_name(limit: &LimitReport) -> &'static str {
         LimitReport::UserLimit => "user_limit",
         LimitReport::NotApplicable => "not_applicable",
         LimitReport::Unparsed => "unparsed",
+        LimitReport::Capped => "capped",
     }
 }
 

@@ -5,7 +5,7 @@
 //! between connections (`memdb`), text of the real numbers, interruption,
 //! transactions after an error, detaching while in use, paths on Windows,
 //! values kept by `INT`, `NUMERIC` and `REAL` columns, lexical rules of the
-//! texts (comments, quotes, end of a statement). The results go to
+//! texts (comments, quotes, end of a statement), `LIMIT` after `VALUES`. The results go to
 //! `docs/SQL-COMPARISON.md`, section "SQLite embedded in Prisme".
 //!
 //! From the root of the repository:
@@ -51,6 +51,7 @@ fn main() {
     windows_paths(&folder);
     numeric_affinity();
     lexical_rules();
+    limit_after_values();
 
     std::fs::remove_dir_all(&folder).ok();
 }
@@ -597,4 +598,27 @@ fn lexical_rules() {
             )
             .and_then(|()| text("SELECT b FROM u")),
     );
+}
+
+/// `LIMIT` after a `VALUES`, alone or in a set operation: where Prisme can
+/// add its default limit.
+fn limit_after_values() {
+    println!(
+        "
+11. LIMIT after VALUES"
+    );
+    let connection = Connection::open_in_memory().expect("connection");
+    for sql in [
+        "VALUES (1), (2) LIMIT 1",
+        "SELECT 1 UNION VALUES (2) LIMIT 1",
+        "VALUES (2) UNION SELECT 1 LIMIT 1",
+        "SELECT * FROM (VALUES (1), (2)) LIMIT 1",
+    ] {
+        report(
+            sql,
+            connection.prepare(sql).and_then(|mut statement| {
+                statement.query_map([], |_| Ok(())).map(|rows| rows.count())
+            }),
+        );
+    }
 }

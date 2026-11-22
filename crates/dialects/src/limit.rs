@@ -9,6 +9,10 @@
 //! keeps its exact form (comments, case, spaces), which printing the AST back
 //! would not guarantee. The `LIMIT` goes before a possible `FOR UPDATE` /
 //! `FOR SHARE`, and never inside a trailing comment.
+//!
+//! SQLite refuses a `LIMIT` after a `VALUES` (`docs/SQL-COMPARISON.md`,
+//! section 6): such a query goes as is, and reading stops by itself after
+//! the extra row.
 
 use sqlparser::ast::{Expr, LimitClause, SetExpr, Statement, Value};
 use sqlparser::keywords::Keyword;
@@ -28,6 +32,10 @@ pub enum LimitOutcome {
     UserLimit,
     /// The query returns no rows to limit (`SHOW`, `EXPLAIN`, write, DDL...).
     NotApplicable,
+    /// No limit written, and the dialect takes none after the query
+    /// (`VALUES` of SQLite): it goes through as is, and reading must stop by
+    /// itself after `max_rows + 1` rows.
+    Capped,
     /// The query could not be parsed: it goes through as is, and reading must
     /// stop by itself after `max_rows + 1` rows.
     Unparsed,
@@ -82,6 +90,9 @@ pub fn apply_default_limit(
     if !returns_rows(&query.body) {
         return Ok(unchanged(LimitOutcome::NotApplicable));
     }
+    if !dialect.spec().values_take_limit && ends_with_values(&query.body) {
+        return Ok(unchanged(LimitOutcome::Capped));
+    }
 
     let Ok(tokens) = Tokenizer::new(parser_dialect.as_ref(), sql).tokenize_with_location() else {
         return Ok(unchanged(LimitOutcome::Unparsed));
@@ -134,6 +145,16 @@ pub(crate) fn returns_rows(body: &SetExpr) -> bool {
         SetExpr::Query(query) => returns_rows(&query.body),
         SetExpr::SetOperation { .. } | SetExpr::Values(_) | SetExpr::Table(_) => true,
         // WITH ... INSERT / UPDATE / DELETE / MERGE.
+        _ => false,
+    }
+}
+
+/// Does the body of a query end with a `VALUES`, alone or last of a set
+/// operation, where a `LIMIT` would follow it?
+fn ends_with_values(body: &SetExpr) -> bool {
+    match body {
+        SetExpr::Values(_) => true,
+        SetExpr::SetOperation { right, .. } => ends_with_values(right),
         _ => false,
     }
 }
@@ -328,6 +349,75 @@ mod tests {
                 "query: {sql}"
             );
             assert_eq!(limit(sql).sql, sql);
+        }
+    }
+
+    #[test]
+    fn limits_the_queries_of_sqlite() {
+        // Each query limited runs on SQLite, and stops at the extra row.
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "CREATE TABLE t (a);
+             WITH RECURSIVE r(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 10)
+             INSERT INTO t SELECT n FROM r;",
+        )
+        .unwrap();
+        let count = |sql: &str| {
+            let mut statement = db.prepare(sql).unwrap();
+            statement.query_map([], |_| Ok(())).unwrap().count()
+        };
+        for sql in [
+            "SELECT a FROM t",
+            "select a from t order by a desc;",
+            "SELECT a FROM t UNION SELECT a + 10 FROM t",
+            "VALUES (1), (2) UNION SELECT a FROM t",
+            "WITH r AS (SELECT a FROM t) SELECT * FROM r -- end",
+            "SELECT a FROM t WHERE a IN (SELECT a FROM t LIMIT 5)",
+            "SELECT [a] FROM t /* ; */",
+        ] {
+            let limited = apply_default_limit(sql, Dialect::Sqlite, 2).unwrap();
+            assert_eq!(limited.outcome, LimitOutcome::Added, "query: {sql}");
+            assert_eq!(count(&limited.sql), 3, "query: {}", limited.sql);
+        }
+        // `LIMIT -1` is a limit written: none.
+        for (sql, rows) in [
+            ("SELECT a FROM t LIMIT -1", 10),
+            ("SELECT a FROM t LIMIT 2, 3", 3),
+            ("SELECT a FROM t LIMIT 3 OFFSET 8", 2),
+        ] {
+            let limited = apply_default_limit(sql, Dialect::Sqlite, 2).unwrap();
+            assert_eq!(limited.outcome, LimitOutcome::UserLimit, "query: {sql}");
+            assert_eq!(count(&limited.sql), rows, "query: {sql}");
+        }
+        // SQLite takes no LIMIT after a VALUES: reading stops by itself.
+        for sql in [
+            "VALUES (1), (2), (3), (4)",
+            "SELECT a FROM t UNION VALUES (2)",
+        ] {
+            let limited = apply_default_limit(sql, Dialect::Sqlite, 2).unwrap();
+            assert_eq!(limited.outcome, LimitOutcome::Capped, "query: {sql}");
+            assert_eq!(limited.sql, sql);
+            assert!(
+                db.prepare(&format!("{sql} LIMIT 3")).is_err(),
+                "query: {sql}"
+            );
+        }
+        assert_eq!(limit("VALUES ROW(1), ROW(2)").outcome, LimitOutcome::Added);
+        assert_eq!(
+            written_limit("SELECT a FROM t LIMIT -1", Dialect::Sqlite),
+            None
+        );
+        assert_eq!(
+            written_limit("SELECT a FROM t LIMIT 2, 3", Dialect::Sqlite),
+            Some(3)
+        );
+        for sql in [
+            "PRAGMA table_info(t)",
+            "DELETE FROM t WHERE a > 8 RETURNING a",
+            "EXPLAIN QUERY PLAN SELECT a FROM t",
+        ] {
+            let limited = apply_default_limit(sql, Dialect::Sqlite, 2).unwrap();
+            assert_eq!(limited.outcome, LimitOutcome::NotApplicable, "query: {sql}");
         }
     }
 

@@ -75,7 +75,7 @@ Architecture:
 ## 3. SQLite dialect
 
 - ✅ `DialectSpec`, `LexicalRules` (splitter and editor)
-- ⬜ Default limit, `LIMIT -1` counted as a limit written
+- ✅ Default limit, `LIMIT -1` counted as a limit written; a query ending with `VALUES`, which takes no `LIMIT`, read up to the extra row (`capped`)
 - ⬜ Classification: `PRAGMA`, `ATTACH` / `DETACH`, maintenance, `VACUUM INTO`, triggers, `INSERT OR REPLACE`, `ON CONFLICT DO UPDATE`, `temp.`
 - ⬜ `ends_transaction`, `session_setting_refusal`
 - ✅ `keywords/sqlite.yaml`, checked against `sqlite3_keyword_name`

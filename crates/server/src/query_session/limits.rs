@@ -89,5 +89,6 @@ pub(super) fn report(outcome: LimitOutcome) -> LimitReport {
         LimitOutcome::UserLimit => LimitReport::UserLimit,
         LimitOutcome::NotApplicable => LimitReport::NotApplicable,
         LimitOutcome::Unparsed => LimitReport::Unparsed,
+        LimitOutcome::Capped => LimitReport::Capped,
     }
 }

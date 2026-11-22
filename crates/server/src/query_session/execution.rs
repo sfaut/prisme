@@ -234,7 +234,7 @@ impl Session<'_> {
         // Reading only stops by itself if Prisme set the limit.
         let capped = matches!(
             limited.outcome,
-            LimitOutcome::Added | LimitOutcome::Unparsed
+            LimitOutcome::Added | LimitOutcome::Unparsed | LimitOutcome::Capped
         );
 
         let started = Instant::now();
@@ -310,7 +310,9 @@ impl Session<'_> {
                 sql: limited.sql.clone(),
                 limit: report(limited.outcome),
                 expected_rows: match limited.outcome {
-                    LimitOutcome::Added | LimitOutcome::Unparsed => Some(max_rows as u64),
+                    LimitOutcome::Added | LimitOutcome::Unparsed | LimitOutcome::Capped => {
+                        Some(max_rows as u64)
+                    }
                     LimitOutcome::UserLimit => written_limit(sql, dialect_of(flavor)),
                     LimitOutcome::NotApplicable => None,
                 },
@@ -364,7 +366,10 @@ impl Session<'_> {
             if capped && row_count == max_rows {
                 // Row N + 1: the result is truncated, no need to read further.
                 truncated = true;
-                if limited.outcome == LimitOutcome::Unparsed {
+                if matches!(
+                    limited.outcome,
+                    LimitOutcome::Unparsed | LimitOutcome::Capped
+                ) {
                     // Without LIMIT, the source would keep sending rows: it is interrupted.
                     let interrupting = canceller
                         .interrupt()
