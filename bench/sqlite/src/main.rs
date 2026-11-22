@@ -4,8 +4,8 @@
 //! attachment, files created by an attachment, databases in memory shared
 //! between connections (`memdb`), text of the real numbers, interruption,
 //! transactions after an error, detaching while in use, paths on Windows,
-//! values kept by `NUMERIC` and `REAL` columns. The results go to `docs/SQL-COMPARISON.md`, section "SQLite embedded in
-//! Prisme".
+//! values kept by `INT`, `NUMERIC` and `REAL` columns. The results go to
+//! `docs/SQL-COMPARISON.md`, section "SQLite embedded in Prisme".
 //!
 //! From the root of the repository:
 //! `cargo run --release --manifest-path bench/sqlite/Cargo.toml --target-dir target/sqlite-measures`
@@ -415,15 +415,18 @@ fn detach_while_in_use(folder: &Path) {
     );
 }
 
-/// Values written into a `NUMERIC` and a `REAL` column: the storage class
-/// SQLite keeps, and the text it gives for them.
+/// Values written into an `INT`, a `NUMERIC` and a `REAL` column: the
+/// storage class SQLite keeps, and the text it gives for them.
 fn numeric_affinity() {
-    println!("\n9. NUMERIC and REAL columns");
+    println!("\n9. INT, NUMERIC and REAL columns");
     let connection = Connection::open_in_memory().expect("connection");
     connection
-        .execute_batch("CREATE TABLE n (written TEXT, numeric_value NUMERIC, real_value REAL)")
+        .execute_batch(
+            "CREATE TABLE n (written TEXT, int_value INT, numeric_value NUMERIC, real_value REAL)",
+        )
         .expect("table");
     let values = [
+        "1e2",
         "1e10",
         "1.0e+10",
         "1e20",
@@ -441,7 +444,7 @@ fn numeric_affinity() {
         connection
             .execute(
                 &format!(
-                    "INSERT INTO n VALUES ({}, {value}, {value})",
+                    "INSERT INTO n VALUES ({}, {value}, {value}, {value})",
                     literal(value)
                 ),
                 [],
@@ -452,19 +455,27 @@ fn numeric_affinity() {
     // (`CAST(x AS TEXT)` converts as `sqlite3_column_text` does).
     let mut statement = connection
         .prepare(
-            "SELECT written, typeof(numeric_value), CAST(numeric_value AS TEXT), \
+            "SELECT written, typeof(int_value), CAST(int_value AS TEXT), typeof(numeric_value), CAST(numeric_value AS TEXT), \
              typeof(real_value), CAST(real_value AS TEXT) FROM n",
         )
         .expect("prepare");
     let rows = statement
         .query_map([], |row| {
-            Ok([0, 1, 2, 3, 4].map(|index| row.get::<_, String>(index).unwrap_or_default()))
+            Ok([0, 1, 2, 3, 4, 5, 6].map(|index| row.get::<_, String>(index).unwrap_or_default()))
         })
         .expect("query");
     for row in rows {
-        let [written, numeric_class, numeric_text, real_class, real_text] = row.expect("row");
+        let [
+            written,
+            int_class,
+            int_text,
+            numeric_class,
+            numeric_text,
+            real_class,
+            real_text,
+        ] = row.expect("row");
         println!(
-            "  {written}: NUMERIC {numeric_class} {numeric_text}, REAL {real_class} {real_text}"
+            "  {written}: INT {int_class} {int_text}, NUMERIC {numeric_class} {numeric_text}, REAL {real_class} {real_text}"
         );
     }
 }

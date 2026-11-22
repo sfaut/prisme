@@ -582,7 +582,7 @@ It prints the table of the values, one column per server, and writes the values,
 
 ### SQLite embedded in Prisme
 
-`bench/sqlite/` measures the SQLite library that Prisme ships, through `rusqlite` at the version and with the features of Prisme, as the SQLite connector calls it: read-only inherited by an attachment, files created or not by an attachment, databases in memory shared between connections (`memdb`), text of the real numbers, values kept by `NUMERIC` and `REAL` columns, interruption, transaction state after an error, `DETACH` while in use, paths on Windows. Its results are in `docs/SQL-COMPARISON.md`, section 6. From the root of the repository:
+`bench/sqlite/` measures the SQLite library that Prisme ships, through `rusqlite` at the version and with the features of Prisme, as the SQLite connector calls it: read-only inherited by an attachment, files created or not by an attachment, databases in memory shared between connections (`memdb`), text of the real numbers, values kept by `INT`, `NUMERIC` and `REAL` columns, interruption, transaction state after an error, `DETACH` while in use, paths on Windows. Its results are in `docs/SQL-COMPARISON.md`, section 6. From the root of the repository:
 
 ```
 cargo run --release --manifest-path bench/sqlite/Cargo.toml --target-dir target/sqlite-measures
