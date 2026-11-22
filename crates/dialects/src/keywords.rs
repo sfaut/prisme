@@ -207,16 +207,66 @@ fn version_number(version: &str) -> [u32; 3] {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
+
+    /// Keywords of the SQLite library Prisme ships, in capitals.
+    fn sqlite_library_keywords() -> BTreeSet<String> {
+        // SAFETY: the library gives its own static texts, valid for the
+        // whole program, by an index below its count.
+        let count = unsafe { rusqlite::ffi::sqlite3_keyword_count() };
+        (0..count)
+            .map(|index| {
+                let mut name = std::ptr::null();
+                let mut length = 0;
+                // SAFETY: see above.
+                let bytes = unsafe {
+                    rusqlite::ffi::sqlite3_keyword_name(index, &mut name, &mut length);
+                    std::slice::from_raw_parts(name.cast::<u8>(), usize::try_from(length).unwrap())
+                };
+                String::from_utf8(bytes.to_vec()).unwrap()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn sqlite_keywords_are_those_of_the_library() {
+        let library = sqlite_library_keywords();
+        let file = keywords(Dialect::Sqlite, None);
+        // A reserved word is one SQLite refuses as a table name without quotes.
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        let refused: BTreeSet<String> = library
+            .iter()
+            .filter(|word| {
+                db.execute_batch(&format!("CREATE TABLE {word} (x)"))
+                    .is_err()
+            })
+            .cloned()
+            .collect();
+        let of = |words: &[String]| words.iter().cloned().collect::<BTreeSet<String>>();
+        let values: BTreeSet<String> = of(&file.literals).intersection(&library).cloned().collect();
+        assert_eq!(
+            &of(&file.reserved) | &values.intersection(&refused).cloned().collect(),
+            refused
+        );
+        assert_eq!(
+            &of(&file.keywords) | &values.difference(&refused).cloned().collect(),
+            &library - &refused
+        );
+        // Types are no keywords of SQLite.
+        assert!(of(&file.types).is_disjoint(&library));
+    }
 
     #[test]
     fn reads_every_dialect_file() {
-        for dialect in [Dialect::MySql, Dialect::MariaDb] {
+        for dialect in Dialect::ALL {
             let all = keywords(dialect, None);
             assert!(all.reserved.contains(&"SELECT".to_string()));
-            assert!(all.types.contains(&"VARCHAR".to_string()));
+            assert!(all.types.contains(&"INT".to_string()));
             assert!(all.literals.contains(&"NULL".to_string()));
-            assert!(all.keywords.contains(&"COMMIT".to_string()));
+            // COMMIT is reserved in SQLite only.
+            assert!(is_keyword("COMMIT", dialect, None));
             // CREATE TEMPORARY TABLE, DROP TEMPORARY TABLE.
             assert!(all.keywords.contains(&"TEMPORARY".to_string()));
         }

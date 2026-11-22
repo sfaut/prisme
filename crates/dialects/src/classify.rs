@@ -280,6 +280,7 @@ fn need(statement: &Parsed, temporary: &dyn Fn(&TableName) -> bool) -> Need {
         Parsed::MySql(MySqlStatement::Xa) => Need::Xa,
         Parsed::MySql(statement) => mysql_write_kind(statement, temporary)
             .map_or(Need::Forbidden, |kind| Need::Write(vec![kind])),
+        Parsed::Sqlite(_) => Need::Forbidden,
     }
 }
 

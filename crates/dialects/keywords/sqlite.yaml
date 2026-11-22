@@ -1,0 +1,186 @@
+# SQLite keywords (base: the 147 keywords of SQLite 3.54, as
+# `sqlite3_keyword_name` lists them).
+#
+# A single list per dialect, read by the SQL editor's highlighting and by
+# the beautifier (keywords put in capitals). Each category maps to a
+# highlighting class of the editor. The format is that of mysql.yaml; no word
+# carries a version yet.
+#
+# NULL, TRUE and FALSE are written between quotes: without them, YAML reads
+# them as an empty value and booleans, not as words.
+#
+# The test `sqlite_keywords_are_those_of_the_library` (src/keywords.rs)
+# checks these lists against the library Prisme ships: every keyword of
+# SQLite is in one of them, and a reserved word is one SQLite refuses as a
+# table name without quotes.
+
+# Reserved words: SQLite refuses them as a name without quotes.
+reserved:
+  - ADD
+  - ALL
+  - ALTER
+  - AND
+  - AS
+  - AUTOINCREMENT
+  - BETWEEN
+  - CASE
+  - CHECK
+  - COLLATE
+  - COMMIT
+  - CONSTRAINT
+  - CREATE
+  - DEFAULT
+  - DEFERRABLE
+  - DELETE
+  - DISTINCT
+  - DROP
+  - ELSE
+  - ESCAPE
+  - EXCEPT
+  - EXISTS
+  - FOREIGN
+  - FROM
+  - GROUP
+  - HAVING
+  - IF
+  - IN
+  - INDEX
+  - INSERT
+  - INTERSECT
+  - INTO
+  - IS
+  - ISNULL
+  - JOIN
+  - LIMIT
+  - NOT
+  - NOTHING
+  - NOTNULL
+  - "ON"
+  - OR
+  - ORDER
+  - PRIMARY
+  - REFERENCES
+  - RETURNING
+  - SELECT
+  - SET
+  - TABLE
+  - THEN
+  - TO
+  - TRANSACTION
+  - UNION
+  - UNIQUE
+  - UPDATE
+  - USING
+  - VALUES
+  - WHEN
+  - WHERE
+
+# Non-reserved keywords: SQLite takes them as names where a name is
+# expected (`CREATE TABLE key (...)`).
+keywords:
+  - ABORT
+  - ACTION
+  - AFTER
+  - ALWAYS
+  - ANALYZE
+  - ASC
+  - ATTACH
+  - BEFORE
+  - BEGIN
+  - BY
+  - CASCADE
+  - CAST
+  - COLUMN
+  - CONFLICT
+  - CROSS
+  - CURRENT
+  - DATABASE
+  - DEFERRED
+  - DESC
+  - DETACH
+  - DO
+  - EACH
+  - END
+  - EXCLUDE
+  - EXCLUSIVE
+  - EXPLAIN
+  - FAIL
+  - FILTER
+  - FIRST
+  - FOLLOWING
+  - FOR
+  - FULL
+  - GENERATED
+  - GLOB
+  - GROUPS
+  - IGNORE
+  - IMMEDIATE
+  - INDEXED
+  - INITIALLY
+  - INNER
+  - INSTEAD
+  - KEY
+  - LAST
+  - LEFT
+  - LIKE
+  - MATCH
+  - MATERIALIZED
+  - NATURAL
+  - "NO"
+  - NULLS
+  - OF
+  - OFFSET
+  - OTHERS
+  - OUTER
+  - OVER
+  - PARTITION
+  - PLAN
+  - PRAGMA
+  - PRECEDING
+  - QUERY
+  - RAISE
+  - RANGE
+  - RECURSIVE
+  - REGEXP
+  - REINDEX
+  - RELEASE
+  - RENAME
+  - REPLACE
+  - RESTRICT
+  - RIGHT
+  - ROLLBACK
+  - ROW
+  - ROWS
+  - SAVEPOINT
+  - TEMP
+  - TEMPORARY
+  - TIES
+  - TRIGGER
+  - UNBOUNDED
+  - VACUUM
+  - VIEW
+  - VIRTUAL
+  - WINDOW
+  - WITH
+  - WITHOUT
+
+# Types of the columns of a STRICT table, the only ones SQLite checks; none
+# is a keyword of SQLite.
+types:
+  - ANY
+  - BLOB
+  - INT
+  - INTEGER
+  - REAL
+  - TEXT
+
+# Words that designate a value (`x = NULL`, `d < CURRENT_DATE`). TRUE and
+# FALSE are no keywords of SQLite: it reads them as 1 and 0 when no column
+# bears their name.
+literals:
+  - "NULL"
+  - "TRUE"
+  - "FALSE"
+  - CURRENT_DATE
+  - CURRENT_TIME
+  - CURRENT_TIMESTAMP

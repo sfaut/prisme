@@ -25,10 +25,12 @@ mod mysql_parser;
 mod mysql_statements;
 mod offsets;
 mod parse;
+mod sqlite_statements;
 pub mod syntax;
 pub mod temporary;
 pub mod verb;
 mod whitespace;
+mod words;
 
 use prisme_splitter::LexicalRules;
 
@@ -41,6 +43,8 @@ pub enum Dialect {
     ///
     /// Workaround: the missing MariaDB dialect of `sqlparser` (`docs/DEVELOPER.md`, section "Workarounds").
     MariaDb,
+    /// SQLite.
+    Sqlite,
 }
 
 /// What defines a dialect: how its texts are read and parsed.
@@ -51,6 +55,18 @@ pub struct DialectSpec {
     parser: fn() -> Box<dyn sqlparser::dialect::Dialect>,
     /// Its keyword file (`keywords/<dialect>.yaml`).
     keywords: &'static str,
+    /// Statements Prisme parses itself, which `sqlparser` misses.
+    statements: Statements,
+}
+
+/// Statements of a dialect that Prisme parses itself (`parse.rs`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Statements {
+    /// Routines, events, index operations, transactions of MySQL and MariaDB
+    /// (`mysql_statements.rs`).
+    MySql,
+    /// `PRAGMA`, `DETACH`, `VACUUM`, `REINDEX` of SQLite (`sqlite_statements.rs`).
+    Sqlite,
 }
 
 /// Lexical rules of MySQL and MariaDB: `#` comments, `--` followed by a
@@ -73,6 +89,7 @@ static MYSQL: DialectSpec = DialectSpec {
     lexical: MYSQL_LEXICAL,
     parser: || Box::new(mysql_parser::MySqlParserDialect::default()),
     keywords: include_str!("../keywords/mysql.yaml"),
+    statements: Statements::MySql,
 };
 
 /// MariaDB, read as MySQL with keywords of its own.
@@ -80,17 +97,38 @@ static MARIADB: DialectSpec = DialectSpec {
     lexical: MYSQL_LEXICAL,
     parser: || Box::new(mysql_parser::MySqlParserDialect::default()),
     keywords: include_str!("../keywords/mariadb.yaml"),
+    statements: Statements::MySql,
+};
+
+/// SQLite, as measured on the library Prisme ships (`docs/SQL-COMPARISON.md`,
+/// section 6): `--` without a space, no backslash escape, names in double
+/// quotes, backticks or square brackets, bodies of the triggers.
+static SQLITE: DialectSpec = DialectSpec {
+    lexical: LexicalRules {
+        hash_comments: false,
+        space_after_dashes: false,
+        backslash_escapes: false,
+        double_quoted_strings: false,
+        identifier_quotes: "\"`",
+        bracket_identifiers: true,
+        delimiter_command: false,
+        trigger_bodies: true,
+    },
+    parser: || Box::new(sqlparser::dialect::SQLiteDialect {}),
+    keywords: include_str!("../keywords/sqlite.yaml"),
+    statements: Statements::Sqlite,
 };
 
 impl Dialect {
     /// Every dialect.
-    pub const ALL: [Self; 2] = [Self::MySql, Self::MariaDb];
+    pub const ALL: [Self; 3] = [Self::MySql, Self::MariaDb, Self::Sqlite];
 
     /// Description of the dialect.
     pub fn spec(self) -> &'static DialectSpec {
         match self {
             Self::MySql => &MYSQL,
             Self::MariaDb => &MARIADB,
+            Self::Sqlite => &SQLITE,
         }
     }
 
