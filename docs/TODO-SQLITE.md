@@ -40,15 +40,15 @@ Architecture:
 
 ## 0. Measures
 
-- ⬜ Read-only inherited by an `ATTACH` on a connection opened read-only
-- ⬜ File created by an `ATTACH` of a missing path
-- ⬜ A `memdb` database shared by the connections of a process, and its lifetime
-- ⬜ Text of a `REAL` (SQLite's conversion against Rust's shortest round trip)
-- ⬜ `interrupt` on a running query, connection kept
-- ⬜ `is_autocommit` after an error inside a transaction
-- ⬜ `DETACH` during a transaction and during a read
-- ⬜ Paths with `/` and `\` on Windows
-- ⬜ Measures recorded in `docs/SQL-COMPARISON.md`, with their date
+- ✅ Read-only inherited by an `ATTACH` on a connection opened read-only
+- ✅ File created by an `ATTACH` of a missing path
+- ✅ A `memdb` database shared by the connections of a process, and its lifetime
+- ✅ Text of a `REAL` (SQLite's conversion against Rust's shortest round trip)
+- ✅ `interrupt` on a running query, connection kept
+- ✅ `is_autocommit` after an error inside a transaction
+- ✅ `DETACH` during a transaction and during a read
+- ✅ Paths with `/` and `\` on Windows
+- ✅ Measures recorded in `docs/SQL-COMPARISON.md`, with their date
 
 ## 1. Connector contracts, MySQL alone
 

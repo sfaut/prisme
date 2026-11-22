@@ -13,7 +13,7 @@ Measured on 2026-11-02, and on 2026-11-05 for the cases of `GROUP_CONCAT` added 
 | MySQL | 8.0.11, 9.7.4, 26.10.0 | servers `mysql-oldest`, `mysql-lts`, `mysql-latest` of `compose.yaml` |
 | MariaDB | 10.6.3, 12.3.3, 13.0.2 | servers `mariadb-oldest`, `mariadb-lts`, `mariadb-latest` of `compose.yaml` |
 | PostgreSQL | 18.6 | container `prisme-probe-postgres-18.6` (image `postgres:latest` of 2026-10-06) |
-| SQLite | 3.53.4 | `node:sqlite` of Node 26.7.0, in memory; Prisme bundles SQLite 3.53.2 (`libsqlite3-sys` 0.38.2) |
+| SQLite | 3.53.4 | `node:sqlite` of Node 26.7.0, in memory; Prisme bundles SQLite 3.54.1 (`libsqlite3-sys` 0.39.1), measured in section 6 |
 | DuckDB | 2.0.0 | `@duckdb/node-api` 2.0.0-r.1, in memory |
 
 Settings the values depend on, as the engines start (cases `info.*`):
@@ -418,3 +418,53 @@ ClickHouse, current documentation, read on 2026-11-01:
 - [groupConcat](https://clickhouse.com/docs/sql-reference/aggregate-functions/reference/groupconcat), [groupArray](https://clickhouse.com/docs/sql-reference/aggregate-functions/reference/grouparray), [combinators](https://clickhouse.com/docs/sql-reference/aggregate-functions/combinators), [filtered aggregates](https://clickhouse.com/docs/resources/support-center/knowledge-base/queries-sql/filtered-aggregates).
 
 Left out, found only on third-party sites: the value of `'12' + 1` in ClickHouse, the side converted by `'10' > 9`, and `CAST('2026-02-30' AS Date)`.
+
+## 6. SQLite embedded in Prisme
+
+Behaviours of the SQLite library that the SQLite connector relies on (`docs/TODO-SQLITE.md`): those of the engine Prisme ships, measured through `rusqlite` as the connector will call it, rather than SQL compared between engines. Measured on 2026-11-22 with SQLite 3.54.1 (`rusqlite` 0.41.1, `bundled`), on Windows 11, by `bench/sqlite/` (`docs/DEVELOPER.md`, section "SQLite embedded in Prisme").
+
+Read-only and attachments:
+
+- A connection opened read-only (`SQLITE_OPEN_READ_ONLY`) attaches an existing file, then refuses to write in it as in `main`: "attempt to write a readonly database". Its attachments inherit its mode.
+- A connection opened read-write attaches a file read-only with the URI `file:<path>?mode=ro`: the same error on a write.
+
+Attaching a missing file:
+
+- An attachment inherits the flags of its connection: without `SQLITE_OPEN_CREATE`, `ATTACH` of a missing path fails ("unable to open database") and creates nothing, read-only or not. `?mode=rw` in a URI refuses it the same way. Opening a missing path without `SQLITE_OPEN_CREATE` fails too ("unable to open database file"). A connection of Prisme opened without that flag therefore never creates a file, its attachments included.
+- `ATTACH` of a file that is not a database (text) fails: "file is not a database".
+
+Databases in memory:
+
+- `file:/<name>?vfs=memdb` (URI) opens a database in memory that every connection of the process opening the same name shares: a table created by one is seen by the other, also after the first one closed. Once every connection closed, the database is gone. The same name attached (`ATTACH 'file:/<name>?vfs=memdb' AS s`) is shared the same way.
+- `ATTACH ':memory:'` gives each connection a database of its own: another connection attaching `:memory:` sees none of its tables.
+
+Text of a `REAL`:
+
+| Value | `CAST(x AS TEXT)` in SQLite | Shortest text that reads back the same value (Rust) |
+|---|---|---|
+| 0.1 | `0.1` | `0.1` |
+| 1.0 | `1.0` | `1` |
+| 1e20 | `1.0e+20` | `100000000000000000000` |
+| 1e-7 | `1.0e-07` | `0.0000001` |
+| 0.1 + 0.2 | `0.30000000000000004` | `0.30000000000000004` |
+| π | `3.1415926535897931` | `3.141592653589793` |
+| `f64::MAX` | `1.7976931348623157e+308` | 309 digits |
+
+SQLite writes up to 17 significant digits (`printf('%!.17g')` gives the same texts), always with a decimal point, in exponent form from 10¹⁷ on and below 10⁻⁴ (`1e16` gives `10000000000000000.0`); the shortest text sometimes has one digit less (π).
+
+Interruption (`sqlite3_interrupt`, `InterruptHandle` of `rusqlite`), from another thread:
+
+- An endless `WITH RECURSIVE` stops at once (0.2 ms after the call) with the error "interrupted"; the connection stays usable.
+- Interrupted inside an explicit transaction, an endless `INSERT` rolls the whole transaction back: `is_autocommit` is true again, and the rows inserted before it in the transaction are gone.
+
+Transaction after an error:
+
+- A broken constraint or a syntax error inside a transaction fails the statement alone: `is_autocommit` stays false, the transaction is still open.
+- `INSERT OR ROLLBACK` that breaks a constraint rolls the transaction back: `is_autocommit` is true again.
+
+`DETACH` while in use:
+
+- Inside a transaction that read the attached database, and while a read of it is open: "database other is locked".
+- Inside a transaction that did not touch it, and once its read is finished: accepted.
+
+Paths on Windows: a path written with `\`, with `/`, the URI `file:///C:/...` and the URI `file:C:\...` open and attach the same file.

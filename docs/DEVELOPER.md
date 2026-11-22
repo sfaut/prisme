@@ -580,6 +580,16 @@ The command runs each case of `bench/sql/cases.mjs` alone, on every engine:
 
 It prints the table of the values, one column per server, and writes the values, the types, the warnings and the errors to `target/sql-comparison/results.json`.
 
+### SQLite embedded in Prisme
+
+`bench/sqlite/` measures the SQLite library that Prisme ships, through `rusqlite` at the version and with the features of Prisme, as the SQLite connector calls it: read-only inherited by an attachment, files created or not by an attachment, databases in memory shared between connections (`memdb`), text of the real numbers, interruption, transaction state after an error, `DETACH` while in use, paths on Windows. Its results are in `docs/SQL-COMPARISON.md`, section 6. From the root of the repository:
+
+```
+cargo run --release --manifest-path bench/sqlite/Cargo.toml --target-dir target/sqlite-measures
+```
+
+The program works in a temporary folder of its own, deleted at the end, and prints each measure with what SQLite answered.
+
 ## Testing the API by hand
 
 Start Prisme on a throwaway data folder, to delete to start from scratch:
@@ -805,6 +815,7 @@ bench/             benchmarks, outside the workspace
   pivot/           engine of the Pivoteur: native, WebAssembly, JavaScript (run.mjs)
   reload/          saved results: their save, and their reading again by the page (run.mjs)
   sql/             answers of the SQL engines to the same expressions, for docs/SQL-COMPARISON.md (run.mjs)
+  sqlite/          behaviours of the SQLite embedded in Prisme that its connector relies on, for docs/SQL-COMPARISON.md (cargo run)
   store/           reception of a result, and windows of rows asked to a Worker (run.mjs, trace.mjs, profile.mjs)
 docs/              design decisions and notes
   upstream/        drafts of tickets for the dependencies and for Chromium
