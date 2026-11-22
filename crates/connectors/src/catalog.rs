@@ -6,6 +6,20 @@
 use serde::Serialize;
 use ts_rs::TS;
 
+use crate::api::Namespace;
+
+/// Namespace of a source, as the catalog lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct NamespaceInfo {
+    /// Path of the namespace.
+    pub namespace: Namespace,
+    /// Is it provided by the source itself (`information_schema`, `mysql`,
+    /// `performance_schema`, `sys` for MySQL)? The navigator reads it last,
+    /// and shows it only when the connection asks for it.
+    pub system: bool,
+}
+
 /// Object of a namespace: table, view, routine, event...
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
@@ -22,8 +36,8 @@ pub struct ObjectInfo {
     pub enabled: Option<bool>,
 }
 
-/// Kind of an object of a namespace. Kinds are only added: an interface that
-/// does not know one shows it as an object without a folder of its own.
+/// Kind of an object of a namespace. Kinds are only added, as the engines
+/// come (materialized view, sequence, macro...).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "snake_case")]

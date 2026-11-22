@@ -1,4 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
+import { MYSQL_SOURCE } from '@/api/__tests__/capabilities'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, isReactive } from 'vue'
 
@@ -39,7 +40,11 @@ vi.mock('@/api/connections', () => ({
 
 vi.mock('@/api/navigator', () => ({
   streamCatalog: async (_id: number, onEvent: (event: unknown) => void) => {
-    onEvent({ type: 'schemas', schemas: ['app', 'logs'] })
+    onEvent({
+      type: 'namespaces',
+      source: MYSQL_SOURCE,
+      namespaces: ['app', 'logs'].map((name) => ({ namespace: [name], system: false })),
+    })
     onEvent({ type: 'done' })
   },
 }))

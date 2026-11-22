@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
+import { MYSQL_SOURCE } from '@/api/__tests__/capabilities'
 import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
+import { event, routine, schema, table, view } from '@/stores/__tests__/catalogFixtures'
 import {
+  type CatalogObject,
   type CatalogSchema,
-  type CatalogTable,
   applyCatalogEvent,
   emptyCatalog,
 } from '@/stores/catalog'
@@ -23,61 +25,49 @@ import {
 } from '../navigatorNodes'
 
 const catalog: CatalogSchema[] = [
-  {
-    name: 'shop',
-    tables: [
-      {
-        name: 'orders',
-        kind: 'table',
-        rows: 1300,
-        details: {
-          table: 'orders',
-          columns: [
-            { name: 'id', column_type: 'int', nullable: false, key: 'PRI', auto_increment: true },
-            {
-              name: 'note',
-              column_type: 'varchar(20)',
-              nullable: true,
-              key: '',
-              auto_increment: false,
-            },
-            {
-              name: 'client_id',
-              column_type: 'int(10)',
-              nullable: false,
-              key: 'MUL',
-              auto_increment: false,
-            },
-          ],
-          indexes: [
-            { name: 'PRIMARY', columns: ['id'], unique: true },
-            { name: 'client_id', columns: ['client_id'], unique: false },
-          ],
-          foreign_keys: [
-            {
-              name: 'fk_client',
-              columns: ['client_id'],
-              referenced_schema: 'shop',
-              referenced_table: 'clients',
-              referenced_columns: ['id'],
-            },
-          ],
-          triggers: [],
+  schema('shop', [
+    table('orders', 1300, {
+      table: 'orders',
+      columns: [
+        { name: 'id', column_type: 'int', nullable: false, key: 'PRI', auto_increment: true },
+        {
+          name: 'note',
+          column_type: 'varchar(20)',
+          nullable: true,
+          key: '',
+          auto_increment: false,
         },
-      },
-      { name: 'pending', kind: 'table', rows: 0, details: null },
-      { name: 'v_orders', kind: 'view', rows: null, details: null },
-    ],
-    routines: [
-      { name: 'purge', kind: 'procedure' },
-      { name: 'total', kind: 'function' },
-    ],
-    events: [
-      { name: 'nettoyage', enabled: true },
-      { name: 'archive', enabled: false },
-    ],
-  },
-  { name: 'pas_encore', tables: null, routines: null, events: null },
+        {
+          name: 'client_id',
+          column_type: 'int(10)',
+          nullable: false,
+          key: 'MUL',
+          auto_increment: false,
+        },
+      ],
+      indexes: [
+        { name: 'PRIMARY', columns: ['id'], unique: true },
+        { name: 'client_id', columns: ['client_id'], unique: false },
+      ],
+      foreign_keys: [
+        {
+          name: 'fk_client',
+          columns: ['client_id'],
+          referenced_schema: 'shop',
+          referenced_table: 'clients',
+          referenced_columns: ['id'],
+        },
+      ],
+      triggers: [],
+    }),
+    table('pending', 0),
+    view('v_orders'),
+    routine('purge', 'procedure'),
+    routine('total', 'function'),
+    event('nettoyage', true),
+    event('archive', false),
+  ]),
+  schema('pas_encore', null),
 ]
 
 /**
@@ -95,8 +85,7 @@ describe('sourceNodes', () => {
         name: 'MariaDB Origen 2 (II)',
         catalog: {
           schemas: catalog,
-          flavor: 'mariadb',
-          version: '10.11.11-MariaDB',
+          source: null,
           done: true,
           errors: [],
         },
@@ -110,7 +99,7 @@ describe('sourceNodes', () => {
       {
         connectionId: 2,
         name: 'Origen 2',
-        catalog: { schemas: catalog, flavor: 'mariadb', version: null, done: true, errors: [] },
+        catalog: { schemas: catalog, source: null, done: true, errors: [] },
         receiving: false,
         chosen: false,
         currentDatabase: null,
@@ -157,16 +146,13 @@ describe('sourceNodes', () => {
 
 describe('system databases', () => {
   it('hides the system databases if the connection asks for it', () => {
-    const schemas = ['information_schema', 'mysql', 'shop', 'sys'].map((name) => ({
-      name,
-      tables: [],
-      routines: [],
-      events: [],
-    }))
+    const schemas = ['information_schema', 'mysql', 'shop', 'sys'].map((name) =>
+      schema(name, [], name !== 'shop'),
+    )
     const source = (showSystemSchemas: boolean) => ({
       connectionId: 1,
       name: 'Origen 2',
-      catalog: { schemas, flavor: null, version: null, done: true, errors: [] },
+      catalog: { schemas, source: null, done: true, errors: [] },
       receiving: false,
       chosen: false,
       currentDatabase: null,
@@ -226,17 +212,7 @@ describe('catalogNodes', () => {
 
   it('sorts the tables of a folder by name, or by row count when chosen', () => {
     const schemas: CatalogSchema[] = [
-      {
-        name: 'shop',
-        tables: [
-          { name: 'a', kind: 'table', rows: 10, details: null },
-          { name: 'b', kind: 'table', rows: null, details: null },
-          { name: 'c', kind: 'table', rows: 500, details: null },
-          { name: 'd', kind: 'table', rows: 10, details: null },
-        ],
-        routines: [],
-        events: [],
-      },
+      schema('shop', [table('a', 10), table('b', null), table('c', 500), table('d', 10)]),
     ]
     const byName = catalogNodes(1, schemas)[0]?.children?.[0]
     expect(byName?.tableSort).toBe('name')
@@ -250,14 +226,7 @@ describe('catalogNodes', () => {
   })
 
   it('gives no order to a folder of less than two tables', () => {
-    const schemas: CatalogSchema[] = [
-      {
-        name: 'shop',
-        tables: [{ name: 'a', kind: 'table', rows: 10, details: null }],
-        routines: [],
-        events: [],
-      },
-    ]
+    const schemas: CatalogSchema[] = [schema('shop', [table('a', 10)])]
     expect(catalogNodes(1, schemas)[0]?.children?.[0]?.tableSort).toBeUndefined()
   })
 
@@ -313,32 +282,20 @@ describe('catalogNodes', () => {
       referenced_table: table,
       referenced_columns: referenced,
     })
-    const table = (name: string, keys: ForeignKeyInfo[]): CatalogTable => ({
-      name,
-      kind: 'table',
-      rows: null,
-      details: { table: name, columns: [], indexes: [], foreign_keys: keys, triggers: [] },
-    })
+    const withKeys = (name: string, keys: ForeignKeyInfo[]): CatalogObject =>
+      table(name, null, { table: name, columns: [], indexes: [], foreign_keys: keys, triggers: [] })
     const schemas: CatalogSchema[] = [
-      {
-        name: 'shop',
-        tables: [
-          table('address', [
-            key('address_place', ['country', 'region_code'], 'customer', ['country', 'code']),
-          ]),
-          table('customer', [key('customer_referrer', ['referrer_id'], 'customer', ['id'])]),
-          table('order', [key('order_customer', ['customer_id'], 'customer', ['id'])]),
-        ],
-        routines: [],
-        events: [],
-      },
-      {
-        name: 'crm',
-        tables: [table('contact', [key('contact_customer', ['customer_id'], 'customer', ['id'])])],
-        routines: [],
-        events: [],
-      },
-      { name: 'pas_encore', tables: null, routines: null, events: null },
+      schema('shop', [
+        withKeys('address', [
+          key('address_place', ['country', 'region_code'], 'customer', ['country', 'code']),
+        ]),
+        withKeys('customer', [key('customer_referrer', ['referrer_id'], 'customer', ['id'])]),
+        withKeys('order', [key('order_customer', ['customer_id'], 'customer', ['id'])]),
+      ]),
+      schema('crm', [
+        withKeys('contact', [key('contact_customer', ['customer_id'], 'customer', ['id'])]),
+      ]),
+      schema('pas_encore', null),
     ]
     const tables = catalogNodes(1, schemas)[0]?.children?.[0]?.children ?? []
     const folders = (name: string) => tables.find((node) => node.table === name)?.children ?? []
@@ -442,29 +399,26 @@ describe('applyCatalogEvent', () => {
   it('fills the catalog message by message', () => {
     const state = emptyCatalog()
     applyCatalogEvent(state, {
-      type: 'schemas',
-      schemas: ['a'],
-      flavor: 'mysql',
-      version: '8.4.11',
+      type: 'namespaces',
+      source: MYSQL_SOURCE,
+      namespaces: [{ namespace: ['a'], system: false }],
     })
-    expect(state.schemas).toEqual([{ name: 'a', tables: null, routines: null, events: null }])
-    expect([state.flavor, state.version]).toEqual(['mysql', '8.4.11'])
+    expect(state.schemas).toEqual([schema('a', null)])
+    expect(state.source).toEqual(MYSQL_SOURCE)
 
     applyCatalogEvent(state, {
       type: 'objects',
-      schema: 'a',
-      objects: {
-        tables: [
-          { name: 't', kind: 'table', rows: 0 },
-          { name: 'u', kind: 'table', rows: 0 },
-        ],
-        routines: [{ name: 'p', kind: 'procedure' }],
-        events: [],
-      },
+      namespace: ['a'],
+      objects: [
+        { name: 't', kind: 'table', rows: 0, enabled: null },
+        { name: 'u', kind: 'table', rows: 0, enabled: null },
+        // A procedure named as a table: the details of the table are not its own.
+        { name: 't', kind: 'procedure', rows: null, enabled: null },
+      ],
     })
     applyCatalogEvent(state, {
       type: 'details',
-      schema: 'a',
+      namespace: ['a'],
       tables: [
         {
           table: 't',
@@ -477,10 +431,10 @@ describe('applyCatalogEvent', () => {
         },
       ],
     })
-    const [t, u] = state.schemas[0]?.tables ?? []
+    const [t, u, p] = state.schemas[0]?.objects ?? []
     expect(t?.details?.columns.map((column) => column.name)).toEqual(['id'])
     expect(u?.details?.columns).toEqual([])
-    expect(state.schemas[0]?.routines).toEqual([{ name: 'p', kind: 'procedure' }])
+    expect(p?.details).toBeNull()
 
     applyCatalogEvent(state, {
       type: 'error',

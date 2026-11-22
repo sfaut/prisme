@@ -30,7 +30,7 @@ Architecture:
 ## Contracts
 
 - **Connector** (`crates/connectors`, module `api`): `Engine` (family of a driver) and `Flavor` (product detected); `Driver` (`probe`, `open`), `Session` (`execute`, transaction state, namespace, attach / detach, notices, catalog, canceller), `Rows` (columns, rows read one at a time, outcome: the server gathers them into batches by their arrival, and a read is never cut in the middle of a message of the protocol), `Canceller`, behind boxed futures; `OpenOptions { read_only, namespace, session_key }`, read-only applied by the connector; `Capabilities` sent to the interface; `SourceInfo` with `DialectOptions`; `ConnectorError` with `Unsupported`; `TypeFamily` only gains variants.
-- **Catalog**: `Namespace { path }`, events `namespaces`, `objects`, `details`, `ObjectKind` open.
+- **Catalog**: `Namespace` (path of names), `NamespaceInfo { namespace, system }`; events `namespaces { source, namespaces }`, `objects { namespace, objects }`, `details { namespace, tables }`; `ObjectInfo { name, kind, rows, enabled }`, `ObjectKind` open, each kind in a folder of the navigator.
 - **Synchronous engines**: module `blocking`, one thread per connection, bounded channel of batches, interrupt handle (SQLite now, DuckDB later).
 - **Locations** (module `location`): `Location { scheme, address }`, `LocationProvider` (capabilities, `probe`, `create`, `materialize`) in a registry; `FileProvider`, `HttpProvider` (`reqwest`, `rustls`); cache of the remote copies in the data folder, revalidated by `ETag` / `Last-Modified`; an engine declares the protocols it reads natively.
 - **Dialect**: `DialectSpec` per dialect, `LexicalRules` read by the splitter and the editor.
@@ -55,10 +55,10 @@ Architecture:
 
 - ✅ Module `api`: traits, registry, `Capabilities`, `SourceInfo`, errors
 - ✅ Neutral types moved out of `mysql::`, serialization unchanged
-- ⬜ Catalog in namespaces and open kinds of objects
+- ✅ Catalog in namespaces and open kinds of objects
 - ✅ MySQL connector behind the traits, read-only moved into it
 - ✅ Contract suite, on MySQL and MariaDB
-- ⬜ Server on the traits only
+- ✅ Server on the traits only
 - ⬜ Interface on the capabilities, the registry of the flavors and the general catalog
 - ⬜ Nothing visible changed: checks and MySQL / MariaDB walk-through on screen
 

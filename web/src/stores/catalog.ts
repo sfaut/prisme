@@ -3,8 +3,9 @@
  * progressively and kept in memory.
  *
  * The catalog of a connection fills as the server's messages arrive: the
- * databases first, then their objects (tables, views, procedures, functions),
- * then the details of the tables. A part not received yet is `null`. Going
+ * namespaces first (databases of MySQL), then their objects (tables, views,
+ * routines, events... as the engine declares them), then the details of the
+ * tables and views. A part not received yet is `null`. Going
  * back to a connection already explored reuses its catalog; "Rafraîchir"
  * (refresh) reads it again.
  *
@@ -23,41 +24,50 @@ import { markRaw, ref, shallowRef, triggerRef } from 'vue'
 import { streamCatalog } from '@/api/navigator'
 import type { CatalogEvent } from '@/api/generated/CatalogEvent'
 import type { ColumnOrigin } from '@/api/generated/ColumnOrigin'
-import type { Flavor } from '@/api/generated/Flavor'
-import type { EventInfo } from '@/api/generated/EventInfo'
-import type { RoutineInfo } from '@/api/generated/RoutineInfo'
+import type { Namespace } from '@/api/generated/Namespace'
+import type { ObjectInfo } from '@/api/generated/ObjectInfo'
+import type { ObjectKind } from '@/api/generated/ObjectKind'
+import type { SourceInfo } from '@/api/generated/SourceInfo'
 import type { TableDetails } from '@/api/generated/TableDetails'
-import type { TableInfo } from '@/api/generated/TableInfo'
 import { describe } from '@/api/messages'
 
 /**
- * Table or view of the catalog: what the server sent of it (name, nature,
- * estimated row count), then its details.
+ * Kinds of objects that have columns, and so details: tables and views.
  */
-export interface CatalogTable extends TableInfo {
+export const RELATION_KINDS: readonly ObjectKind[] = ['table', 'view', 'system_table']
+
+/**
+ * Object of the catalog: what the source sent of it (name, kind, estimated
+ * row count...), then the details of a table or a view.
+ */
+export interface CatalogObject extends ObjectInfo {
   /**
-   * Columns, indexes, foreign keys and triggers, `null` as long as they are not received.
+   * Columns, indexes, foreign keys and triggers of a table or a view, `null`
+   * as long as they are not received, and for the other kinds.
    */
   details: TableDetails | null
 }
 
 /**
- * Database of the catalog.
+ * Namespace of the catalog (database of MySQL).
  */
 export interface CatalogSchema {
+  /**
+   * Innermost name of the namespace, the one the SQL qualifies the objects with.
+   */
   name: string
   /**
-   * Tables and views, `null` as long as they are not received.
+   * Whole path of the namespace.
    */
-  tables: CatalogTable[] | null
+  namespace: Namespace
   /**
-   * Procedures and functions, `null` as long as they are not received.
+   * Is it provided by the source itself (`information_schema`...)?
    */
-  routines: RoutineInfo[] | null
+  system: boolean
   /**
-   * Scheduled events, `null` as long as they are not received.
+   * Objects, in the order of the source, `null` as long as they are not received.
    */
-  events: EventInfo[] | null
+  objects: CatalogObject[] | null
 }
 
 /**
@@ -66,14 +76,10 @@ export interface CatalogSchema {
 export interface Catalog {
   schemas: CatalogSchema[]
   /**
-   * Flavor of the server, announced with the databases; `null` before.
+   * Identity of the source (flavor, version, capabilities), announced with
+   * the namespaces; `null` before.
    */
-  flavor: Flavor | null
-  /**
-   * Version of the server (raw result of `SELECT VERSION()`), announced with
-   * the databases; `null` before.
-   */
-  version: string | null
+  source: SourceInfo | null
   /**
    * Has the whole catalog been received?
    */
@@ -88,7 +94,35 @@ export interface Catalog {
  * Empty catalog, waiting for the first message.
  */
 export function emptyCatalog(): Catalog {
-  return { schemas: [], flavor: null, version: null, done: false, errors: [] }
+  return { schemas: [], source: null, done: false, errors: [] }
+}
+
+/**
+ * Is an object a table or a view, which has columns?
+ *
+ * @param object Object of the catalog.
+ */
+export function isRelation(object: ObjectInfo): boolean {
+  return RELATION_KINDS.includes(object.kind)
+}
+
+/**
+ * Tables and views of a namespace, none as long as its objects are not received.
+ *
+ * @param schema Namespace of the catalog.
+ */
+export function relationsOf(schema: CatalogSchema): CatalogObject[] {
+  return (schema.objects ?? []).filter(isRelation)
+}
+
+/**
+ * Do two paths name the same namespace?
+ *
+ * @param a First path.
+ * @param b Second path.
+ */
+function sameNamespace(a: Namespace, b: Namespace): boolean {
+  return a.length === b.length && a.every((name, index) => name === b[index])
 }
 
 /**
@@ -116,7 +150,7 @@ export function isForeignKey(
     return false
   }
   const schema = catalog.schemas.find((item) => item.name === origin.schema)
-  const table = schema?.tables?.find((item) => item.name === origin.table)
+  const table = schema && relationsOf(schema).find((item) => item.name === origin.table)
   return table?.details?.foreign_keys.some((key) => key.columns.includes(origin.column)) ?? false
 }
 
@@ -128,27 +162,29 @@ export function isForeignKey(
  */
 export function applyCatalogEvent(catalog: Catalog, event: CatalogEvent): void {
   switch (event.type) {
-    case 'schemas':
-      catalog.schemas = event.schemas.map((name) => ({
-        name,
-        tables: null,
-        routines: null,
-        events: null,
+    case 'namespaces':
+      catalog.schemas = event.namespaces.map(({ namespace, system }) => ({
+        name: namespace[namespace.length - 1] ?? '',
+        namespace,
+        system,
+        objects: null,
       }))
-      catalog.flavor = event.flavor
-      catalog.version = event.version
+      catalog.source = event.source
       break
     case 'objects': {
-      const schema = catalog.schemas.find((candidate) => candidate.name === event.schema)
+      const schema = catalog.schemas.find((candidate) =>
+        sameNamespace(candidate.namespace, event.namespace),
+      )
       if (schema) {
-        schema.tables = event.objects.tables.map((table) => ({ ...table, details: null }))
-        schema.routines = event.objects.routines
-        schema.events = event.objects.events
+        schema.objects = event.objects.map((object) => ({ ...object, details: null }))
       }
       break
     }
     case 'details': {
-      const tables = catalog.schemas.find((candidate) => candidate.name === event.schema)?.tables
+      const schema = catalog.schemas.find((candidate) =>
+        sameNamespace(candidate.namespace, event.namespace),
+      )
+      const tables = schema && relationsOf(schema)
       for (const details of event.tables) {
         const target = tables?.find((candidate) => candidate.name === details.table)
         if (target) {
@@ -250,22 +286,26 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
   /**
-   * Names of the catalog as defined, for the beautifier: databases, tables
-   * and views, columns, functions and procedures, all databases together.
+   * Names of the catalog as defined, for the beautifier: namespaces, tables
+   * and views, columns, functions and procedures, all namespaces together.
    * The parts not read yet are simply absent.
    *
    * @param connectionId Id of the connection.
    */
   function catalogNames(connectionId: number): BeautifyCatalog {
     const schemas = catalogs.value[connectionId]?.schemas ?? []
-    const tables = schemas.flatMap((schema) => schema.tables ?? [])
+    const tables = schemas.flatMap(relationsOf)
     return {
       schemas: schemas.map((schema) => schema.name),
       tables: tables.map((table) => table.name),
       columns: tables.flatMap((table) =>
         (table.details?.columns ?? []).map((column) => column.name),
       ),
-      routines: schemas.flatMap((schema) => (schema.routines ?? []).map((routine) => routine.name)),
+      routines: schemas.flatMap((schema) =>
+        (schema.objects ?? [])
+          .filter((object) => object.kind === 'procedure' || object.kind === 'function')
+          .map((routine) => routine.name),
+      ),
     }
   }
 

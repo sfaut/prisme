@@ -29,15 +29,13 @@
  */
 
 import type { ColumnInfo } from '@/api/generated/ColumnInfo'
-import type { EventInfo } from '@/api/generated/EventInfo'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
 import type { IndexInfo } from '@/api/generated/IndexInfo'
-import type { RoutineInfo } from '@/api/generated/RoutineInfo'
+import type { ObjectKind } from '@/api/generated/ObjectKind'
 import type { TableDetails } from '@/api/generated/TableDetails'
-import type { TableKind } from '@/api/generated/TableKind'
 import type { TriggerInfo } from '@/api/generated/TriggerInfo'
-import type { Catalog, CatalogSchema, CatalogTable } from '@/stores/catalog'
+import { type Catalog, type CatalogObject, type CatalogSchema, relationsOf } from '@/stores/catalog'
 import type { TableSort } from '@/stores/navigator'
 import { compactCount } from '@/utils/compactCount'
 
@@ -92,16 +90,10 @@ export interface Source {
    */
   version: string | null
   /**
-   * Are the system databases (`SYSTEM_SCHEMAS`) shown?
+   * Are the namespaces provided by the source itself shown?
    */
   showSystemSchemas: boolean
 }
-
-/**
- * Databases provided by the server itself, which the connection's setting
- * can hide in the navigator.
- */
-export const SYSTEM_SCHEMAS = ['information_schema', 'mysql', 'performance_schema', 'sys']
 
 /**
  * Nature of a catalog node that has no role, to choose its icon.
@@ -299,7 +291,7 @@ export function sourceNodes(
               source.connectionId,
               source.showSystemSchemas
                 ? catalog.schemas
-                : catalog.schemas.filter((schema) => !SYSTEM_SCHEMAS.includes(schema.name)),
+                : catalog.schemas.filter((schema) => !schema.system),
               source.currentDatabase,
               tablesByRows,
             ),
@@ -333,13 +325,11 @@ export function catalogNodes(
       role: 'database' as const,
       current: schema.name === currentDatabase,
       children:
-        schema.tables === null || schema.routines === null || schema.events === null
+        schema.objects === null
           ? [loadingNode(key, place)]
           : schemaFolders(
               place,
-              schema.tables,
-              schema.routines,
-              schema.events,
+              schema.objects,
               references.get(schema.name) ?? new Map(),
               tablesByRows,
             ),
@@ -357,7 +347,7 @@ export function catalogNodes(
 function referencesByTable(schemas: CatalogSchema[]): Map<string, Map<string, Reference[]>> {
   const references = new Map<string, Map<string, Reference[]>>()
   for (const schema of schemas) {
-    for (const table of schema.tables ?? []) {
+    for (const table of relationsOf(schema)) {
       for (const key of table.details?.foreign_keys ?? []) {
         let tables = references.get(key.referenced_schema)
         if (tables === undefined) {
@@ -413,59 +403,60 @@ function placeKey(place: Place): string {
 }
 
 /**
- * Folders of a database: tables, views, procedures, functions, events.
+ * Folder of a namespace that receives each kind of object: a new kind of an
+ * engine gets its folder here, which the compiler asks for.
+ */
+const FOLDER_OF: Record<ObjectKind, 'tables' | 'views' | 'procedures' | 'functions' | 'events'> = {
+  table: 'tables',
+  view: 'views',
+  system_table: 'views',
+  procedure: 'procedures',
+  function: 'functions',
+  event: 'events',
+}
+
+/**
+ * Folders of a namespace: tables, views, procedures, functions, events.
  *
- * @param place Connection and database.
- * @param tables Tables and views of the database.
- * @param routines Procedures and functions of the database.
- * @param events Scheduled events of the database.
- * @param references Foreign keys that reference the tables of the database, by table.
+ * @param place Connection and namespace.
+ * @param objects Objects of the namespace.
+ * @param references Foreign keys that reference the tables of the namespace, by table.
  * @param tablesByRows Keys of the "Tables" folders sorted by row count.
  */
 function schemaFolders(
   place: Place,
-  tables: CatalogTable[],
-  routines: RoutineInfo[],
-  events: EventInfo[],
+  objects: CatalogObject[],
   references: Map<string, Reference[]>,
   tablesByRows: ReadonlySet<string>,
 ): NavigatorNode[] {
   const base = placeKey(place)
-  const routineNode = (routine: RoutineInfo): NavigatorNode => ({
+  const inFolder = (name: (typeof FOLDER_OF)[ObjectKind]) =>
+    objects.filter((object) => FOLDER_OF[object.kind] === name)
+  const routineNode = (routine: CatalogObject): NavigatorNode => ({
     key: `routine:${base}.${routine.name}:${routine.kind}`,
     label: routine.name,
     isLeaf: true,
     entry: routine.kind === 'procedure' ? 'procedure' : 'function',
     ...place,
   })
-  const eventNode = (event: EventInfo): NavigatorNode => ({
+  const eventNode = (event: CatalogObject): NavigatorNode => ({
     key: `event:${base}.${event.name}`,
-    label: event.enabled ? event.name : `${event.name} · désactivé`,
+    label: event.enabled === false ? `${event.name} · désactivé` : event.name,
     isLeaf: true,
     entry: 'event',
     ...place,
   })
   return [
-    tablesFolder(place, tables, references, tablesByRows),
+    tablesFolder(place, inFolder('tables'), references, tablesByRows),
     folder(
       `views:${base}`,
       'Vues',
       place,
-      tables.filter((table) => table.kind !== 'table').map((table) => tableNode(place, table, [])),
+      inFolder('views').map((view) => tableNode(place, view, [])),
     ),
-    folder(
-      `procedures:${base}`,
-      'Procédures',
-      place,
-      routines.filter((routine) => routine.kind === 'procedure').map(routineNode),
-    ),
-    folder(
-      `functions:${base}`,
-      'Fonctions',
-      place,
-      routines.filter((routine) => routine.kind === 'function').map(routineNode),
-    ),
-    folder(`events:${base}`, 'Événements', place, events.map(eventNode)),
+    folder(`procedures:${base}`, 'Procédures', place, inFolder('procedures').map(routineNode)),
+    folder(`functions:${base}`, 'Fonctions', place, inFolder('functions').map(routineNode)),
+    folder(`events:${base}`, 'Événements', place, inFolder('events').map(eventNode)),
   ]
 }
 
@@ -476,21 +467,20 @@ function schemaFolders(
  * line lets change.
  *
  * @param place Connection and database.
- * @param tables Tables and views of the database, by name.
+ * @param tables Tables of the database, by name.
  * @param references Foreign keys that reference the tables of the database, by table.
  * @param tablesByRows Keys of the "Tables" folders sorted by row count.
  */
 function tablesFolder(
   place: Place,
-  tables: CatalogTable[],
+  tables: CatalogObject[],
   references: Map<string, Reference[]>,
   tablesByRows: ReadonlySet<string>,
 ): NavigatorNode {
   const key = `tables:${placeKey(place)}`
   const sort: TableSort = tablesByRows.has(`folder:${key}`) ? 'rows' : 'name'
-  const kept = tables.filter((table) => table.kind === 'table')
   // The sort is stable: equal counts keep the order of the names.
-  const sorted = sort === 'rows' ? kept.sort((a, b) => (b.rows ?? -1) - (a.rows ?? -1)) : kept
+  const sorted = sort === 'rows' ? tables.sort((a, b) => (b.rows ?? -1) - (a.rows ?? -1)) : tables
   const node = folder(
     key,
     'Tables',
@@ -509,11 +499,11 @@ function tablesFolder(
  * @param table Table or view.
  * @param references Foreign keys that reference the table.
  */
-function tableNode(place: Place, table: CatalogTable, references: Reference[]): NavigatorNode {
+function tableNode(place: Place, table: CatalogObject, references: Reference[]): NavigatorNode {
   const key = `table:${placeKey(place)}.${table.name}`
   return {
     key,
-    label: table.kind === 'system' ? `${table.name} (système)` : table.name,
+    label: table.kind === 'system_table' ? `${table.name} (système)` : table.name,
     isLeaf: false,
     entry: table.kind === 'view' ? 'view' : 'table',
     ...place,
@@ -531,13 +521,13 @@ function tableNode(place: Place, table: CatalogTable, references: Reference[]): 
  * triggers. A view only has its columns.
  *
  * @param place Connection and database.
- * @param kind Nature of the table.
+ * @param kind Kind of the table.
  * @param details Details received from the server.
  * @param references Foreign keys that reference the table.
  */
 function tableFolders(
   place: Place,
-  kind: TableKind,
+  kind: ObjectKind,
   details: TableDetails,
   references: Reference[],
 ): NavigatorNode[] {

@@ -5,7 +5,7 @@ This document gathers the ideas kept for drawing a database as a graph: its tabl
 ## 1. Starting point
 
 - The catalog already holds what the graph needs. For a database, `details()` (`crates/connectors/src/mysql/catalog.rs`) reads in one go the columns, indexes and foreign keys of all its tables; each `ForeignKeyInfo` gives its columns, the referenced table, its database (`referenced_schema`) and the referenced columns.
-- The row count of the tables is read with the objects of each database (`TABLE_ROWS`, `TableInfo.rows`), and shown in the object navigator; its cost is measured in section 9.2.
+- The row count of the tables is read with the objects of each database (`TABLE_ROWS`, `ObjectInfo.rows`), and shown in the object navigator; its cost is measured in section 9.2.
 - Relations come from the declared foreign keys only **[decided]**. Relations guessed from the names (`user_id`), or tables without foreign keys (MyISAM), are left for later.
 
 ## 2. The graph

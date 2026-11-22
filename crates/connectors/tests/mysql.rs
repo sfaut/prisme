@@ -9,8 +9,9 @@
 use std::time::{Duration, Instant};
 
 use prisme_connectors::api::{Driver, OpenOptions};
+use prisme_connectors::catalog::ObjectKind;
 use prisme_connectors::flavor::Flavor;
-use prisme_connectors::mysql::catalog::{self, RoutineKind, TableKind};
+use prisme_connectors::mysql::catalog;
 use prisme_connectors::mysql::{
     Connection, DRIVER, connect, execute, in_transaction, kill_query, probe, read_warnings,
 };
@@ -340,37 +341,29 @@ async fn reads_the_catalog_schema_by_schema() {
                     .await
                     .unwrap();
                 let kinds: Vec<_> = objects
-                    .tables
                     .iter()
-                    .map(|table| (table.name.as_str(), table.kind, table.rows))
+                    .map(|object| {
+                        (
+                            object.name.as_str(),
+                            object.kind,
+                            object.rows,
+                            object.enabled,
+                        )
+                    })
                     .collect();
                 // Empty tables are estimated at 0 rows; a view has no estimate.
                 assert_eq!(
                     kinds,
                     [
-                        ("p", TableKind::Table, Some(0)),
-                        ("t", TableKind::Table, Some(0)),
-                        ("v", TableKind::View, None)
+                        ("p", ObjectKind::Table, Some(0), None),
+                        ("t", ObjectKind::Table, Some(0), None),
+                        ("v", ObjectKind::View, None, None),
+                        ("do_nothing", ObjectKind::Procedure, None, None),
+                        ("one", ObjectKind::Function, None, None),
+                        ("e_daily", ObjectKind::Event, None, Some(true)),
+                        ("e_paused", ObjectKind::Event, None, Some(false)),
                     ]
                 );
-                let routines: Vec<_> = objects
-                    .routines
-                    .iter()
-                    .map(|routine| (routine.name.as_str(), routine.kind))
-                    .collect();
-                assert_eq!(
-                    routines,
-                    [
-                        ("do_nothing", RoutineKind::Procedure),
-                        ("one", RoutineKind::Function)
-                    ]
-                );
-                let events: Vec<_> = objects
-                    .events
-                    .iter()
-                    .map(|event| (event.name.as_str(), event.enabled))
-                    .collect();
-                assert_eq!(events, [("e_daily", true), ("e_paused", false)]);
 
                 let details = catalog::details(&mut connection, &target.database_name)
                     .await

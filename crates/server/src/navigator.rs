@@ -4,20 +4,21 @@
 //! JSON lines (`application/x-ndjson`), one `CatalogEvent` message per line,
 //! sent as soon as it is ready:
 //!
-//! 1. `schemas`: names of all the databases, with the server's flavor (also
-//!    remembered on the connection, for the navigator's badge);
-//! 2. `objects`: tables, views, procedures, functions and events, database by
-//!    database;
+//! 1. `namespaces`: all the namespaces of the source (databases of a server),
+//!    with the identity of the source (also remembered on the connection,
+//!    for the navigator's badge), whose capabilities tell the levels of the
+//!    namespaces and the kinds of objects;
+//! 2. `objects`: objects of each namespace (tables, views, routines,
+//!    events...), namespace by namespace;
 //! 3. `details`: columns, indexes, foreign keys and triggers of the tables,
-//!    database by database;
+//!    namespace by namespace;
 //! 4. `done`, or `error` if a read fails.
 //!
-//! The interface therefore shows the databases almost at once, then the
+//! The interface therefore shows the namespaces almost at once, then the
 //! objects and their details as they arrive. `?editor=` names the editor
 //! whose navigator reads the catalog: its queries go to the console of that
-//! editor. The database chosen in the
-//! connection is read first, the system databases (`information_schema`,
-//! `mysql`...) last.
+//! editor. The namespace chosen in the connection is read first, those the
+//! source provides itself (`information_schema`, `mysql`...) last.
 
 use std::convert::Infallible;
 
@@ -29,12 +30,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use futures_util::stream;
 use prisme_connectors::api::{self, ConnectorError, Namespace, OpenOptions, SourceInfo};
-use prisme_connectors::catalog::{ObjectInfo, ObjectKind, TableDetails};
+use prisme_connectors::catalog::{NamespaceInfo, ObjectInfo, TableDetails};
 use prisme_connectors::drivers;
 use prisme_connectors::flavor::Flavor;
-use prisme_connectors::mysql::catalog::{
-    EventInfo, RoutineInfo, RoutineKind, SchemaObjects, TableInfo, TableKind,
-};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::Instrument;
@@ -47,9 +45,6 @@ use crate::connections::{self, ConnectionsError};
 use crate::console::{self, Action};
 use crate::error_detail::ErrorDetail;
 
-/// Databases provided by the server itself, read last.
-const SYSTEM_SCHEMAS: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
-
 /// Number of messages waiting to be sent beyond which reading waits.
 const BUFFER: usize = 16;
 
@@ -58,24 +53,24 @@ const BUFFER: usize = 16;
 #[ts(export)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CatalogEvent {
-    /// Names of all the databases, in alphabetical order, and flavor and
-    /// version (raw result of `SELECT VERSION()`) of the server.
-    Schemas {
-        schemas: Vec<String>,
-        flavor: Flavor,
-        version: String,
+    /// All the namespaces, in alphabetical order, and the identity of the
+    /// source.
+    Namespaces {
+        source: SourceInfo,
+        namespaces: Vec<NamespaceInfo>,
     },
-    /// Objects of a database: tables, views, procedures, functions and events.
+    /// Objects of a namespace: tables, views, routines, events...
     Objects {
-        schema: String,
-        objects: SchemaObjects,
+        namespace: Namespace,
+        objects: Vec<ObjectInfo>,
     },
-    /// Details of the tables of a database: columns, indexes, foreign keys, triggers.
+    /// Details of the tables of a namespace: columns, indexes, foreign keys,
+    /// triggers.
     Details {
-        schema: String,
+        namespace: Namespace,
         tables: Vec<TableDetails>,
     },
-    /// Failure of a read; the stream goes on with the next database. The
+    /// Failure of a read; the stream goes on with the next namespace. The
     /// English message of the logs, and the detail for the interface.
     Error {
         message: String,
@@ -128,13 +123,10 @@ async fn stream_catalog(
         .await?;
 
     let (sender, receiver) = mpsc::channel(BUFFER);
-    let preferred = target
-        .namespace()
-        .map(|namespace| namespace.name().to_string());
+    let preferred = target.namespace();
     tokio::spawn(
         async move {
-            let preferred = preferred.unwrap_or_default();
-            read_catalog(connection.as_mut(), &preferred, server, &sender).await;
+            read_catalog(connection.as_mut(), preferred.as_ref(), server, &sender).await;
             connection.close().await;
         }
         .instrument(span),
@@ -154,58 +146,52 @@ async fn stream_catalog(
         .into_response())
 }
 
-/// Reads the catalog database by database and sends each part as soon as it is read.
+/// Reads the catalog namespace by namespace and sends each part as soon as it
+/// is read.
 ///
 /// Stops as soon as the client has closed the response.
 async fn read_catalog(
     connection: &mut dyn api::Session,
-    preferred: &str,
-    server: SourceInfo,
+    preferred: Option<&Namespace>,
+    source: SourceInfo,
     sender: &mpsc::Sender<CatalogEvent>,
 ) {
-    let flavor = server.flavor;
-    let schemas: Vec<String> = match connection.namespaces().await {
-        Ok(namespaces) => namespaces
-            .into_iter()
-            .map(|namespace| namespace.name().to_string())
-            .collect(),
+    let flavor = source.flavor;
+    let namespaces = match connection.namespaces().await {
+        Ok(namespaces) => namespaces,
         Err(error) => {
             let _ = sender.send(error_event(None, flavor, &error)).await;
             return;
         }
     };
-    let order = reading_order(&schemas, preferred);
+    let order = reading_order(&namespaces, preferred);
     if sender
-        .send(CatalogEvent::Schemas {
-            schemas,
-            flavor,
-            version: server.version,
-        })
+        .send(CatalogEvent::Namespaces { source, namespaces })
         .await
         .is_err()
     {
         return;
     }
 
-    for schema in &order {
-        let event = match connection.objects(&Namespace::single(schema)).await {
+    for namespace in &order {
+        let event = match connection.objects(namespace).await {
             Ok(objects) => CatalogEvent::Objects {
-                schema: schema.clone(),
-                objects: schema_objects(objects),
+                namespace: namespace.clone(),
+                objects,
             },
-            Err(error) => error_event(Some(schema), flavor, &error),
+            Err(error) => error_event(Some(namespace), flavor, &error),
         };
         if sender.send(event).await.is_err() {
             return;
         }
     }
-    for schema in &order {
-        let event = match connection.details(&Namespace::single(schema)).await {
+    for namespace in &order {
+        let event = match connection.details(namespace).await {
             Ok(tables) => CatalogEvent::Details {
-                schema: schema.clone(),
+                namespace: namespace.clone(),
                 tables,
             },
-            Err(error) => error_event(Some(schema), flavor, &error),
+            Err(error) => error_event(Some(namespace), flavor, &error),
         };
         if sender.send(event).await.is_err() {
             return;
@@ -214,11 +200,15 @@ async fn read_catalog(
     let _ = sender.send(CatalogEvent::Done).await;
 }
 
-/// Error message for a failed catalog read: of the list of the databases
-/// (`schema` absent), or of a database.
-fn error_event(schema: Option<&str>, flavor: Flavor, error: &ConnectorError) -> CatalogEvent {
+/// Error message for a failed catalog read: of the list of the namespaces
+/// (`namespace` absent), or of a namespace.
+fn error_event(
+    namespace: Option<&Namespace>,
+    flavor: Flavor,
+    error: &ConnectorError,
+) -> CatalogEvent {
     let detail = ErrorDetail::CatalogUnreadable {
-        schema: schema.map(str::to_owned),
+        schema: namespace.map(|namespace| namespace.name().to_string()),
         flavor,
         cause: error.cause(),
     };
@@ -228,61 +218,25 @@ fn error_event(schema: Option<&str>, flavor: Flavor, error: &ConnectorError) -> 
     }
 }
 
-/// Objects of a database, in the form of the `objects` message: tables and
-/// views, routines, events.
-fn schema_objects(objects: Vec<ObjectInfo>) -> SchemaObjects {
-    let mut grouped = SchemaObjects {
-        tables: Vec::new(),
-        routines: Vec::new(),
-        events: Vec::new(),
-    };
-    for object in objects {
-        let ObjectInfo {
-            name,
-            kind,
-            rows,
-            enabled,
-        } = object;
-        let table = |kind| TableInfo {
-            name: name.clone(),
-            kind,
-            rows,
-        };
-        let routine = |kind| RoutineInfo {
-            name: name.clone(),
-            kind,
-        };
-        match kind {
-            ObjectKind::Table => grouped.tables.push(table(TableKind::Table)),
-            ObjectKind::View => grouped.tables.push(table(TableKind::View)),
-            ObjectKind::SystemTable => grouped.tables.push(table(TableKind::System)),
-            ObjectKind::Procedure => grouped.routines.push(routine(RoutineKind::Procedure)),
-            ObjectKind::Function => grouped.routines.push(routine(RoutineKind::Function)),
-            ObjectKind::Event => grouped.events.push(EventInfo {
-                name: name.clone(),
-                enabled: enabled.unwrap_or(true),
-            }),
-        }
-    }
-    grouped
-}
-
-/// Reading order of the databases: the preferred database, then the user's
-/// databases, then the system databases.
-fn reading_order(schemas: &[String], preferred: &str) -> Vec<String> {
-    let rank = |schema: &String| {
-        if schema == preferred {
+/// Reading order of the namespaces: the preferred one, then the user's, then
+/// those the source provides itself.
+fn reading_order(namespaces: &[NamespaceInfo], preferred: Option<&Namespace>) -> Vec<Namespace> {
+    let rank = |info: &NamespaceInfo| {
+        if Some(&info.namespace) == preferred {
             0
-        } else if SYSTEM_SCHEMAS.contains(&schema.as_str()) {
+        } else if info.system {
             2
         } else {
             1
         }
     };
-    let mut order = schemas.to_vec();
+    let mut order: Vec<&NamespaceInfo> = namespaces.iter().collect();
     // Stable sort: the alphabetical order is kept at equal rank.
-    order.sort_by_key(rank);
+    order.sort_by_key(|info| rank(info));
     order
+        .into_iter()
+        .map(|info| info.namespace.clone())
+        .collect()
 }
 
 #[cfg(test)]
@@ -327,11 +281,25 @@ mod tests {
 
     #[test]
     fn reads_the_preferred_schema_first_and_system_schemas_last() {
-        let schemas: Vec<String> = ["information_schema", "mysql", "shop", "sys", "xlist"]
-            .map(String::from)
-            .to_vec();
+        use prisme_connectors::api::Namespace;
+        use prisme_connectors::catalog::NamespaceInfo;
+
+        let namespaces: Vec<NamespaceInfo> = [
+            ("information_schema", true),
+            ("mysql", true),
+            ("shop", false),
+            ("sys", true),
+            ("xlist", false),
+        ]
+        .map(|(name, system)| NamespaceInfo {
+            namespace: Namespace::single(name),
+            system,
+        })
+        .to_vec();
+        let order = super::reading_order(&namespaces, Some(&Namespace::single("xlist")));
+        let names: Vec<&str> = order.iter().map(Namespace::name).collect();
         assert_eq!(
-            super::reading_order(&schemas, "xlist"),
+            names,
             ["xlist", "shop", "information_schema", "mysql", "sys"]
         );
     }

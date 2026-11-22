@@ -1,10 +1,11 @@
 /**
  * Capabilities of MySQL and MariaDB, as the server sends them with the
- * identity of a source (`crates/connectors/src/mysql/driver.rs`), for the
- * messages of the tests.
+ * identity of a source (`crates/connectors/src/mysql/driver.rs`), and a MySQL
+ * source, for the messages of the tests.
  */
 
 import type { Capabilities } from '../generated/Capabilities'
+import type { SourceInfo } from '../generated/SourceInfo'
 
 /**
  * What MySQL and MariaDB can do.
@@ -42,4 +43,16 @@ export const MYSQL_CAPABILITIES: Capabilities = {
   ],
   notices: true,
   rows_estimate: true,
+}
+
+/**
+ * Identity of a MySQL 8.4 server.
+ */
+export const MYSQL_SOURCE: SourceInfo = {
+  flavor: 'mysql',
+  version: '8.4.11',
+  ansi_quotes: false,
+  no_backslash_escapes: false,
+  oldest_supported: null,
+  capabilities: MYSQL_CAPABILITIES,
 }

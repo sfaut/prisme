@@ -25,7 +25,7 @@ use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::catalog::{ObjectInfo, ObjectKind, TableDetails};
+use crate::catalog::{NamespaceInfo, ObjectInfo, ObjectKind, TableDetails};
 use crate::columns::{Cell, ColumnTypeInfo};
 use crate::failure::{ConnectFailure, FailureCause};
 use crate::flavor::Flavor;
@@ -335,7 +335,7 @@ pub trait Session: Send {
     fn canceller(&self) -> Arc<dyn Canceller>;
 
     /// Namespaces of the source, by path.
-    fn namespaces(&mut self) -> BoxFuture<'_, Result<Vec<Namespace>, ConnectorError>>;
+    fn namespaces(&mut self) -> BoxFuture<'_, Result<Vec<NamespaceInfo>, ConnectorError>>;
 
     /// Objects of the namespace `namespace`: tables, views, routines...
     fn objects<'a>(

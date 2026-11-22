@@ -16,8 +16,7 @@
 import type { Completion } from '@codemirror/autocomplete'
 import type { SQLNamespace } from '@codemirror/lang-sql'
 
-import type { RoutineInfo } from '@/api/generated/RoutineInfo'
-import type { CatalogSchema, CatalogTable } from '@/stores/catalog'
+import { type CatalogObject, type CatalogSchema, isRelation } from '@/stores/catalog'
 
 import { displayedType, quoteIfNeeded, upperType } from '@/components/navigator/navigatorNodes'
 
@@ -82,11 +81,12 @@ export function completionSchema(
   const namespace: Record<string, SQLNamespace> = {}
   for (const schema of schemas) {
     const children: Record<string, SQLNamespace> = {}
-    for (const table of schema.tables ?? []) {
-      children[table.name] = tableNamespace(table, quoting)
-    }
-    for (const routine of schema.routines ?? []) {
-      children[routine.name] = routineNamespace(routine, quoting)
+    for (const object of schema.objects ?? []) {
+      if (isRelation(object)) {
+        children[object.name] = tableNamespace(object, quoting)
+      } else if (object.kind === 'procedure' || object.kind === 'function') {
+        children[object.name] = routineNamespace(object, quoting)
+      }
     }
     namespace[schema.name] = {
       self: nameCompletion(schema.name, quoting, { type: 'namespace', detail: 'base' }),
@@ -102,7 +102,7 @@ export function completionSchema(
  * @param routine Routine of the catalog.
  * @param quoting How the names are quoted.
  */
-function routineNamespace(routine: RoutineInfo, quoting: Quoting): SQLNamespace {
+function routineNamespace(routine: CatalogObject, quoting: Quoting): SQLNamespace {
   return {
     self: nameCompletion(routine.name, quoting, {
       type: 'function',
@@ -118,7 +118,7 @@ function routineNamespace(routine: RoutineInfo, quoting: Quoting): SQLNamespace 
  * @param table Table or view of the catalog.
  * @param quoting How the names are quoted.
  */
-function tableNamespace(table: CatalogTable, quoting: Quoting): SQLNamespace {
+function tableNamespace(table: CatalogObject, quoting: Quoting): SQLNamespace {
   return {
     self: nameCompletion(table.name, quoting, {
       type: 'type',

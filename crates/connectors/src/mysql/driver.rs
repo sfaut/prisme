@@ -20,7 +20,7 @@ use crate::api::{
     Canceller, Capabilities, ColumnMeta, ConnectorError, DialectOptions, Driver, Engine, Namespace,
     NamespaceLevel, OpenOptions, Rows, Session, Settings, SourceInfo, Target,
 };
-use crate::catalog::{ObjectInfo, ObjectKind, TableDetails};
+use crate::catalog::{NamespaceInfo, ObjectInfo, ObjectKind, TableDetails};
 use crate::columns::Cell;
 use crate::failure::FailureCause;
 use crate::outcome::{Notice, StatementOutcome};
@@ -215,10 +215,16 @@ impl Session for MysqlSession {
         })
     }
 
-    fn namespaces(&mut self) -> BoxFuture<'_, Result<Vec<Namespace>, ConnectorError>> {
+    fn namespaces(&mut self) -> BoxFuture<'_, Result<Vec<NamespaceInfo>, ConnectorError>> {
         Box::pin(async move {
             let schemas = catalog::schemas(&mut self.connection).await?;
-            Ok(schemas.into_iter().map(Namespace::single).collect())
+            Ok(schemas
+                .into_iter()
+                .map(|schema| NamespaceInfo {
+                    system: catalog::SYSTEM_SCHEMAS.contains(&schema.as_str()),
+                    namespace: Namespace::single(schema),
+                })
+                .collect())
         })
     }
 
@@ -226,10 +232,7 @@ impl Session for MysqlSession {
         &'a mut self,
         namespace: &'a Namespace,
     ) -> BoxFuture<'a, Result<Vec<ObjectInfo>, ConnectorError>> {
-        Box::pin(async move {
-            let objects = catalog::objects(&mut self.connection, namespace.name()).await?;
-            Ok(catalog::neutral_objects(objects))
-        })
+        Box::pin(async move { Ok(catalog::objects(&mut self.connection, namespace.name()).await?) })
     }
 
     fn details<'a>(

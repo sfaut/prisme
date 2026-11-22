@@ -279,7 +279,12 @@ pub async fn reads_the_catalog(fixture: &impl Fixture) {
             fill(session.as_mut()).await;
             let namespace = target.namespace().expect("the source opens on a namespace");
             let namespaces = session.namespaces().await.unwrap();
-            assert!(namespaces.contains(&namespace), "{}", fixture.name());
+            let listed = namespaces.iter().find(|info| info.namespace == namespace);
+            assert!(
+                listed.is_some_and(|info| !info.system),
+                "{}",
+                fixture.name()
+            );
 
             let objects = session.objects(&namespace).await.unwrap();
             let table = objects
