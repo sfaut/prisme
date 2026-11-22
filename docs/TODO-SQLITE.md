@@ -19,12 +19,13 @@ Functional:
 11. `VACUUM`, `REINDEX`, `ANALYZE` under a **Maintenance** switch; `VACUUM INTO` always refused.
 12. A database in memory has **Enregistrer dans un fichier…** (SQLite's backup API), an existing file refused.
 13. The interface is coded with the `frontend-design` skill, in Prisme's theme and rules.
+14. Numbers are shown in one normalized writing, whatever the engine: plain decimal, roughly `[+-]?[0-9]*\.?[0-9]+`, never in scientific notation. A floating-point number is written with the fewest digits that read back the same value (`100`, `100000000000000000000`, `0.0000001`, `3.141592653589793`). MySQL and MariaDB send their `DOUBLE`s in scientific notation beyond some sizes (`1e20`, `1.5e300`, `1.2345678901234568e17`, measured on 8.0.11, the latest MySQL, 10.6.3 and the latest MariaDB on 2026-11-22), and SQLite writes `1.0e+20`, `100.0`: the connectors normalize them.
 
 Architecture:
 
-14. Connectors through **traits and a registry**, no dispatch enum.
-15. Settings of an engine in **columns and tables** of the internal database, with their `CHECK`s; reference tables `engines`, `flavors`, `schemes`.
-16. Catalog of the navigator in **namespaces of variable depth** and **open kinds of objects**, labels given by the engine.
+15. Connectors through **traits and a registry**, no dispatch enum.
+16. Settings of an engine in **columns and tables** of the internal database, with their `CHECK`s; reference tables `engines`, `flavors`, `schemes`.
+17. Catalog of the navigator in **namespaces of variable depth** and **open kinds of objects**, labels given by the engine.
 
 ## Contracts
 

@@ -273,6 +273,8 @@ The standard `LISTAGG` aggregates a text, takes a literal separator and `WITHIN 
 
 The standard rounds only in `CAST` and assignments, rounding or truncating as the implementation chooses (SQL-92 4.6, 6.10). In floating point, `ROUND(1.005, 2)` gives 1 to two decimals wherever it runs (PostgreSQL has no `ROUND` with digits for a `DOUBLE PRECISION`), as the double nearest 1.005 lies below it; the three versions of MySQL write the same value differently.
 
+Text of a `DOUBLE` as the server sends it (text protocol), measured on 2026-11-22 on MySQL 8.0.11 and 26.10.0 and MariaDB 10.6.3 and 13.0.2, the same on the four: `1e20` gives `1e20`, `1.5e300` gives `1.5e300`, `123456789012345678e0` gives `1.2345678901234568e17`, `1e-7` gives `0.0000001`, `100e0` gives `100`, `PI()` gives `3.141592653589793`. SQLite writes its real numbers otherwise (`1.0e+20`, `100.0`, section 6). Prisme shows every number in plain decimal, without scientific notation (`docs/TODO-SQLITE.md`, decision 14).
+
 ### 3.11 Dates
 
 | Case | Expression | Standard | MySQL | MariaDB | PostgreSQL | SQLite | DuckDB | ClickHouse |
