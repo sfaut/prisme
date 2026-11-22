@@ -62,7 +62,7 @@ function formatUsage(usage: FolderUsage): string {
     <popover-trigger as-child>
       <button
         type="button"
-        class="inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-lg text-fg-secondary hover:text-fg-strong data-[state=open]:text-fg-strong"
+        class="inline-flex h-8 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-control text-fg-secondary hover:text-fg-strong data-[state=open]:text-fg-strong"
         :class="store.runningCount === 0 ? 'w-8' : 'px-2'"
         :aria-label="title"
         v-tooltip="{
@@ -78,7 +78,7 @@ function formatUsage(usage: FolderUsage): string {
       <popover-content
         align="end"
         :side-offset="OFFSET"
-        class="z-50 flex max-h-(--reka-popover-content-available-height) w-120 flex-col gap-3 rounded-xl border border-line bg-surface p-4 text-base shadow-lg"
+        class="z-50 flex max-h-(--reka-popover-content-available-height) w-120 flex-col gap-3 rounded-overlay border border-line bg-surface p-4 text-base shadow-lg"
       >
         <div class="flex items-center justify-between gap-3">
           <h2 class="font-semibold text-fg-strong">Exports</h2>

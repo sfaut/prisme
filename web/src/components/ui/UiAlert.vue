@@ -65,7 +65,7 @@ function close(): void {
   <div
     v-if="!closed"
     role="alert"
-    class="flex items-center gap-3 rounded-lg px-3 py-3 text-base"
+    class="flex items-center gap-3 rounded-control px-3 py-3 text-base"
     :class="TONES[tone].classes"
   >
     <component :is="TONES[tone].icon" class="size-5 shrink-0" aria-hidden="true" />

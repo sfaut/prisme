@@ -36,7 +36,7 @@ const UNTIL_CLOSED = Number.POSITIVE_INFINITY
       v-for="toast in toasts"
       :key="toast.id"
       :duration="toast.action ? UNTIL_CLOSED : DURATION"
-      class="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-base text-fg-strong shadow-lg"
+      class="flex items-center gap-3 rounded-overlay border border-line bg-surface px-4 py-3 text-base text-fg-strong shadow-lg"
       @update:open="(open: boolean) => open || dismiss(toast.id)"
     >
       <CircleCheckBig v-if="toast.tone === 'success'" class="size-5 shrink-0 text-success" />

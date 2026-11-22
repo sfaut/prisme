@@ -3,10 +3,17 @@
 
   The interface uses Tailwind's default scales as they are: font sizes and
   their line heights (`text-base`, `text-sm`...), spacing (`p-3`, `gap-2`,
-  `h-8`), radii (`rounded-lg`). The root's font size (`--root-font-size`,
-  75% of the browser's) sets them all: `text-base` is the regular text of the
+  `h-8`), radii. The root's font size (`--root-font-size`, 75% of the
+  browser's) sets them all: `text-base` is the regular text of the
   interface, and changing that one value scales the whole interface. The
-  theme fits in a few CSS variables: colors by role, the code font, strokes.
+  theme fits in a few CSS variables: colors and radii by role, the code
+  font, strokes.
+
+  Radii: three roles declared in `@theme`, drawn from Tailwind's scale, the
+  only radii used by the components (`rounded-tab`, `rounded-control`,
+  `rounded-overlay`, `var(--radius-control)` in the `<style>` blocks), plus
+  the round shape of the pills and circles (`rounded-full`). Changing a role
+  here changes it everywhere (`__tests__/radii.spec.ts`).
 
   Lengths: whole steps of Tailwind's spacing scale (`--spacing`, a quarter
   of the root's size). The components write the step, `gap-2`, `p-3`,
@@ -74,6 +81,18 @@
     --alpha(var(--color-zinc-900) / 40%),
     --alpha(var(--color-black) / 60%)
   );
+}
+
+/* Radii by role, drawn from Tailwind's scale: Tailwind turns them into
+   classes (`rounded-control`, `rounded-e-control`...). */
+@theme {
+  /* Tabs (`tab-pill`) and the renaming field of a tab. */
+  --radius-tab: var(--radius-md);
+  /* Everything in the flow of the page: buttons, fields, lines of a tree or
+     a list, code editors, grids, zones, banners, tooltips. */
+  --radius-control: var(--radius-lg);
+  /* Floating surfaces: menus, lists, popovers, windows, toasts. */
+  --radius-overlay: var(--radius-xl);
 }
 
 /* Font of the code (SQL editor, grid, data explorer): Cascadia Code, the
@@ -353,9 +372,9 @@
     background: transparent;
   }
 
-  /* Thumb rounded at its ends: a radius of half the bar's width. */
+  /* Thumb rounded at its ends, as a pill (`rounded-full`). */
   ::-webkit-scrollbar-thumb {
-    border-radius: var(--radius-sm);
+    border-radius: calc(infinity * 1px);
     background: var(--scrollbar-thumb);
 
     &:hover {
@@ -405,7 +424,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-tab);
   font-weight: var(--font-weight-medium);
   color: var(--color-fg-secondary);
   cursor: pointer;

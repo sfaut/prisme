@@ -101,7 +101,7 @@ function lineClasses(active: boolean): string {
     <button
       v-if="creation"
       type="button"
-      class="group flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-1 text-start"
+      class="group flex w-full cursor-pointer items-center gap-3 rounded-control border px-3 py-1 text-start"
       :class="lineClasses(selected === 'new')"
       :aria-current="selected === 'new' ? 'true' : undefined"
       @click="emit('select', 'new')"
@@ -157,7 +157,7 @@ function lineClasses(active: boolean): string {
           v-for="entry in shown"
           :key="entry.id"
           type="button"
-          class="flex w-full cursor-pointer items-center gap-3 rounded-lg border px-3 py-1 text-start"
+          class="flex w-full cursor-pointer items-center gap-3 rounded-control border px-3 py-1 text-start"
           :class="lineClasses(selected === entry.id)"
           :aria-current="selected === entry.id ? 'true' : undefined"
           @click="emit('select', entry.id)"

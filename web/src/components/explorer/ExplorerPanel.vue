@@ -643,7 +643,7 @@ watch(
   flex: 1;
   min-block-size: 0;
   border: var(--line-width) solid var(--color-line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 

@@ -150,11 +150,6 @@ const props = defineProps<{
    */
   displayed?: boolean
   /**
-   * Does the grid come right under a line (that of the result tabs)? Its
-   * frame then leaves out its top border, so as not to double that line.
-   */
-  attached?: boolean
-  /**
    * User filter: only the rows it keeps are shown.
    */
   filter: UserFilter
@@ -922,7 +917,6 @@ defineExpose({ keptCount, selectedSize, selectedFull, exportFrame, order })
   <div
     ref="scroller"
     class="grid-scroller"
-    :class="{ attached }"
     :style="{ '--row-digits': rowDigits }"
     tabindex="0"
     @keydown="onKeydown"
@@ -1053,12 +1047,9 @@ defineExpose({ keptCount, selectedSize, selectedFull, exportFrame, order })
   max-block-size: 100vh;
   overflow: auto;
   border: var(--line-width) solid var(--color-line);
+  border-radius: var(--radius-control);
   font-size: var(--text-base);
   user-select: none;
-
-  &.attached {
-    border-block-start-width: 0;
-  }
 }
 
 .grid-row {

@@ -558,7 +558,7 @@ function onRemoved(id: number): void {
           class="flex items-center gap-4 border-b border-line px-8 pt-6 pb-4"
         >
           <span
-            class="grid size-12 shrink-0 place-items-center rounded-lg bg-primary/15 text-primary"
+            class="grid size-12 shrink-0 place-items-center rounded-control bg-primary/15 text-primary"
             aria-hidden="true"
           >
             <component :is="SOURCE_FAMILIES[0]!.types[0]!.icon" class="size-5" />
@@ -645,7 +645,7 @@ function onRemoved(id: number): void {
           />
           <template v-else-if="shownCreation?.step === 3">
             <dl
-              class="grid grid-cols-[--spacing(40)_minmax(0,1fr)] gap-x-6 gap-y-2 rounded-lg border border-line px-4 py-3"
+              class="grid grid-cols-[--spacing(40)_minmax(0,1fr)] gap-x-6 gap-y-2 rounded-control border border-line px-4 py-3"
             >
               <template v-for="row in summary" :key="row.label">
                 <dt class="text-fg-secondary">{{ row.label }}</dt>

@@ -7,7 +7,7 @@
  * Classes of the field common to both sizes.
  */
 const LOOK =
-  'w-full min-w-0 rounded-lg border border-line bg-surface text-fg-strong [appearance:textfield] placeholder:text-fg-faint focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary'
+  'w-full min-w-0 rounded-control border border-line bg-surface text-fg-strong [appearance:textfield] placeholder:text-fg-faint focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary'
 
 /**
  * Classes of the field, at the regular size of the controls.

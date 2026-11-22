@@ -150,7 +150,7 @@ describe('ResultView', () => {
     }
     const wrapper = mountTab(tab)
     expect(wrapper.find('[role=alert]').exists()).toBe(false)
-    expect(wrapper.find('.grid-scroller').classes()).toContain('attached')
+    expect(wrapper.find('.grid-scroller').exists()).toBe(true)
     const badge = wrapper.findComponent(UiStatusBar).findAll('span')[0]!
     expect(badge.text()).toBe('Résultat tronqué')
   })
@@ -176,11 +176,10 @@ describe('ResultView', () => {
     const tab = finishedTab(['id'], [['1']])
     const wrapper = mountTab(tab)
     expect(wrapper.findComponent(ResultFilter).exists()).toBe(false)
-    expect(wrapper.find('.grid-scroller').classes()).toContain('attached')
 
     await wrapper.setProps({ tab: { ...tab, filterOpen: true } })
-    expect(wrapper.findComponent(ResultFilter).exists()).toBe(true)
-    expect(wrapper.find('.grid-scroller').classes()).not.toContain('attached')
+    const filter = wrapper.findComponent(ResultFilter).element
+    expect(filter.nextElementSibling).toBe(wrapper.find('.grid-scroller').element)
   })
 
   it('offers to download the displayed result, or the selection when there is one', async () => {

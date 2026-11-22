@@ -956,7 +956,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
                   ref="nameInput"
                   v-model="draft"
                   :aria-label="`Nom de ${element.expression}`"
-                  class="h-7 min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 text-base text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary"
+                  class="h-7 min-w-0 flex-1 rounded-control border border-line bg-surface px-2 text-base text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary"
                   @blur="commitName"
                   @keydown.stop
                   @keydown.enter.prevent="commitName"
@@ -1046,7 +1046,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
   gap: --spacing(2);
   block-size: --spacing(8);
   padding-inline: --spacing(2);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-control);
   cursor: grab;
 
   &:hover {
@@ -1061,7 +1061,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
   gap: --spacing(1);
   padding: --spacing(1);
   border: var(--line-width) dashed var(--color-line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-control);
 
   &.drop-target {
     border-color: var(--color-primary);

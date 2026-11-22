@@ -245,12 +245,6 @@ const NOTICE_TONES: Record<NoticeLevel, string> = {
  */
 const cut = computed(() => props.tab.interrupted && showsGrid(props.tab))
 
-/**
- * Does the grid come first, right under the result tabs (no error nor
- * filter form above it)?
- */
-const attached = computed(() => !shownError.value && !props.tab.filterOpen && showsGrid(props.tab))
-
 // New columns: a targeted filter becomes global, its text kept. The same
 // columns again (a session resumed after a reconnection) keep it. The
 // filter carried over from the tab a new run replaced (`grid`) keeps its
@@ -723,7 +717,7 @@ defineExpose({ exportGroups })
     width of its content, and a wide grid overflowed, cut off on the right,
     instead of scrolling in its own area.
   -->
-  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3" :class="{ 'pt-1': !attached }">
+  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3">
     <ui-alert v-if="shownError" tone="error" :title="shownError" />
     <ui-alert v-else-if="tab.interrupted && !showsGrid(tab)" tone="info" title="Requête arrêtée." />
     <result-filter
@@ -734,7 +728,6 @@ defineExpose({ exportGroups })
     <result-grid
       v-if="shown && showsGrid(tab)"
       ref="grid"
-      :attached="attached"
       :filter="filter"
       :columns="shown.columns"
       :right-aligned="shown.rightAligned"
