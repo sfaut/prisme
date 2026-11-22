@@ -1632,6 +1632,7 @@ dependencies = [
 name = "prisme-connectors"
 version = "0.14.1"
 dependencies = [
+ "futures-util",
  "mysql_async",
  "prisme-connectors",
  "prisme-dialects",

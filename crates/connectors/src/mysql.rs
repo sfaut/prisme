@@ -34,7 +34,10 @@ pub use mysql_async::Conn as Connection;
 pub mod catalog;
 mod column_type;
 mod connect_error;
+mod driver;
 mod outcome;
+
+pub use driver::{DRIVER, MysqlDriver, capabilities};
 
 /// Maximum delay to open a connection to the server.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);

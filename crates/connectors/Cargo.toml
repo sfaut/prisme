@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+# Boxed futures of the contracts of the connectors (api.rs), behind `dyn`.
+futures-util = "0.3.34"
 mysql_async = "0.37.1"
 # The verb of a statement, which tells what the counts of its OK packet mean.
 prisme-dialects = { path = "../dialects" }

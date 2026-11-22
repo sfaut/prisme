@@ -8,7 +8,10 @@
 //! (`failure`) and the trace of the statements sent (`sql_log`); numbers
 //! are written alike for every engine (`number_text`).
 
+pub mod api;
+pub mod catalog;
 pub mod columns;
+pub mod drivers;
 pub mod failure;
 pub mod flavor;
 pub mod mysql;

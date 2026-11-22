@@ -1,0 +1,387 @@
+//! Contracts of the connectors: what the server asks of any engine, whatever
+//! its driver (`docs/TODO-SQLITE.md`, section "Contracts").
+//!
+//! An engine is reached through its `Driver`, which the registry gives
+//! (`drivers::of`): the driver tests a source (`probe`) and opens sessions on
+//! it (`open`). A `Session` holds one connection to the source: it runs
+//! statements, whose rows are read from a `Rows`, follows the transaction and
+//! the current namespace, and reads the catalog. A `Canceller`, taken from the
+//! session, stops its running statement from another task. What an engine can
+//! do is told by its `Capabilities`, sent to the interface, which shows only
+//! what the engine offers; an operation it cannot do fails with
+//! `ConnectorError::Unsupported`.
+//!
+//! The methods return boxed futures: a trait with `async fn` cannot be used
+//! behind `dyn` yet, and the server only knows the engines through `dyn`.
+//! The server names no engine: it gets a driver from the registry, then
+//! only uses these traits.
+
+use std::sync::Arc;
+
+use futures_util::future::BoxFuture;
+use prisme_dialects::classify::WriteKind;
+use prisme_dialects::verb::StatementVerb;
+use secrecy::SecretString;
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+
+use crate::catalog::{ObjectInfo, ObjectKind, TableDetails};
+use crate::columns::{Cell, ColumnTypeInfo};
+use crate::failure::{ConnectFailure, FailureCause};
+use crate::flavor::Flavor;
+use crate::outcome::{Notice, StatementOutcome};
+
+/// Family of connector: one per native driver. An engine may serve several
+/// flavors (MySQL and MariaDB through `mysql_async`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
+pub enum Engine {
+    /// MySQL and MariaDB, through `mysql_async`.
+    Mysql,
+}
+
+impl Engine {
+    /// Key of the engine, as the internal database stores it
+    /// (`connections.engine`).
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Mysql => "mysql",
+        }
+    }
+
+    /// Engine of the key `key`, as the internal database stores it.
+    pub fn from_key(key: &str) -> Option<Self> {
+        match key {
+            "mysql" => Some(Self::Mysql),
+            _ => None,
+        }
+    }
+}
+
+/// A source to reach: its engine, its settings, and the statements that
+/// initialise each of its connections.
+#[derive(Clone)]
+pub struct Target {
+    /// Engine of the source.
+    pub engine: Engine,
+    /// Settings of the source, by family.
+    pub settings: Settings,
+    /// Statements run when each connection opens, in order (`SET NAMES
+    /// utf8mb4`, `SET SESSION sql_mode = ...`).
+    pub init_statements: Vec<String>,
+}
+
+/// Settings of a source, by family of engines: the engines of a family share
+/// their settings, and their table in the internal database.
+#[derive(Clone)]
+pub enum Settings {
+    /// A database server reached over the network.
+    Server(ServerSettings),
+}
+
+/// Settings of a database server reached over the network.
+#[derive(Clone)]
+pub struct ServerSettings {
+    /// Host name or IP address of the server.
+    pub host: String,
+    /// TCP port of the server.
+    pub port: u16,
+    /// Connection account.
+    pub username: String,
+    /// Password of the account, never shown in a log.
+    pub password: SecretString,
+    /// Database selected on connection. Empty string: none.
+    pub database_name: String,
+}
+
+impl Target {
+    /// Namespace the settings open a session on, `None` if none: the
+    /// database chosen for a server.
+    pub fn namespace(&self) -> Option<Namespace> {
+        match &self.settings {
+            Settings::Server(server) => {
+                (!server.database_name.is_empty()).then(|| Namespace::single(&server.database_name))
+            }
+        }
+    }
+}
+
+/// How a session opens.
+#[derive(Debug, Clone, Default)]
+pub struct OpenOptions {
+    /// Read-only session: the connector makes the source refuse the writes
+    /// (a statement of the session, a flag of the file...), after the
+    /// statements of the target, so that they cannot lift it.
+    pub read_only: bool,
+    /// Namespace to open on, instead of the one of the settings: the current
+    /// database of a session, for the connections of its parallel queries.
+    pub namespace: Option<Namespace>,
+    /// Name of the resources that the connections of one session share (a
+    /// database in memory), so that its parallel queries see them.
+    pub session_key: Option<String>,
+}
+
+/// Path of a namespace of a source, from the outermost level to the
+/// innermost one: a database of MySQL (`["shop"]`), a schema of SQLite
+/// (`["main"]`), a catalog and a schema of DuckDB (`["db", "main"]`). The
+/// levels are those of `Capabilities::namespace_levels`.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct Namespace(pub Vec<String>);
+
+impl Namespace {
+    /// Namespace of a single level.
+    pub fn single(name: impl Into<String>) -> Self {
+        Self(vec![name.into()])
+    }
+
+    /// Name of the innermost level, the one statements see unqualified.
+    pub fn name(&self) -> &str {
+        self.0.last().map_or("", String::as_str)
+    }
+}
+
+/// Level of the namespaces of an engine, for the labels of the interface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
+pub enum NamespaceLevel {
+    /// Database of a server (MySQL, MariaDB).
+    Database,
+    /// Schema (SQLite, PostgreSQL, DuckDB).
+    Schema,
+    /// Catalog holding schemas (DuckDB, the standard).
+    Catalog,
+}
+
+/// What an engine can do. Sent to the interface with the identity of the
+/// source, so that it offers only what the engine supports.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct Capabilities {
+    /// Explicit transactions on the connection of a session.
+    pub transactions: bool,
+    /// A running statement can be stopped (`Session::canceller`).
+    pub cancellation: bool,
+    /// Several connections at once on the same source: the queries of a
+    /// batch that only read run in parallel, each on its own connection.
+    pub parallel_sessions: bool,
+    /// The current namespace of a session can change (`USE`,
+    /// `Session::switch_namespace`).
+    pub switch_namespace: bool,
+    /// Databases can be attached to a session and detached from it.
+    pub attachments: bool,
+    /// Levels of the namespaces, from the outermost one.
+    pub namespace_levels: Vec<NamespaceLevel>,
+    /// Kinds of objects the catalog lists, in the order of the interface.
+    pub object_kinds: Vec<ObjectKind>,
+    /// Kinds of write the engine knows: the settings show only their switches.
+    pub write_kinds: Vec<WriteKind>,
+    /// The source tells the notices of a statement (warnings, notes), read
+    /// by `Session::notices`.
+    pub notices: bool,
+    /// The catalog gives an estimate of the rows of the tables.
+    pub rows_estimate: bool,
+}
+
+/// Identity of a source, read when a session opens or a source is tested.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct SourceInfo {
+    /// Product of the source.
+    pub flavor: Flavor,
+    /// Version, as the source writes it (`8.1.0`,
+    /// `11.3.2-MariaDB-1:11.3.2+maria~ubu2204`).
+    pub version: String,
+    /// Lexical settings of the session, read on the source.
+    #[serde(flatten)]
+    pub dialect_options: DialectOptions,
+    /// Oldest version of the flavor that Prisme supports
+    /// (`Flavor::oldest_supported`), only when the source is older: it then
+    /// gets a warning. `None` for a supported source.
+    pub oldest_supported: Option<String>,
+    /// What the engine of the source can do.
+    pub capabilities: Capabilities,
+}
+
+/// Lexical settings of a session that change how its text reads, read on the
+/// source when the session opens.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct DialectOptions {
+    /// Do double quotes delimit identifiers, no longer strings (MySQL's
+    /// `ANSI_QUOTES` mode, directly or through `ANSI`)?
+    pub ansi_quotes: bool,
+    /// Is the backslash an ordinary character in strings, no longer an
+    /// escape (MySQL's `NO_BACKSLASH_ESCAPES` mode)?
+    pub no_backslash_escapes: bool,
+}
+
+/// Errors of the connectors.
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum ConnectorError {
+    /// Connection impossible (refused, unreachable, no answer in time,
+    /// access denied...): what is wrong and what to check.
+    #[error("{0}")]
+    Connect(ConnectFailure),
+
+    /// A statement initialising the connection failed.
+    #[error("on-connect query \"{statement}\" failed: {cause}")]
+    Init {
+        /// The failed statement.
+        statement: String,
+        /// Answer of the source, or message of the driver.
+        cause: FailureCause,
+    },
+
+    /// The source gave no version.
+    #[error("the server returned no version")]
+    MissingVersion,
+
+    /// Failure on an open connection: failed statement, lost connection...
+    #[error("{0}")]
+    Query(FailureCause),
+
+    /// An operation the engine cannot do (outside its `Capabilities`).
+    #[error("{0} is not supported by this engine")]
+    Unsupported(&'static str),
+}
+
+impl ConnectorError {
+    /// Text written outside Prisme that explains the failure: the source's
+    /// answer, or the driver's or the system's message. A failure that Prisme
+    /// itself describes gives its English text, as the driver's.
+    pub fn cause(&self) -> FailureCause {
+        match self {
+            Self::Query(cause) | Self::Init { cause, .. } => cause.clone(),
+            Self::Connect(_) | Self::MissingVersion | Self::Unsupported(_) => {
+                FailureCause::Driver {
+                    message: self.to_string(),
+                }
+            }
+        }
+    }
+}
+
+/// Column of a result: its name, its type, and the side its values align to.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ColumnMeta {
+    /// Name of the column.
+    pub name: String,
+    /// Type and origin of the column.
+    pub type_info: ColumnTypeInfo,
+    /// Are its values right-aligned (numbers, dates and times)?
+    pub right_aligned: bool,
+}
+
+/// Access to an engine: tests a source and opens sessions on it.
+pub trait Driver: Send + Sync {
+    /// Engine of the driver.
+    fn engine(&self) -> Engine;
+
+    /// What the engine can do.
+    fn capabilities(&self) -> Capabilities;
+
+    /// Connects to the source, reads its identity, then disconnects.
+    fn probe<'a>(&'a self, target: &'a Target)
+    -> BoxFuture<'a, Result<SourceInfo, ConnectorError>>;
+
+    /// Opens a session on the source: one connection, initialised by the
+    /// statements of the target, then set by `options`.
+    fn open<'a>(
+        &'a self,
+        target: &'a Target,
+        options: OpenOptions,
+    ) -> BoxFuture<'a, Result<Box<dyn Session>, ConnectorError>>;
+}
+
+/// Connection open on a source.
+pub trait Session: Send {
+    /// Identity of the source, read when the session opened.
+    fn info(&self) -> &SourceInfo;
+
+    /// Runs the statement `sql` and returns its result, to read row by row.
+    /// The reader traces the statement once read (`sql_log::record`): only
+    /// it knows the transfer time and the end of the result.
+    fn execute<'a>(
+        &'a mut self,
+        sql: &'a str,
+    ) -> BoxFuture<'a, Result<Box<dyn Rows<'a> + 'a>, ConnectorError>>;
+
+    /// Current namespace of the session, `None` if none.
+    fn current_namespace(&mut self) -> BoxFuture<'_, Result<Option<Namespace>, ConnectorError>>;
+
+    /// Changes the current namespace of the session.
+    fn switch_namespace<'a>(
+        &'a mut self,
+        namespace: &'a Namespace,
+    ) -> BoxFuture<'a, Result<(), ConnectorError>>;
+
+    /// Is a transaction open on the session? With `check`, the connector
+    /// makes sure the connection is still open (after a `COMMIT` or a
+    /// `ROLLBACK`, which can close it).
+    ///
+    /// # Errors
+    ///
+    /// Fails if the connection is lost.
+    fn transaction_state(&mut self, check: bool) -> BoxFuture<'_, Result<bool, ConnectorError>>;
+
+    /// Notices (warnings, notes) of the last statement, which its outcome
+    /// only counts: to read before the next statement, which clears them.
+    fn notices(&mut self) -> BoxFuture<'_, Result<Vec<Notice>, ConnectorError>>;
+
+    /// Stops the running statement of the session, from another task.
+    fn canceller(&self) -> Arc<dyn Canceller>;
+
+    /// Namespaces of the source, by path.
+    fn namespaces(&mut self) -> BoxFuture<'_, Result<Vec<Namespace>, ConnectorError>>;
+
+    /// Objects of the namespace `namespace`: tables, views, routines...
+    fn objects<'a>(
+        &'a mut self,
+        namespace: &'a Namespace,
+    ) -> BoxFuture<'a, Result<Vec<ObjectInfo>, ConnectorError>>;
+
+    /// Details of the tables of the namespace `namespace`: columns, indexes,
+    /// foreign keys, triggers.
+    fn details<'a>(
+        &'a mut self,
+        namespace: &'a Namespace,
+    ) -> BoxFuture<'a, Result<Vec<TableDetails>, ConnectorError>>;
+
+    /// Closes the session.
+    fn close(self: Box<Self>) -> BoxFuture<'static, ()>;
+}
+
+/// Result of a statement being read, row by row. Borrows its session until
+/// it is dropped or discarded.
+pub trait Rows<'a>: Send {
+    /// Columns of the result. Empty for a statement that returns no rows.
+    fn columns(&self) -> &[ColumnMeta];
+
+    /// Reads the next row, or `None` at the end of the result. A read must
+    /// not be dropped before it ends: it may hold a part of a message of
+    /// the protocol.
+    fn next_row(&mut self) -> BoxFuture<'_, Result<Option<Vec<Cell>>, ConnectorError>>;
+
+    /// Outcome of the statement of verb `verb`, in its neutral form: to read
+    /// once the rows are read.
+    fn outcome(&self, verb: StatementVerb) -> StatementOutcome;
+
+    /// Gives up reading: the rest of the result is read and dropped, so that
+    /// the session becomes usable again. After a stop, the error of the stop
+    /// is ignored.
+    fn discard(self: Box<Self>) -> BoxFuture<'a, ()>;
+}
+
+/// Stops the running statement of a session, from another task than the one
+/// that reads its rows.
+pub trait Canceller: Send + Sync {
+    /// Interrupts the running statement; the session stays open and usable.
+    fn interrupt(&self) -> BoxFuture<'_, Result<(), ConnectorError>>;
+
+    /// Ends the session on the source, which stops its running statement,
+    /// even when the order arrives before the statement.
+    fn terminate(&self) -> BoxFuture<'_, Result<(), ConnectorError>>;
+}

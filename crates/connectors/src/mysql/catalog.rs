@@ -23,6 +23,9 @@ use serde::Serialize;
 use ts_rs::TS;
 
 use super::{Connection, MysqlError};
+use crate::catalog::{
+    ColumnInfo, ForeignKeyInfo, IndexInfo, ObjectInfo, ObjectKind, TableDetails, TriggerInfo,
+};
 use crate::sql_log;
 
 /// Table or view of a database.
@@ -92,79 +95,6 @@ pub struct SchemaObjects {
     pub routines: Vec<RoutineInfo>,
     /// Scheduled events.
     pub events: Vec<EventInfo>,
-}
-
-/// Column of a table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct ColumnInfo {
-    /// Name of the column.
-    pub name: String,
-    /// Full type, as declared (`varchar(50)`, `int unsigned`...).
-    pub column_type: String,
-    /// Does the column accept NULL?
-    pub nullable: bool,
-    /// Role in the indexes: `PRI`, `UNI`, `MUL`, or empty string.
-    pub key: String,
-    /// Value assigned automatically on insert (`AUTO_INCREMENT`)?
-    pub auto_increment: bool,
-}
-
-/// Index of a table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct IndexInfo {
-    /// Name of the index (`PRIMARY` for the primary key).
-    pub name: String,
-    /// Indexed columns, in the order of the index. A computed part (MySQL
-    /// functional index) appears as `(expression)`.
-    pub columns: Vec<String>,
-    /// Unique index?
-    pub unique: bool,
-}
-
-/// Foreign key of a table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct ForeignKeyInfo {
-    /// Name of the constraint.
-    pub name: String,
-    /// Columns of the table, in the order of the key.
-    pub columns: Vec<String>,
-    /// Database of the referenced table.
-    pub referenced_schema: String,
-    /// Referenced table.
-    pub referenced_table: String,
-    /// Referenced columns, in the same order as `columns`.
-    pub referenced_columns: Vec<String>,
-}
-
-/// Trigger of a table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct TriggerInfo {
-    /// Name of the trigger.
-    pub name: String,
-    /// Timing: `BEFORE` or `AFTER`.
-    pub timing: String,
-    /// Event: `INSERT`, `UPDATE` or `DELETE`.
-    pub event: String,
-}
-
-/// Details of a table: columns, indexes, foreign keys and triggers.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct TableDetails {
-    /// Name of the table.
-    pub table: String,
-    /// Columns, in declaration order.
-    pub columns: Vec<ColumnInfo>,
-    /// Indexes, the primary key first, then by name.
-    pub indexes: Vec<IndexInfo>,
-    /// Foreign keys, by name.
-    pub foreign_keys: Vec<ForeignKeyInfo>,
-    /// Triggers, by timing, event and execution order.
-    pub triggers: Vec<TriggerInfo>,
 }
 
 /// Row of `information_schema.COLUMNS`: table, column, type, nullability,
@@ -261,6 +191,37 @@ pub async fn objects(
             })
             .collect(),
     })
+}
+
+/// The objects of a database in their neutral form, in the order of the
+/// navigator: tables and views, then routines, then events.
+pub fn neutral_objects(objects: SchemaObjects) -> Vec<ObjectInfo> {
+    let tables = objects.tables.into_iter().map(|table| ObjectInfo {
+        name: table.name,
+        kind: match table.kind {
+            TableKind::Table => ObjectKind::Table,
+            TableKind::View => ObjectKind::View,
+            TableKind::System => ObjectKind::SystemTable,
+        },
+        rows: table.rows,
+        enabled: None,
+    });
+    let routines = objects.routines.into_iter().map(|routine| ObjectInfo {
+        name: routine.name,
+        kind: match routine.kind {
+            RoutineKind::Procedure => ObjectKind::Procedure,
+            RoutineKind::Function => ObjectKind::Function,
+        },
+        rows: None,
+        enabled: None,
+    });
+    let events = objects.events.into_iter().map(|event| ObjectInfo {
+        name: event.name,
+        kind: ObjectKind::Event,
+        rows: None,
+        enabled: Some(event.enabled),
+    });
+    tables.chain(routines).chain(events).collect()
 }
 
 /// Reads the details of all the tables of the database `schema`, table by table.
