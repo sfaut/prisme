@@ -84,6 +84,7 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
             "../migrations/0036_connections_connected_at.sql"
         )),
         M::up(include_str!("../migrations/0037_connections_by_family.sql")).foreign_key_check(),
+        M::up(include_str!("../migrations/0038_write_kinds.sql")).foreign_key_check(),
     ])
 });
 
@@ -148,6 +149,7 @@ pub fn open_in_memory() -> Connection {
 mod tests {
     use prisme_connectors::api::{Engine, Family};
     use prisme_connectors::flavor::Flavor;
+    use prisme_dialects::classify::WriteKind;
 
     use super::*;
 
@@ -571,6 +573,53 @@ mod tests {
         assert_eq!(
             keys("SELECT key || ':' || engine FROM flavors ORDER BY key"),
             flavors
+        );
+    }
+
+    #[test]
+    fn write_kinds_list_the_kinds_of_the_dialects() {
+        let connection = open_in_memory();
+        let mut kinds: Vec<String> = connection
+            .prepare("SELECT key FROM write_kinds ORDER BY key")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        let mut expected: Vec<&str> = WriteKind::ALL.map(WriteKind::as_str).to_vec();
+        expected.sort_unstable();
+        kinds.sort();
+        assert_eq!(kinds, expected);
+    }
+
+    #[test]
+    fn keeps_the_switches_when_the_kinds_become_a_table() {
+        // Schema before the reference table of the kinds (migration 0038).
+        let mut connection = at_version(37);
+        let user = ensure_user(&connection, "owner@example.com").unwrap();
+        connection
+            .execute(
+                "INSERT INTO user_allowed_writes (user_id, kind) VALUES (?1, 'delete'), (?1, 'drop_event')",
+                params![user],
+            )
+            .unwrap();
+
+        prepare(&mut connection).unwrap();
+        let kinds: Vec<String> = connection
+            .prepare("SELECT kind FROM user_allowed_writes ORDER BY kind")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(kinds, ["delete", "drop_event"]);
+        assert!(
+            connection
+                .execute(
+                    "INSERT INTO user_allowed_writes (user_id, kind) VALUES (?1, 'unknown')",
+                    params![user],
+                )
+                .is_err()
         );
     }
 

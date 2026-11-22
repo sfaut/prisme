@@ -12,7 +12,8 @@
 //! `migrations/0016_users_indent_size.sql`,
 //! `migrations/0025_users_concat_max_bytes.sql` and
 //! `migrations/0026_users_pivot_refresh_ms.sql`), the allowed writes in the
-//! `user_allowed_writes` table (`migrations/0017_user_allowed_writes.sql`).
+//! `user_allowed_writes` table (`migrations/0017_user_allowed_writes.sql`,
+//! its kinds in `write_kinds` since `migrations/0038_write_kinds.sql`).
 //! Synchronous functions (`rusqlite`), called from blocking tasks.
 
 use crate::error_detail::{ErrorDetail, Field};
