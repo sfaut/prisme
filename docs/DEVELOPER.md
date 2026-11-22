@@ -188,7 +188,7 @@ Rules:
 
 | Icon | Action | Where |
 |---|---|---|
-| `Plus` | New editor; add a connection | top bar, first of its right group, filled in the primary color (`TopBar`); navigator's title; connections manager (`ConnectionManagerList`) |
+| `Plus` | New editor; add a connection | top bar, first of its right group, filled in the primary color (`TopBar`); connections manager (`ConnectionManagerList`) |
 | `ChevronDown` | Menu of what "Nouveau" creates | top bar, joined to "Nouveau" (`UiSplitButton`) |
 | `Code`, `Server` | Create an editor, a connection | menu of "Nouveau" |
 | `History` | Reopen a closed editor | editors' bar |

@@ -199,16 +199,14 @@ describe('NavigatorPanel', () => {
     wrapper.unmount()
   })
 
-  it('offers buttons on the title and a menu on each source', async () => {
+  it('offers a button on the title and a menu on each source', async () => {
     savedConnections = [connection(1, 'Origen 2')]
     const wrapper = mountNavigator({ selectedId: null, currentDatabase: null })
     await vi.waitFor(() => expect(wrapper.findAll('.node-menu')).toHaveLength(1))
     expect(wrapper.find('[aria-label="Rafraîchir"]').exists()).toBe(true)
-    // Adding and changing a connection open the connections manager.
+    // Connections are added in the connections manager, from the top bar.
+    expect(wrapper.find('[aria-label="Ajouter une connexion"]').exists()).toBe(false)
     const connections = useConnectionsStore()
-    await wrapper.find('[aria-label="Ajouter une connexion"]').trigger('click')
-    expect(connections.manager).toMatchObject({ open: true, target: 'new' })
-    connections.closeManager()
     const options = () =>
       [...document.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim())
     await click(wrapper.find('.node-menu'), 1)

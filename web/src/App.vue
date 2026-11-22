@@ -582,7 +582,7 @@ function selectSource(editorId: number, connectionId: number): void {
                   </span>
                   <p class="text-balance text-fg-secondary">
                     Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la choisir
-                    pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »
+                    pour cet éditeur, ou ajoutez une connexion par le menu « Nouveau »
                   </p>
                 </div>
               </split-panel>

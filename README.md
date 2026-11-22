@@ -44,7 +44,7 @@ Prisme is at the start of its first version (v1). Today it queries **MySQL and M
 2. **Run it** from a terminal. On Linux and macOS, first make it executable (see [Installation](#installation)).
 3. **Answer the two setup questions**: listening port and your email address. Press Enter to keep the defaults (`10000`, `me@local`).
 4. **Open** <http://prisme.localhost:10000> in your browser (or <http://127.0.0.1:10000>).
-5. **Add a connection**: in the left panel, click the **+** button of **Navigateur d’objets** (Object navigator), **Ajouter** (Add), fill in host, port, user and password, click **Tester** (Test), then save.
+5. **Add a connection**: in the top bar, open the menu of **Nouveau** (New) by its chevron, choose **Connexion** (Connection), keep **MySQL / MariaDB**, click **Suivant** (Next), fill in name, host, port, user and password, click **Tester** (Test), then **Enregistrer** (Save).
 6. **Query**: **Ctrl+click** the new source (**Cmd+click** on macOS), type a query in the editor, press **Ctrl+Enter**.
 
 ## Installation
@@ -137,7 +137,7 @@ The version of Prisme shows next to its name, at the top left.
 
 ### Connections
 
-Connections are managed in the **Connexions** (Connections) window, opened from the account menu of the [top bar](#top-bar), from **Nouveau** › **Connexion** (New › Connection) on a new connection, from the **+** button of **Navigateur d’objets** (Object navigator), on a new connection, and from **Modifier** (Edit) in the **⋮** menu of a source, on that connection:
+Connections are managed in the **Connexions** (Connections) window, opened from the account menu of the [top bar](#top-bar), from **Nouveau** › **Connexion** (New › Connection) on a new connection, and from **Modifier** (Edit) in the **⋮** menu of a source, on that connection:
 
 - **List**: your connections on the left, grouped by kind of source (database servers; files are coming), with a filter on their names and addresses. A green dot marks a connection that has connected at least once.
 - **Edit**: the connection shown has its card at the top, with its server, its version and its last connection, and the buttons **Tester** (Test), **Dupliquer** (Duplicate) and **Supprimer** (Delete, after confirmation); then all its settings, on one page. A blank password keeps the current one. A connection changed and not saved keeps its changes while you look at another one: the list marks it in amber, **modifiée, non enregistrée** (changed, not saved). **Enregistrer** (Save) saves the connection shown, **Annuler les modifications** (Discard the changes) goes back to its saved settings. Closing the window drops the changes not saved.

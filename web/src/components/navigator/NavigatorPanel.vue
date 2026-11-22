@@ -49,9 +49,9 @@
   circle during a load, in place of the source's icon while its catalog
   arrives.
 
-  Two buttons of the title, always shown, read again all the catalogs
-  already read and add a connection, in the connections manager; on
-  hovering each source, a "⋮" menu opens the connection in the connections
+  The button of the title, always shown, reads again all the catalogs
+  already read; connections are added in the connections manager (top
+  bar). On hovering each source, a "⋮" menu opens the connection in the connections
   manager ("Modifier"), tests it, reads its catalog again or deletes it
   (after confirmation, `ConnectionRemoveDialog`, which warns of the
   transactions it rolls back); "Déconnecter" there closes the session of
@@ -76,7 +76,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { Pencil, PlugZap, Plus, RefreshCw, Trash2, Unplug } from '@lucide/vue'
+import { Pencil, PlugZap, RefreshCw, Trash2, Unplug } from '@lucide/vue'
 import {
   TreeItem,
   type TreeItemSelectEvent,
@@ -672,14 +672,6 @@ watch(() => visible.value.rows.length, retryScroll)
           aria-label="Rafraîchir"
           v-tooltip="{ title: 'Rafraîchir', description: 'Relit les catalogues déjà lus' }"
           @click="refreshAll"
-        />
-        <ui-button
-          :icon="Plus"
-          variant="ghost"
-          small
-          aria-label="Ajouter une connexion"
-          v-tooltip="{ title: 'Ajouter', description: 'Nouvelle connexion' }"
-          @click="connections.openManager('new')"
         />
       </template>
     </panel-header>
