@@ -30,6 +30,7 @@ import { type Component, computed, reactive, ref, watch } from 'vue'
 
 import { errorMessage } from '@/api/errorMessage'
 import type { WriteKind } from '@/api/generated/WriteKind'
+import { WRITE_KIND_STATEMENTS } from '@/api/writeKinds'
 import { useSettingsStore } from '@/stores/settings'
 
 import PreferencesWrites from './PreferencesWrites.vue'
@@ -175,7 +176,7 @@ const REMOTE = {
 /**
  * Number of kinds of write, for the count of those allowed.
  */
-const WRITE_KIND_COUNT = 25
+const WRITE_KIND_COUNT = Object.keys(WRITE_KIND_STATEMENTS).length
 
 /**
  * Current input of the settings: the row limit, the read-only mode, the
