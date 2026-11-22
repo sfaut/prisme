@@ -4,10 +4,13 @@
   under the checked choice. Each choice shows its Lucide icon alone; its
   label is its accessible name.
 
-  The choices are squares of one size, the thumb's: the thumb is a circle,
-  one step inside the track all around, and moves by whole widths, placed
-  by `--switch-index`, the rank of the checked choice. The icons are a size
-  smaller than the others (`size-4`), so that the thumb shows around them.
+  The track has neither border nor padding: the choices are squares of the
+  thumb's size, `size-8` like the buttons and the avatar of the top bar, and
+  the thumb, a circle as large as a choice, carries the only line. Choices
+  and icons (`size-4`) are multiples of 4 steps, whole screen pixels at 125%
+  and 150% (`docs/DEVELOPER.md`, section "Lines"), so that the circle is
+  drawn round. The thumb moves by whole widths, placed by `--switch-index`,
+  the rank of the checked choice.
 -->
 <script setup lang="ts" generic="T extends string">
 import { RadioGroupItem, RadioGroupRoot } from 'reka-ui'
@@ -40,12 +43,12 @@ const index = computed(() => props.items.findIndex((item) => item.value === mode
     v-model="model"
     orientation="horizontal"
     :aria-label="label"
-    class="relative flex rounded-full border border-line bg-surface-sunken p-1"
+    class="relative flex rounded-full bg-surface-sunken"
     :style="{ '--switch-index': index }"
   >
     <span
       v-if="index >= 0"
-      class="switch-thumb absolute start-1 top-1 size-6 rounded-full border border-line bg-surface"
+      class="switch-thumb absolute start-0 top-0 size-8 rounded-full border border-line bg-surface"
       aria-hidden="true"
     />
     <radio-group-item
@@ -53,7 +56,7 @@ const index = computed(() => props.items.findIndex((item) => item.value === mode
       :key="item.value"
       :value="item.value"
       :aria-label="item.label"
-      class="relative grid size-6 cursor-pointer place-items-center rounded-full text-fg-secondary hover:text-fg-strong data-[state=checked]:text-primary"
+      class="relative grid size-8 cursor-pointer place-items-center rounded-full text-fg-secondary hover:text-fg-strong data-[state=checked]:text-primary"
     >
       <component :is="item.icon" class="size-4" aria-hidden="true" />
     </radio-group-item>
