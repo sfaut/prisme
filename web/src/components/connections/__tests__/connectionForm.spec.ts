@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 
-import { connectedText, copyForm, formOf, isChanged, serverOf, sinceText } from '../connectionForm'
+import { connectedText, copyForm, formOf, isChanged, sinceText } from '../connectionForm'
 
 /**
  * A saved MariaDB connection, last connected at `connected_at`.
@@ -42,12 +42,6 @@ describe('connectionForm', () => {
     const copy = copyForm({ ...formOf(saved()), password: 'typed' })
     expect([copy.name, copy.host, copy.password]).toEqual(['prod-copie', '10.0.4.12', 'typed'])
     expect(copyForm({ ...formOf(saved()), name: 'x'.repeat(100) }).name).toHaveLength(100)
-  })
-
-  it('says where a connection points, with its server once known', () => {
-    const form = formOf(saved())
-    expect(serverOf(saved(), form)).toBe('MariaDB 11.4.4-MariaDB · 10.0.4.12:3306')
-    expect(serverOf({ ...saved(), server_flavor: null }, form)).toBe('10.0.4.12:3306')
   })
 
   it('dates the last connection relative to now', () => {

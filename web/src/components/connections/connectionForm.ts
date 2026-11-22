@@ -9,7 +9,6 @@
  * and as "that of the copied connection" for a copy.
  */
 
-import { serverName } from '@/api/flavors'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { NewConnection } from '@/api/generated/NewConnection'
 
@@ -111,20 +110,6 @@ export function copyForm(form: ConnectionForm): ConnectionForm {
  */
 export function placeOf(form: Pick<NewConnection, 'host' | 'port'>): string {
   return `${form.host}:${form.port}`
-}
-
-/**
- * Server of a saved connection and where it points: `MariaDB 11.4.2-MariaDB
- * · 127.0.0.1:3306`, or the place alone while the server is unknown.
- *
- * @param connection Saved connection.
- * @param form Its current input, which gives the place.
- */
-export function serverOf(connection: ConnectionSummary, form: ConnectionForm): string {
-  const place = placeOf(form)
-  return connection.server_flavor === null
-    ? place
-    : `${serverName(connection.server_flavor, connection.server_version)} · ${place}`
 }
 
 /**

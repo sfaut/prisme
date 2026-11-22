@@ -7,7 +7,7 @@
   through the connections store: it is mounted once.
 
   A saved connection shows its card at the top (icon, name, flavor badge,
-  server and place, last connection), with "Tester", "Dupliquer" and
+  server and its version, last connection; the list gives its place), with "Tester", "Dupliquer" and
   "Supprimer" (after confirmation, `ConnectionRemoveDialog`), then its
   settings on a single page (`ConnectionForm`). "Tester" connects with the
   settings as typed; unchanged, the test is that of the saved connection,
@@ -38,6 +38,7 @@ import { ArrowLeft, ArrowRight, CopyPlus, PlugZap, Trash2 } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
 
 import { probeConnection, probeMessage, probeSettings } from '@/api/connections'
+import { serverName } from '@/api/flavors'
 import { errorMessage } from '@/api/errorMessage'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import { useConnectionsStore } from '@/stores/connections'
@@ -51,7 +52,6 @@ import {
   formOf,
   isChanged,
   placeOf,
-  serverOf,
 } from './connectionForm'
 import type { Creation, ListEntry, ManagerSelection } from './connectionManager'
 import { SOURCE_FAMILIES } from './sourceTypes'
@@ -566,7 +566,9 @@ function onRemoved(id: number): void {
               />
             </h3>
             <div class="flex min-w-0 items-center gap-4 text-sm text-fg-secondary">
-              <span class="truncate font-mono">{{ serverOf(saved, form) }}</span>
+              <span v-if="saved.server_flavor" class="truncate font-mono">
+                {{ serverName(saved.server_flavor, saved.server_version) }}
+              </span>
               <span class="flex shrink-0 items-center gap-2">
                 <span
                   class="size-2 rounded-full"
