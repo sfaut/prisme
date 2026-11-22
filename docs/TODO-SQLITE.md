@@ -60,7 +60,7 @@ Architecture:
 - ✅ Contract suite, on MySQL and MariaDB
 - ✅ Server on the traits only
 - ✅ Interface on the capabilities, the registry of the flavors and the general catalog
-- ⬜ Nothing visible changed: checks and MySQL / MariaDB walk-through on screen
+- ✅ Nothing visible changed: checks and MySQL / MariaDB walk-through on screen
 
 ## 2. Storage and locations
 
