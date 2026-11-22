@@ -199,7 +199,7 @@ An editor without a connection shows, centered: a round `bg-surface-raised p-4` 
 
 ### 7.6 Result grid
 
-Own component with virtual scrolling (tens of thousands of rows). Frame: 1px `line` border; its top border is the line under the results' bar, which the grid touches.
+Own component with virtual scrolling (tens of thousands of rows). Frame: 1px `line` border, `rounded-control`, like the SQL editor; the headers, the corner and the row numbers stay inside its rounded corners.
 
 - Rows of a fixed height (`--grid-row-height`, 8 steps), text `text-base`, centered on its capitals.
 - Header, sticky at the top, `bg-surface-raised`, semibold: icon of the type's family (`size-4 fg-faint`), the column's name, then the sort button (`⇅`, `▲`, `▼`, `text-sm fg-faint`, hover `fg-strong`). The native type (`VARCHAR(20)`, `DECIMAL(10,2)`) shows in the tooltip. Type marks: integer `123` and decimal `.00` written in `font-mono text-sm` medium, float `Hash`, text `CaseSensitive`, binary `Binary`, date `Calendar`, time `Clock`, date and time `CalendarClock`, year `CalendarDays`, JSON `Braces`, XML `CodeXml`, web address `Link`, bit `ToggleRight`, enum `List`, set `ListChecks`, spatial `Shapes`, other `CircleDashed`.

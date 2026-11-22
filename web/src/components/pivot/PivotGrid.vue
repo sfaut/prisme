@@ -985,6 +985,7 @@ function showsValues(line: PivotLine): boolean {
   min-block-size: 0;
   overflow: auto;
   border: var(--line-width) solid var(--color-line);
+  border-radius: var(--radius-control);
   font-size: var(--text-base);
   user-select: none;
 }
