@@ -171,6 +171,8 @@ export function describe(detail: ErrorDetail): string {
       return `Limite de ${number(detail.value)} lignes non proposée : choisir parmi ${detail.choices.map(number).join(', ')}.`
     case 'duplicate_connection_name':
       return `Une connexion nommée « ${detail.name} » existe déjà.`
+    case 'settings_family':
+      return `Les réglages envoyés ne conviennent pas au moteur « ${detail.engine} ».`
     case 'init_sql_not_understood':
       return `À la connexion : Prisme ne comprend pas la requête « ${detail.statement} ».`
     case 'init_sql_global_setting':

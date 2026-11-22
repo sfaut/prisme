@@ -49,6 +49,7 @@ import {
   type ConnectionForm as Form,
   connectedText,
   copyForm,
+  connectionOf,
   emptyForm,
   formOf,
   isChanged,
@@ -181,9 +182,9 @@ const entries = computed<ListEntry[]>(() =>
     return {
       id: connection.id,
       name: isChangedNow ? forms.value[connection.id]!.name : connection.name,
-      place: placeOf(connection),
+      place: placeOf(connection.settings),
       changed: isChangedNow,
-      connected: connection.connected_at !== null,
+      connected: connection.probe !== null,
     }
   }),
 )
@@ -375,7 +376,7 @@ async function probe(): Promise<void> {
   try {
     if (changed(connection)) {
       probed.value = probeMessage(
-        await probeSettings({ connection: { ...input }, saved_id: connection.id }),
+        await probeSettings({ connection: connectionOf(input), saved_id: connection.id }),
       )
     } else {
       probed.value = probeMessage(await probeConnection(connection.id))
@@ -400,7 +401,7 @@ async function save(): Promise<void> {
   saving.value = true
   clearMessages()
   try {
-    await connections.update(connection.id, { ...input })
+    await connections.update(connection.id, connectionOf(input))
     const updated = connections.connections.find((item) => item.id === connection.id)
     if (updated !== undefined) {
       forms.value[connection.id] = formOf(updated)
@@ -453,7 +454,7 @@ async function next(): Promise<void> {
   probing.value = true
   try {
     const info = await probeSettings({
-      connection: { ...current.form },
+      connection: connectionOf(current.form),
       saved_id: current.copyOf ?? undefined,
     })
     probed.value = probeMessage(info)
@@ -497,8 +498,8 @@ async function create(): Promise<void> {
     const input = { ...current.form }
     const id =
       current.copyOf === null
-        ? await connections.create(input)
-        : await connections.copy(current.copyOf, input)
+        ? await connections.create(connectionOf(input))
+        : await connections.copy(current.copyOf, connectionOf(input))
     creation.value = null
     select(id)
   } catch (failure) {
@@ -567,14 +568,14 @@ function onRemoved(id: number): void {
             <h3 class="flex min-w-0 items-center gap-2 text-lg font-semibold text-fg-strong">
               <span class="truncate">{{ form.name || '(sans nom)' }}</span>
               <connection-flavor-badge
-                v-if="saved.server_flavor"
-                :flavor="saved.server_flavor"
-                :version="saved.server_version"
+                v-if="saved.probe"
+                :flavor="saved.probe.flavor"
+                :version="saved.probe.version"
               />
             </h3>
             <div class="flex min-w-0 items-center gap-4 text-sm text-fg-secondary">
-              <span v-if="saved.server_flavor" class="truncate font-mono">
-                {{ serverName(saved.server_flavor, saved.server_version) }}
+              <span v-if="saved.probe" class="truncate font-mono">
+                {{ serverName(saved.probe.flavor, saved.probe.version) }}
               </span>
               <span class="flex shrink-0 items-center gap-2">
                 <span
@@ -582,7 +583,7 @@ function onRemoved(id: number): void {
                   :class="
                     shownChanged
                       ? 'bg-warning'
-                      : saved.connected_at !== null
+                      : saved.probe !== null
                         ? 'bg-success'
                         : 'bg-fg-faint'
                   "

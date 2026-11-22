@@ -67,7 +67,7 @@ Architecture:
 
 - ✅ Reference tables `setting_families`, `engines`, `flavors`, `schemes`
 - ✅ `connections` rebuilt; `connection_servers`, `connection_files`, `connection_probes`
-- ⬜ API of the connections tagged by family of settings
+- ✅ API of the connections tagged by family of settings (the family `files` joins it with the SQLite connector)
 - ⬜ Module `location`: parsing, registry, `FileProvider`, `HttpProvider`, cache, tests
 - ⬜ Preferences of the remote locations: timeouts, largest download, delay of the purge
 - ✅ Migration tried on a copy of the development internal database

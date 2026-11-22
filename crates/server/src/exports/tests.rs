@@ -16,9 +16,10 @@ use tower::ServiceExt;
 use super::table::{self, NewExport};
 use super::{ExportState, interrupt_unfinished};
 use crate::api::{AppState, router};
-use crate::connections::{self, NewConnection};
+use crate::connections::{self, NewConnection, NewServerSettings, NewSettings};
 use crate::master_key::MasterKey;
 use crate::store;
+use prisme_connectors::api::Engine;
 use prisme_connectors::flavor::Flavor;
 use prisme_connectors::mysql::MysqlTarget;
 use prisme_connectors::test_servers;
@@ -44,11 +45,14 @@ impl TestApp {
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let connection = NewConnection {
             name: "test".to_string(),
-            host: target.host.clone(),
-            port: target.port,
-            username: target.username.clone(),
-            password: target.password.clone(),
-            database_name: target.database_name.clone(),
+            engine: Engine::Mysql,
+            settings: NewSettings::Server(NewServerSettings {
+                host: target.host.clone(),
+                port: target.port,
+                username: target.username.clone(),
+                password: target.password.clone(),
+                database_name: target.database_name.clone(),
+            }),
             init_sql: String::new(),
             session_timeout_minutes: 5,
             show_system_schemas: true,

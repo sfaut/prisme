@@ -53,16 +53,17 @@ function connection(id: number, name: string): ConnectionSummary {
     id,
     name,
     engine: 'mysql',
-    host: `${name}.lan`,
-    port: 3306,
-    username: 'root',
-    database_name: '',
+    settings: {
+      family: 'server',
+      host: `${name}.lan`,
+      port: 3306,
+      username: 'root',
+      database_name: '',
+    },
     init_sql: '',
     session_timeout_minutes: 5,
     show_system_schemas: true,
-    server_flavor: 'mariadb',
-    server_version: '11.4.4-MariaDB',
-    connected_at: null,
+    probe: null,
     created_at: '2026-11-01T10:00:00.000Z',
   }
 }
@@ -185,7 +186,8 @@ beforeEach(() => {
     return { id: 3 }
   })
   api.copyConnection.mockImplementation(async (_, input) => {
-    saved = [...saved, { ...connection(4, input.name), host: input.host }]
+    const copied = connection(4, input.name)
+    saved = [...saved, { ...copied, settings: { ...copied.settings, host: input.settings.host } }]
     return { id: 4 }
   })
 })
@@ -210,7 +212,9 @@ describe('ConnectionManager', () => {
     await click('Enregistrer')
     expect(api.updateConnection).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ host: 'autre.lan', password: '' }),
+      expect.objectContaining({
+        settings: expect.objectContaining({ host: 'autre.lan', password: '' }),
+      }),
     )
   })
 
@@ -260,7 +264,10 @@ describe('ConnectionManager', () => {
     await click('Enregistrer')
     expect(api.copyConnection).toHaveBeenCalledWith(
       2,
-      expect.objectContaining({ name: 'prod-copie', host: 'prod.lan', password: '' }),
+      expect.objectContaining({
+        name: 'prod-copie',
+        settings: expect.objectContaining({ host: 'prod.lan', password: '' }),
+      }),
     )
   })
 

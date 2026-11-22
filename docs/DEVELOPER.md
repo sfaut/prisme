@@ -607,10 +607,13 @@ $api = "http://127.0.0.1:10000/api"
 # Is the server up?
 Invoke-RestMethod "$api/health"
 
-# Save a connection
+# Save a connection: the common settings, then those of its family ("server": host, port, account)
 $connection = @{
-    name = "local"; host = "127.0.0.1"; port = 3322
-    username = "root"; password = ""; database_name = ""
+    name = "local"; engine = "mysql"
+    settings = @{
+        family = "server"; host = "127.0.0.1"; port = 3322
+        username = "root"; password = ""; database_name = ""
+    }
 } | ConvertTo-Json
 Invoke-RestMethod "$api/connections" -Method Post -ContentType "application/json" -Body $connection
 
@@ -631,9 +634,11 @@ On error (status 4xx or 5xx), PowerShell raises an exception, and the JSON body 
 |---|---|---|
 | `GET /api/health` | Answers `ok`. | — |
 | `GET /api/version` | Version of the executable: `{"version": "0.2.0"}`. The interface shows it next to the name. | — |
-| `GET /api/connections` | Lists the connections, without passwords. | — |
-| `POST /api/connections` | Saves a connection, returns `{"id": ...}` (201). | 400 invalid input, 409 name already taken |
-| `POST /api/connections/{id}/copies` | Saves a copy of the connection with the settings received, returns `{"id": ...}` (201). An empty password takes that of the copied connection. | 400 invalid input, 404 unknown connection, 409 name already taken |
+| `GET /api/connections` | Lists the connections, without passwords: `engine`, `settings` tagged by their family (`"family": "server"`), and `probe`, the last successful connection (`flavor`, `version`, `connected_at`), `null` if none. | — |
+| `POST /api/connections` | Saves a connection (`name`, `engine`, `settings` of the family of the engine, `init_sql`...), returns `{"id": ...}` (201). | 400 invalid input or settings of another family, 409 name already taken |
+| `POST /api/connections/{id}/copies` | Saves a copy of the connection with the settings received, returns `{"id": ...}` (201). An empty password takes that of the copied connection. | 400 invalid input, 404 unknown connection or of another engine, 409 name already taken |
+| `PUT /api/connections/{id}` | Changes the connection (204). An empty password keeps the saved one; the engine of a saved connection does not change. | 400 invalid input, 404 unknown connection or of another engine, 409 name already taken |
+| `DELETE /api/connections/{id}` | Deletes the connection, with its settings and its last connection (204). | 404 unknown connection |
 | `POST /api/connections/{id}/probe` | Connects, returns the identity of the source (`SourceInfo`: flavor, version, modes of the session, capabilities). | 404 unknown connection, 502 server unreachable or access denied, 504 no answer within 10 s |
 | `GET /api/settings` | Settings: `{"row_limit": 1000, "row_limit_choices": [...], "read_only_session": true, "allowed_writes": [], "history_retention_days": 30, "debug_retention_days": 30, "indent_size": 4, "concat_max_bytes": 1000, "pivot_refresh_ms": 1000}`. `allowed_writes`: the kinds of write allowed (`insert`, `create_table`...), in the order of `WriteKind::ALL`. | — |
 | `PUT /api/settings` | Changes the default limit, the read-only sessions, the allowed writes, the retention of the console (1 to 3,650 days), the indentation of the SQL editor (1 to 8 spaces), the longest text of a `GROUP_CONCAT` of the Pivoteur (100 to 1,048,576 bytes) and the shortest delay between two computations of the Pivoteur during the reception of the rows (200 to 60,000 milliseconds), returns the updated settings. | 400 limit not among the choices, retention, indentation, longest text or delay out of bounds; 422 unknown kind of write |

@@ -242,8 +242,8 @@ const nodes = computed(() => {
           receiving: read !== undefined && !read.done,
           chosen: connection.id === props.selectedId,
           currentDatabase: connection.id === props.selectedId ? props.currentDatabase : null,
-          flavor: read?.source?.flavor ?? connection.server_flavor,
-          version: read?.source?.version ?? connection.server_version,
+          flavor: read?.source?.flavor ?? connection.probe?.flavor ?? null,
+          version: read?.source?.version ?? connection.probe?.version ?? null,
           showSystemSchemas: connection.show_system_schemas,
         }
       }),

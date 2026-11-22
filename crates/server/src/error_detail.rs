@@ -114,6 +114,12 @@ pub enum ErrorDetail {
         /// Name taken.
         name: String,
     },
+    /// The settings of a connection are not of the family of its engine.
+    #[error("settings: not those of the engine {engine}")]
+    SettingsFamily {
+        /// Key of the engine.
+        engine: String,
+    },
     /// A query of `init_sql` is not understood by Prisme.
     #[error("init_sql: \"{statement}\": query not understood by Prisme")]
     InitSqlNotUnderstood {

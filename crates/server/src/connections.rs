@@ -1,4 +1,4 @@
-//! Saved connections to the target databases.
+//! Saved connections to the sources.
 //!
 //! The password is encrypted with the master key before being stored, the
 //! rest is in clear (see `docs/V1.md`, section 2.8). Each connection belongs
@@ -11,19 +11,23 @@
 //! `prisme_dialects::classify::session_setting_refusal`).
 //!
 //! It also sets the delay during which a query session stays open after its
-//! page is closed (see `sessions.rs`), and remembers the server's flavor
-//! (MySQL or MariaDB) and version seen on the last successful connection,
-//! with its date.
+//! page is closed (see `sessions.rs`), and remembers the flavor and the
+//! version of the source seen on the last successful connection, with its
+//! date.
 //!
-//! The settings every engine shares are in `connections`, those of the
-//! servers in `connection_servers`, the last successful connection in
-//! `connection_probes` (`migrations/0037_connections_by_family.sql`).
+//! The settings every engine shares are in `connections`, those of each
+//! family of settings in its own table (`connection_servers` for the
+//! servers), the last successful connection in `connection_probes`
+//! (`migrations/0037_connections_by_family.sql`). The API carries the
+//! settings tagged by their family (`"family": "server"`); the engine of a
+//! saved connection does not change.
 
-use prisme_connectors::api::{Engine, ServerSettings, Settings, SourceInfo, Target};
+use prisme_connectors::api::{Engine, Family, ServerSettings, Settings, SourceInfo, Target};
 use prisme_connectors::flavor::Flavor;
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{SettingRefusal, session_setting_refusal};
-use rusqlite::{Connection, OptionalExtension, ffi, params};
+use rusqlite::types::Type;
+use rusqlite::{Connection, OptionalExtension, Row, ffi, params};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -62,19 +66,10 @@ const SESSION_TIMEOUT_DEFAULT_MINUTES: u32 = 5;
 pub struct NewConnection {
     /// Name chosen by the user, unique among their connections.
     pub name: String,
-    /// Host name or IP address of the server.
-    pub host: String,
-    /// TCP port of the server.
-    pub port: u16,
-    /// Connection account.
-    pub username: String,
-    /// Password of the account, encrypted before storage.
-    #[ts(type = "string")]
-    pub password: SecretString,
-    /// Database selected on connection. Absent or empty: none.
-    #[serde(default)]
-    #[ts(optional, as = "Option<String>")]
-    pub database_name: String,
+    /// Engine of the source: its family is that of the settings.
+    pub engine: Engine,
+    /// Settings of the source, by family.
+    pub settings: NewSettings,
     /// Queries to run each time a connection opens, separated by ";":
     /// session settings only. Absent or empty: none.
     #[serde(default)]
@@ -85,14 +80,52 @@ pub struct NewConnection {
     #[serde(default = "default_session_timeout")]
     #[ts(optional, as = "Option<u32>")]
     pub session_timeout_minutes: u32,
-    /// Does the navigator show the system databases (`information_schema`,
+    /// Does the navigator show the system namespaces (`information_schema`,
     /// `mysql`...)? Absent: yes.
     #[serde(default = "default_show_system_schemas")]
     #[ts(optional, as = "Option<bool>")]
     pub show_system_schemas: bool,
 }
 
-/// Default display of the system databases, for deserialising `NewConnection`.
+/// Settings of a source to save, by family of settings.
+#[derive(Deserialize, TS)]
+#[ts(export)]
+#[serde(tag = "family", rename_all = "snake_case")]
+pub enum NewSettings {
+    /// A server reached over the network.
+    Server(NewServerSettings),
+}
+
+impl NewSettings {
+    /// Family of the settings.
+    fn family(&self) -> Family {
+        match self {
+            Self::Server(_) => Family::Server,
+        }
+    }
+}
+
+/// Settings of a server to save, as typed by the user.
+#[derive(Deserialize, TS)]
+#[ts(export)]
+pub struct NewServerSettings {
+    /// Host name or IP address of the server.
+    pub host: String,
+    /// TCP port of the server.
+    pub port: u16,
+    /// Connection account.
+    pub username: String,
+    /// Password of the account, encrypted before storage. Empty for a saved
+    /// connection: unchanged, or that of the copied connection.
+    #[ts(type = "string")]
+    pub password: SecretString,
+    /// Database selected on connection. Absent or empty: none.
+    #[serde(default)]
+    #[ts(optional, as = "Option<String>")]
+    pub database_name: String,
+}
+
+/// Default display of the system namespaces, for deserialising `NewConnection`.
 fn default_show_system_schemas() -> bool {
     true
 }
@@ -123,8 +156,36 @@ pub struct ConnectionSummary {
     pub id: i64,
     /// Name chosen by the user.
     pub name: String,
-    /// Family of engines (`mysql` for MySQL and MariaDB).
-    pub engine: String,
+    /// Engine of the source.
+    pub engine: Engine,
+    /// Settings of the source, by family, without the password.
+    pub settings: SavedSettings,
+    /// Queries run each time a connection opens, empty string if none.
+    pub init_sql: String,
+    /// Keep-alive delay of a session after its page is closed, in minutes.
+    pub session_timeout_minutes: u32,
+    /// Does the navigator show the system namespaces?
+    pub show_system_schemas: bool,
+    /// Last successful connection to the source, `null` if the connection
+    /// never succeeded.
+    pub probe: Option<ConnectionProbe>,
+    /// Date it was saved, in UTC, in ISO 8601 format.
+    pub created_at: String,
+}
+
+/// Saved settings of a source, by family of settings, without secrets.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+#[serde(tag = "family", rename_all = "snake_case")]
+pub enum SavedSettings {
+    /// A server reached over the network.
+    Server(SavedServerSettings),
+}
+
+/// Saved settings of a server, without its password.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct SavedServerSettings {
     /// Host name or IP address of the server.
     pub host: String,
     /// TCP port of the server.
@@ -133,23 +194,18 @@ pub struct ConnectionSummary {
     pub username: String,
     /// Database selected on connection, empty string if none.
     pub database_name: String,
-    /// Queries run each time a connection opens, empty string if none.
-    pub init_sql: String,
-    /// Keep-alive delay of a session after its page is closed, in minutes.
-    pub session_timeout_minutes: u32,
-    /// Does the navigator show the system databases?
-    pub show_system_schemas: bool,
-    /// Flavor of the server seen on the last successful connection, `null`
-    /// if the connection never succeeded.
-    pub server_flavor: Option<Flavor>,
-    /// Version of the server seen on the last successful connection (raw
-    /// result of `SELECT VERSION()`), `null` if the connection never succeeded.
-    pub server_version: Option<String>,
-    /// Date of the last successful connection, in UTC, in ISO 8601 format,
-    /// `null` if the connection never succeeded.
-    pub connected_at: Option<String>,
-    /// Date it was saved, in UTC, in ISO 8601 format.
-    pub created_at: String,
+}
+
+/// What the last successful connection to a source detected.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct ConnectionProbe {
+    /// Flavor of the source.
+    pub flavor: Flavor,
+    /// Version of the source, as it gives it (`SELECT VERSION()` for MySQL).
+    pub version: String,
+    /// Date of the connection, in UTC, in ISO 8601 format.
+    pub connected_at: String,
 }
 
 /// Errors managing saved connections.
@@ -173,23 +229,17 @@ pub enum ConnectionsError {
 }
 
 impl NewConnection {
-    /// Checks the input, with the same limits as the `connections` table.
+    /// Checks the input, with the same limits as the tables of the
+    /// connections.
     pub fn validate(&self) -> Result<(), ConnectionsError> {
         check_length(Field::Name, &self.name, 1, NAME_MAX_LENGTH)?;
-        check_length(Field::Host, &self.host, 1, HOST_MAX_LENGTH)?;
-        check_length(Field::Username, &self.username, 1, USERNAME_MAX_LENGTH)?;
-        check_length(
-            Field::DatabaseName,
-            &self.database_name,
-            0,
-            DATABASE_NAME_MAX_LENGTH,
-        )?;
-        if self.port == 0 {
-            return Err(ConnectionsError::Invalid(ErrorDetail::FieldRange {
-                field: Field::Port,
-                min: 1,
-                max: u16::MAX.into(),
+        if self.engine.family() != self.settings.family() {
+            return Err(ConnectionsError::Invalid(ErrorDetail::SettingsFamily {
+                engine: self.engine.key().to_string(),
             }));
+        }
+        match &self.settings {
+            NewSettings::Server(server) => server.validate()?,
         }
         check_length(Field::InitSql, &self.init_sql, 0, INIT_SQL_MAX_LENGTH)?;
         if self.session_timeout_minutes > SESSION_TIMEOUT_MAX_MINUTES {
@@ -207,6 +257,28 @@ impl NewConnection {
                     statement, refusal,
                 )));
             }
+        }
+        Ok(())
+    }
+}
+
+impl NewServerSettings {
+    /// Checks the settings, with the same limits as `connection_servers`.
+    fn validate(&self) -> Result<(), ConnectionsError> {
+        check_length(Field::Host, &self.host, 1, HOST_MAX_LENGTH)?;
+        check_length(Field::Username, &self.username, 1, USERNAME_MAX_LENGTH)?;
+        check_length(
+            Field::DatabaseName,
+            &self.database_name,
+            0,
+            DATABASE_NAME_MAX_LENGTH,
+        )?;
+        if self.port == 0 {
+            return Err(ConnectionsError::Invalid(ErrorDetail::FieldRange {
+                field: Field::Port,
+                min: 1,
+                max: u16::MAX.into(),
+            }));
         }
         Ok(())
     }
@@ -256,8 +328,10 @@ pub fn insert(
     new: &NewConnection,
 ) -> Result<i64, ConnectionsError> {
     new.validate()?;
-    let password_secret = secrets::encrypt(key, &new.password)?;
-    insert_row(db, user_id, new, &password_secret)
+    let password_secret = match &new.settings {
+        NewSettings::Server(server) => secrets::encrypt(key, &server.password)?,
+    };
+    insert_rows(db, user_id, new, &password_secret)
 }
 
 /// Saves a copy of connection `source_id` of user `user_id`, with the
@@ -265,7 +339,8 @@ pub fn insert(
 /// source: the interface does not know it, so it cannot send it. The secret
 /// is copied as stored, without being decrypted.
 ///
-/// Returns `None` if the source does not exist or belongs to another user.
+/// Returns `None` if the source does not exist, belongs to another user, or
+/// is of another engine.
 pub fn insert_copy(
     db: &Connection,
     key: &MasterKey,
@@ -274,29 +349,30 @@ pub fn insert_copy(
     new: &NewConnection,
 ) -> Result<Option<i64>, ConnectionsError> {
     new.validate()?;
+    let NewSettings::Server(server) = &new.settings;
     let saved_secret: Option<Vec<u8>> = db
         .query_row(
             "SELECT s.password_secret
              FROM connections c JOIN connection_servers s ON s.connection_id = c.id
-             WHERE c.id = ?1 AND c.user_id = ?2",
-            params![source_id, user_id],
+             WHERE c.id = ?1 AND c.user_id = ?2 AND c.engine = ?3",
+            params![source_id, user_id, new.engine.key()],
             |row| row.get(0),
         )
         .optional()?;
     let Some(saved_secret) = saved_secret else {
         return Ok(None);
     };
-    let password_secret = if new.password.expose_secret().is_empty() {
+    let password_secret = if server.password.expose_secret().is_empty() {
         saved_secret
     } else {
-        secrets::encrypt(key, &new.password)?
+        secrets::encrypt(key, &server.password)?
     };
-    insert_row(db, user_id, new, &password_secret).map(Some)
+    insert_rows(db, user_id, new, &password_secret).map(Some)
 }
 
 /// Inserts the rows of a validated connection, its password already
 /// encrypted, and returns its id.
-fn insert_row(
+fn insert_rows(
     db: &Connection,
     user_id: i64,
     new: &NewConnection,
@@ -309,7 +385,7 @@ fn insert_row(
         params![
             user_id,
             new.name,
-            Engine::Mysql.key(),
+            new.engine.key(),
             new.init_sql,
             new.session_timeout_minutes,
             new.show_system_schemas,
@@ -317,18 +393,22 @@ fn insert_row(
     );
     result.map_err(|error| name_error(error, &new.name))?;
     let id = transaction.last_insert_rowid();
-    transaction.execute(
-        "INSERT INTO connection_servers (connection_id, host, port, username, password_secret, database_name)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![
-            id,
-            new.host,
-            new.port,
-            new.username,
-            password_secret,
-            new.database_name,
-        ],
-    )?;
+    match &new.settings {
+        NewSettings::Server(server) => {
+            transaction.execute(
+                "INSERT INTO connection_servers (connection_id, host, port, username, password_secret, database_name)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    id,
+                    server.host,
+                    server.port,
+                    server.username,
+                    password_secret,
+                    server.database_name,
+                ],
+            )?;
+        }
+    }
     transaction.commit()?;
     Ok(id)
 }
@@ -336,7 +416,8 @@ fn insert_row(
 /// Changes connection `id` of user `user_id`. An empty password keeps the
 /// saved password: the interface does not know it, so it cannot send it back.
 ///
-/// Returns `false` if the connection does not exist or belongs to another user.
+/// Returns `false` if the connection does not exist, belongs to another user,
+/// or is of another engine.
 pub fn update(
     db: &Connection,
     key: &MasterKey,
@@ -345,20 +426,15 @@ pub fn update(
     changed: &NewConnection,
 ) -> Result<bool, ConnectionsError> {
     changed.validate()?;
-    let password_secret = if changed.password.expose_secret().is_empty() {
-        None
-    } else {
-        Some(secrets::encrypt(key, &changed.password)?)
-    };
-
     let transaction = db.unchecked_transaction()?;
     let result = transaction.execute(
         "UPDATE connections
-         SET name = ?3, init_sql = ?4, session_timeout_minutes = ?5, show_system_schemas = ?6
-         WHERE id = ?1 AND user_id = ?2",
+         SET name = ?4, init_sql = ?5, session_timeout_minutes = ?6, show_system_schemas = ?7
+         WHERE id = ?1 AND user_id = ?2 AND engine = ?3",
         params![
             id,
             user_id,
+            changed.engine.key(),
             changed.name,
             changed.init_sql,
             changed.session_timeout_minutes,
@@ -369,20 +445,29 @@ pub fn update(
     if updated != 1 {
         return Ok(false);
     }
-    transaction.execute(
-        "UPDATE connection_servers
-         SET host = ?2, port = ?3, username = ?4,
-             password_secret = COALESCE(?5, password_secret), database_name = ?6
-         WHERE connection_id = ?1",
-        params![
-            id,
-            changed.host,
-            changed.port,
-            changed.username,
-            password_secret,
-            changed.database_name,
-        ],
-    )?;
+    match &changed.settings {
+        NewSettings::Server(server) => {
+            let password_secret = if server.password.expose_secret().is_empty() {
+                None
+            } else {
+                Some(secrets::encrypt(key, &server.password)?)
+            };
+            transaction.execute(
+                "UPDATE connection_servers
+                 SET host = ?2, port = ?3, username = ?4,
+                     password_secret = COALESCE(?5, password_secret), database_name = ?6
+                 WHERE connection_id = ?1",
+                params![
+                    id,
+                    server.host,
+                    server.port,
+                    server.username,
+                    password_secret,
+                    server.database_name,
+                ],
+            )?;
+        }
+    }
     transaction.commit()?;
     Ok(true)
 }
@@ -399,6 +484,20 @@ fn name_error(error: rusqlite::Error, name: &str) -> ConnectionsError {
     }
 }
 
+/// Engine of the key read in column `index`.
+fn engine_at(row: &Row<'_>, index: usize) -> rusqlite::Result<Engine> {
+    let key: String = row.get(index)?;
+    // The foreign key of the column keeps the engines of the reference
+    // table; one this version of Prisme does not know is an error.
+    Engine::from_key(&key).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            index,
+            Type::Text,
+            format!("unknown engine {key}").into(),
+        )
+    })
+}
+
 /// Lists the connections of user `user_id`, by name, without their password.
 pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, ConnectionsError> {
     let mut statement = db.prepare(
@@ -411,30 +510,39 @@ pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, Con
          WHERE c.user_id = ?1 ORDER BY c.name",
     )?;
     let rows = statement.query_map(params![user_id], |row| {
+        let probe = match row.get::<_, Option<String>>(10)? {
+            Some(flavor) => Flavor::from_key(&flavor)
+                .map(|flavor| -> rusqlite::Result<ConnectionProbe> {
+                    Ok(ConnectionProbe {
+                        flavor,
+                        version: row.get(11)?,
+                        connected_at: row.get(12)?,
+                    })
+                })
+                .transpose()?,
+            None => None,
+        };
         Ok(ConnectionSummary {
             id: row.get(0)?,
             name: row.get(1)?,
-            engine: row.get(2)?,
-            host: row.get(3)?,
-            port: row.get(4)?,
-            username: row.get(5)?,
-            database_name: row.get(6)?,
+            engine: engine_at(row, 2)?,
+            settings: SavedSettings::Server(SavedServerSettings {
+                host: row.get(3)?,
+                port: row.get(4)?,
+                username: row.get(5)?,
+                database_name: row.get(6)?,
+            }),
             init_sql: row.get(7)?,
             session_timeout_minutes: row.get(8)?,
             show_system_schemas: row.get(9)?,
-            server_flavor: row
-                .get::<_, Option<String>>(10)?
-                .as_deref()
-                .and_then(Flavor::from_key),
-            server_version: row.get(11)?,
-            connected_at: row.get(12)?,
+            probe,
             created_at: row.get(13)?,
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
-/// Deletes connection `id` of user `user_id`.
+/// Deletes connection `id` of user `user_id`, with its settings and its probe.
 ///
 /// Returns `false` if the connection does not exist or belongs to another user.
 pub fn delete(db: &Connection, user_id: i64, id: i64) -> Result<bool, ConnectionsError> {
@@ -463,7 +571,7 @@ pub fn load_target(
             params![id, user_id],
             |row| {
                 Ok((
-                    row.get::<_, String>(0)?,
+                    engine_at(row, 0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, u16>(2)?,
                     row.get::<_, String>(3)?,
@@ -478,8 +586,6 @@ pub fn load_target(
     let Some((engine, host, port, username, password_secret, database_name, init_sql)) = row else {
         return Ok(None);
     };
-    // The foreign key of the column keeps the engines Prisme knows.
-    let engine = Engine::from_key(&engine).unwrap_or(Engine::Mysql);
     Ok(Some(Target {
         engine,
         settings: Settings::Server(ServerSettings {
@@ -559,8 +665,9 @@ pub fn probe_target(
         connection,
         saved_id,
     } = request;
+    let NewSettings::Server(server) = connection.settings;
     let password = match saved_id {
-        Some(id) if connection.password.expose_secret().is_empty() => {
+        Some(id) if server.password.expose_secret().is_empty() => {
             match load_target(db, key, user_id, id)? {
                 Some(Target {
                     settings: Settings::Server(saved),
@@ -569,16 +676,16 @@ pub fn probe_target(
                 None => return Ok(None),
             }
         }
-        _ => connection.password,
+        _ => server.password,
     };
     Ok(Some(Target {
-        engine: Engine::Mysql,
+        engine: connection.engine,
         settings: Settings::Server(ServerSettings {
-            host: connection.host,
-            port: connection.port,
-            username: connection.username,
+            host: server.host,
+            port: server.port,
+            username: server.username,
             password,
-            database_name: connection.database_name,
+            database_name: server.database_name,
         }),
         init_statements: init_statements(&connection.init_sql),
     }))
@@ -601,15 +708,24 @@ mod tests {
     fn new_connection(name: &str) -> NewConnection {
         NewConnection {
             name: name.to_string(),
-            host: "localhost".to_string(),
-            port: 3306,
-            username: "root".to_string(),
-            password: SecretString::from("secret"),
-            database_name: String::new(),
+            engine: Engine::Mysql,
+            settings: NewSettings::Server(NewServerSettings {
+                host: "localhost".to_string(),
+                port: 3306,
+                username: "root".to_string(),
+                password: SecretString::from("secret"),
+                database_name: String::new(),
+            }),
             init_sql: String::new(),
             session_timeout_minutes: 5,
             show_system_schemas: true,
         }
+    }
+
+    /// Settings of the server of a connection to save.
+    fn server(connection: &mut NewConnection) -> &mut NewServerSettings {
+        let NewSettings::Server(server) = &mut connection.settings;
+        server
     }
 
     #[test]
@@ -651,7 +767,9 @@ mod tests {
         let summaries = list(&db, user_id).unwrap();
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].name, "prod");
-        assert_eq!(summaries[0].engine, "mysql");
+        assert_eq!(summaries[0].engine, Engine::Mysql);
+        let SavedSettings::Server(saved) = &summaries[0].settings;
+        assert_eq!((saved.host.as_str(), saved.port), ("localhost", 3306));
 
         let target = load_target(&db, &key, user_id, id).unwrap().unwrap();
         assert_eq!(password(&target), "secret");
@@ -732,13 +850,13 @@ mod tests {
         let id = insert(&db, &key, alice, &new_connection("prod")).unwrap();
 
         let mut changed = new_connection("staging");
-        changed.password = SecretString::from("");
+        server(&mut changed).password = SecretString::from("");
         assert!(update(&db, &key, alice, id, &changed).unwrap());
         assert_eq!(list(&db, alice).unwrap()[0].name, "staging");
         let target = load_target(&db, &key, alice, id).unwrap().unwrap();
         assert_eq!(password(&target), "secret");
 
-        changed.password = SecretString::from("new");
+        server(&mut changed).password = SecretString::from("new");
         assert!(update(&db, &key, alice, id, &changed).unwrap());
         let target = load_target(&db, &key, alice, id).unwrap().unwrap();
         assert_eq!(password(&target), "new");
@@ -755,7 +873,7 @@ mod tests {
         let source = insert(&db, &key, alice, &new_connection("prod")).unwrap();
 
         let mut copy = new_connection("prod (copie)");
-        copy.password = SecretString::from("");
+        server(&mut copy).password = SecretString::from("");
         let id = insert_copy(&db, &key, alice, source, &copy)
             .unwrap()
             .unwrap();
@@ -763,7 +881,7 @@ mod tests {
         assert_eq!(password(&target), "secret");
 
         copy.name = "prod (autre)".to_string();
-        copy.password = SecretString::from("other");
+        server(&mut copy).password = SecretString::from("other");
         let id = insert_copy(&db, &key, alice, source, &copy)
             .unwrap()
             .unwrap();
@@ -806,7 +924,7 @@ mod tests {
         let id = insert(&db, &key, alice, &new_connection("prod")).unwrap();
         let request = |password: &str, saved_id| {
             let mut connection = new_connection("");
-            connection.password = SecretString::from(password);
+            server(&mut connection).password = SecretString::from(password);
             ProbeRequest {
                 connection,
                 saved_id,
@@ -844,7 +962,7 @@ mod tests {
         assert!(connection.validate().is_err());
 
         connection = new_connection("prod");
-        connection.port = 0;
+        server(&mut connection).port = 0;
         assert!(connection.validate().is_err());
     }
 
@@ -854,15 +972,7 @@ mod tests {
         let key = MasterKey::generate();
         let user_id = store::ensure_user(&db, "a@example.com").unwrap();
         let id = insert(&db, &key, user_id, &new_connection("prod")).unwrap();
-        let summary = &list(&db, user_id).unwrap()[0];
-        assert_eq!(
-            (
-                summary.server_flavor,
-                &summary.server_version,
-                &summary.connected_at
-            ),
-            (None, &None, &None)
-        );
+        assert!(list(&db, user_id).unwrap()[0].probe.is_none());
         let server = SourceInfo {
             flavor: Flavor::MariaDb,
             version: "10.11.11-MariaDB".to_string(),
@@ -872,10 +982,10 @@ mod tests {
         };
         remember_server(&db, user_id, id, &server).unwrap();
         let summary = &list(&db, user_id).unwrap()[0];
-        assert_eq!(summary.server_flavor, Some(Flavor::MariaDb));
-        assert_eq!(summary.server_version.as_deref(), Some("10.11.11-MariaDB"));
-        let connected_at = summary.connected_at.as_deref().unwrap();
-        assert!(connected_at.ends_with('Z'), "{connected_at}");
+        let probe = summary.probe.as_ref().unwrap();
+        assert_eq!(probe.flavor, Flavor::MariaDb);
+        assert_eq!(probe.version, "10.11.11-MariaDB");
+        assert!(probe.connected_at.ends_with('Z'), "{}", probe.connected_at);
 
         // A later connection replaces the probe; another user's changes nothing.
         let server = SourceInfo {
@@ -884,17 +994,11 @@ mod tests {
             ..server
         };
         remember_server(&db, user_id + 1, id, &server).unwrap();
-        assert_eq!(
-            list(&db, user_id).unwrap()[0].server_flavor,
-            Some(Flavor::MariaDb)
-        );
+        let probe = |db: &Connection| list(db, user_id).unwrap().remove(0).probe.unwrap();
+        assert_eq!(probe(&db).flavor, Flavor::MariaDb);
         remember_server(&db, user_id, id, &server).unwrap();
-        let summary = &list(&db, user_id).unwrap()[0];
-        assert_eq!(summary.server_flavor, Some(Flavor::MySql));
-        assert_eq!(
-            summary.server_version.as_deref(),
-            Some("8".repeat(VERSION_MAX_LENGTH).as_str())
-        );
+        assert_eq!(probe(&db).flavor, Flavor::MySql);
+        assert_eq!(probe(&db).version, "8".repeat(VERSION_MAX_LENGTH));
     }
 
     #[test]

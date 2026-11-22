@@ -65,6 +65,13 @@ export type ErrorDetail =
     name: string;
   }
   | {
+    "code": "settings_family";
+    /**
+     * Key of the engine.
+     */
+    engine: string;
+  }
+  | {
     "code": "init_sql_not_understood";
     /**
      * Query refused.

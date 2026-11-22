@@ -1,8 +1,12 @@
 /**
  * Input of a MySQL / MariaDB connection in the connections manager: empty
  * input, input of a saved connection, comparison with it (a changed input is
- * a draft), input of a copy, and the texts that describe a connection (where
- * it points, its last connection).
+ * a draft), input of a copy, the connection sent to the server, and the
+ * texts that describe a connection (where it points, its last connection).
+ *
+ * The form keeps the settings of the server beside the common ones; the
+ * server receives them under `settings`, tagged by their family
+ * (`"family": "server"`).
  *
  * The interface does not know the saved password: the input of a saved
  * connection has an empty password, which the server reads as "unchanged",
@@ -11,11 +15,14 @@
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { NewConnection } from '@/api/generated/NewConnection'
+import type { NewServerSettings } from '@/api/generated/NewServerSettings'
 
 /**
- * Input of a connection, every field filled.
+ * Input of a connection to a server, every field filled: the common
+ * settings and those of the server.
  */
-export type ConnectionForm = Required<NewConnection>
+export type ConnectionForm = Required<Omit<NewConnection, 'engine' | 'settings'>> &
+  Required<NewServerSettings>
 
 /**
  * Maximum lengths of the fields, in characters, as the server checks them
@@ -57,16 +64,8 @@ export function emptyForm(): ConnectionForm {
  * @param connection Saved connection.
  */
 export function formOf(connection: ConnectionSummary): ConnectionForm {
-  const {
-    name,
-    host,
-    port,
-    username,
-    database_name,
-    init_sql,
-    session_timeout_minutes,
-    show_system_schemas,
-  } = connection
+  const { name, settings, init_sql, session_timeout_minutes, show_system_schemas } = connection
+  const { host, port, username, database_name } = settings
   return {
     name,
     host,
@@ -74,6 +73,24 @@ export function formOf(connection: ConnectionSummary): ConnectionForm {
     username,
     password: '',
     database_name,
+    init_sql,
+    session_timeout_minutes,
+    show_system_schemas,
+  }
+}
+
+/**
+ * Connection sent to the server for an input.
+ *
+ * @param form Input of the connection.
+ */
+export function connectionOf(form: ConnectionForm): NewConnection {
+  const { name, init_sql, session_timeout_minutes, show_system_schemas } = form
+  const { host, port, username, password, database_name } = form
+  return {
+    name,
+    engine: 'mysql',
+    settings: { family: 'server', host, port, username, password, database_name },
     init_sql,
     session_timeout_minutes,
     show_system_schemas,
@@ -106,9 +123,9 @@ export function copyForm(form: ConnectionForm): ConnectionForm {
 /**
  * Where a connection points: `host:port`.
  *
- * @param form Input or saved connection.
+ * @param form Input, or settings of a saved connection.
  */
-export function placeOf(form: Pick<NewConnection, 'host' | 'port'>): string {
+export function placeOf(form: Pick<NewServerSettings, 'host' | 'port'>): string {
   return `${form.host}:${form.port}`
 }
 
@@ -148,7 +165,7 @@ export function sinceText(iso: string, now: number = Date.now()): string {
  * @param now Current time, in milliseconds since the epoch.
  */
 export function connectedText(connection: ConnectionSummary, now: number = Date.now()): string {
-  return connection.connected_at === null
+  return connection.probe === null
     ? 'Jamais connectée'
-    : `Connectée ${sinceText(connection.connected_at, now)}`
+    : `Connectée ${sinceText(connection.probe.connected_at, now)}`
 }

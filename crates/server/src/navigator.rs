@@ -249,11 +249,12 @@ fn reading_order(namespaces: &[NamespaceInfo], preferred: Option<&Namespace>) ->
 mod tests {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
+    use prisme_connectors::api::Engine;
     use secrecy::SecretString;
     use tower::ServiceExt;
 
     use crate::api::{AppState, router};
-    use crate::connections::{self, NewConnection};
+    use crate::connections::{self, NewConnection, NewServerSettings, NewSettings};
     use crate::exports;
     use crate::master_key::MasterKey;
     use crate::store;
@@ -265,12 +266,15 @@ mod tests {
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let new = NewConnection {
             name: "closed".to_string(),
-            host: "127.0.0.1".to_string(),
-            // Port 1: no server listens there.
-            port: 1,
-            username: "root".to_string(),
-            password: SecretString::from(""),
-            database_name: String::new(),
+            engine: Engine::Mysql,
+            settings: NewSettings::Server(NewServerSettings {
+                host: "127.0.0.1".to_string(),
+                // Port 1: no server listens there.
+                port: 1,
+                username: "root".to_string(),
+                password: SecretString::from(""),
+                database_name: String::new(),
+            }),
             init_sql: String::new(),
             session_timeout_minutes: 5,
             show_system_schemas: true,

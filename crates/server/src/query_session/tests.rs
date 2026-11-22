@@ -8,13 +8,14 @@ use tokio_tungstenite::tungstenite::Message as ClientMessage;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 
 use crate::api::{AppState, router};
-use crate::connections::{self, NewConnection};
+use crate::connections::{self, NewConnection, NewServerSettings, NewSettings};
 use crate::editors::{self, NewEditor};
 use crate::error_detail::ErrorDetail;
 use crate::exports;
 use crate::master_key::MasterKey;
 use crate::settings::{self, SettingsUpdate};
 use crate::store;
+use prisme_connectors::api::Engine;
 use prisme_connectors::flavor::Flavor;
 use prisme_connectors::mysql::MysqlTarget;
 use prisme_connectors::test_servers;
@@ -53,11 +54,14 @@ async fn start_writing(target: &MysqlTarget, writes: Option<&[WriteKind]>) -> (S
     }
     let new = NewConnection {
         name: "test".to_string(),
-        host: target.host.clone(),
-        port: target.port,
-        username: target.username.clone(),
-        password: target.password.clone(),
-        database_name: target.database_name.clone(),
+        engine: Engine::Mysql,
+        settings: NewSettings::Server(NewServerSettings {
+            host: target.host.clone(),
+            port: target.port,
+            username: target.username.clone(),
+            password: target.password.clone(),
+            database_name: target.database_name.clone(),
+        }),
         // On-connect queries: the variable exists on each open connection,
         // and double quotes delimit identifiers there.
         init_sql: "SET @prisme_init = 1; SET SESSION sql_mode = 'ANSI_QUOTES'".to_string(),

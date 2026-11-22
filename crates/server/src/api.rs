@@ -690,10 +690,14 @@ mod tests {
     fn connection_json(name: &str, port: u16) -> Value {
         json!({
             "name": name,
-            "host": "127.0.0.1",
-            "port": port,
-            "username": "root",
-            "password": "secret",
+            "engine": "mysql",
+            "settings": {
+                "family": "server",
+                "host": "127.0.0.1",
+                "port": port,
+                "username": "root",
+                "password": "secret",
+            },
         })
     }
 
@@ -840,7 +844,7 @@ mod tests {
         )
         .await;
         let mut copy = connection_json("prod (copie)", 3306);
-        copy["password"] = json!("");
+        copy["settings"]["password"] = json!("");
         let uri = format!("/api/connections/{}/copies", created["id"]);
 
         let (status, copied) = send(&app, "POST", &uri, Some(copy.clone())).await;
@@ -870,7 +874,8 @@ mod tests {
         assert_eq!(status, StatusCode::NO_CONTENT);
         let (_, list) = send(&app, "GET", "/api/connections", None).await;
         assert_eq!(list[0]["name"], "staging");
-        assert_eq!(list[0]["port"], 3307);
+        assert_eq!(list[0]["settings"]["family"], "server");
+        assert_eq!(list[0]["settings"]["port"], 3307);
 
         let (status, _) = send(
             &app,
@@ -885,7 +890,7 @@ mod tests {
     #[tokio::test]
     async fn probe_of_an_unknown_saved_connection_gives_not_found() {
         let mut connection = connection_json("prod", 3306);
-        connection["password"] = json!("");
+        connection["settings"]["password"] = json!("");
         let (status, _) = send(
             &test_app(),
             "POST",

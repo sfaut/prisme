@@ -15,15 +15,11 @@ vi.mock('@/api/connections', () => ({
       id: 7,
       name: 'prod',
       engine: 'mysql',
-      host: 'db',
-      port: 3306,
-      username: 'root',
-      database_name: '',
+      settings: { family: 'server', host: 'db', port: 3306, username: 'root', database_name: '' },
       init_sql: '',
       session_timeout_minutes: 5,
       show_system_schemas: true,
-      server_flavor: null,
-      server_version: null,
+      probe: null,
       created_at: '2026-10-12T20:00:00.000Z',
     },
   ],
@@ -73,7 +69,11 @@ beforeEach(() => {
 describe('connections', () => {
   it('selects the created connection', async () => {
     const store = useConnectionsStore()
-    await store.create({ name: 'prod', host: 'db', port: 3306, username: 'root', password: 'x' })
+    await store.create({
+      name: 'prod',
+      engine: 'mysql',
+      settings: { family: 'server', host: 'db', port: 3306, username: 'root', password: 'x' },
+    })
     expect(store.selectedId).toBe(7)
     expect(store.selected?.name).toBe('prod')
   })
@@ -81,8 +81,8 @@ describe('connections', () => {
   it('detects in the background the server of a connection never connected', async () => {
     const store = useConnectionsStore()
     await store.load()
-    await vi.waitFor(() => expect(store.connections[0]?.server_flavor).toBe('mariadb'))
-    expect(store.connections[0]?.server_version).toBe('11.4.2-MariaDB')
+    await vi.waitFor(() => expect(store.connections[0]?.probe?.flavor).toBe('mariadb'))
+    expect(store.connections[0]?.probe?.version).toBe('11.4.2-MariaDB')
   })
 })
 

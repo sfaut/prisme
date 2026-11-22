@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 
-import { connectedText, copyForm, formOf, isChanged, sinceText } from '../connectionForm'
+import {
+  connectedText,
+  connectionOf,
+  copyForm,
+  formOf,
+  isChanged,
+  sinceText,
+} from '../connectionForm'
 
 /**
  * A saved MariaDB connection, last connected at `connected_at`.
@@ -14,16 +21,18 @@ function saved(connected_at: string | null = null): ConnectionSummary {
     id: 1,
     name: 'prod',
     engine: 'mysql',
-    host: '10.0.4.12',
-    port: 3306,
-    username: 'lecteur',
-    database_name: 'ventes',
+    settings: {
+      family: 'server',
+      host: '10.0.4.12',
+      port: 3306,
+      username: 'lecteur',
+      database_name: 'ventes',
+    },
     init_sql: '',
     session_timeout_minutes: 5,
     show_system_schemas: false,
-    server_flavor: 'mariadb',
-    server_version: '11.4.4-MariaDB',
-    connected_at,
+    probe:
+      connected_at === null ? null : { flavor: 'mariadb', version: '11.4.4-MariaDB', connected_at },
     created_at: '2026-11-01T10:00:00.000Z',
   }
 }
@@ -36,6 +45,24 @@ describe('connectionForm', () => {
     expect(isChanged({ ...form, port: 3307 }, saved())).toBe(true)
     // A typed password is a change, though the saved one is unknown.
     expect(isChanged({ ...form, password: 'secret' }, saved())).toBe(true)
+  })
+
+  it('sends the settings of the server under their family', () => {
+    expect(connectionOf({ ...formOf(saved()), password: 'typed' })).toEqual({
+      name: 'prod',
+      engine: 'mysql',
+      settings: {
+        family: 'server',
+        host: '10.0.4.12',
+        port: 3306,
+        username: 'lecteur',
+        password: 'typed',
+        database_name: 'ventes',
+      },
+      init_sql: '',
+      session_timeout_minutes: 5,
+      show_system_schemas: false,
+    })
   })
 
   it('names a copy after its connection, with the typed password', () => {
