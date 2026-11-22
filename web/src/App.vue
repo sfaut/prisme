@@ -209,8 +209,11 @@ function databaseOf(editor: EditorEntry): string | null {
 }
 
 /**
- * Number of reconnections requested, by editor: changing the key of its view
- * reopens its session. Changing its connection reopens it too.
+ * Number of reopenings asked from the navigator, by editor (source of a
+ * closed session chosen again, `connectEditor`): changing the key of its
+ * view reopens its session, on the database chosen for its opening.
+ * Changing its connection reopens it too. "Reconnecter" and a run on the
+ * closed session reopen it in the view itself.
  */
 const attempts = ref<Record<number, number>>({})
 
@@ -568,7 +571,6 @@ function selectSource(editorId: number, connectionId: number): void {
                   :opening-database="openingDatabases[editor.id]"
                   :sql="editor.sql"
                   @update:sql="(sql) => editors.setSql(editor.id, sql)"
-                  @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
                   @database="(database) => (databases[editor.id] = database)"
                   @status="(status) => followStatus(editor.id, status)"
                   @transaction="(open) => (editors.transactions[editor.id] = open)"

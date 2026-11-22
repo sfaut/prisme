@@ -28,7 +28,10 @@
   its COMMIT or ROLLBACK. The banners of the session (closed, server too old,
   error) stand under that header.
   The session can be closed from the object navigator ("Déconnecter",
-  `disconnect`): the view then shows it closed, with "Reconnecter". A
+  `disconnect`), or by the server: the view then shows it closed, with
+  "Reconnecter", which opens a new one in place, on the last current
+  database of the editor. Running a query or refreshing a tab on the
+  closed session opens it again the same way, then runs. A
   session opened on a server older than the oldest version Prisme supports
   shows a warning.
   Three panels share the height, in a splitter of Prisme (`split/`), each
@@ -144,10 +147,6 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  /**
-   * The session is closed and the user asks to reopen it.
-   */
-  reconnect: []
   /**
    * The current database has changed (connection, `USE`); `null` if none.
    */
@@ -407,6 +406,11 @@ const STOP_TIP: Tooltip = {
 const running = computed(() => state.status === 'running')
 
 /**
+ * Can a run start? On a closed session too: it opens again first.
+ */
+const canRun = computed(() => state.status === 'ready' || state.status === 'closed')
+
+/**
  * Warning of a session opened on a server older than the oldest version
  * Prisme supports, `null` otherwise.
  */
@@ -484,7 +488,7 @@ function launch(kind: typeof launcher.value, text: string, options: RunTarget): 
  * @param cursor Position of the cursor; when absent, that of the editor.
  */
 function run(cursor?: number): void {
-  if (sql.value.trim() !== '' && state.status === 'ready') {
+  if (sql.value.trim() !== '' && canRun.value) {
     launch('one', sql.value, { cursor: cursor ?? editor.value?.cursor() ?? 0 })
   }
 }
@@ -709,7 +713,7 @@ async function prettify(): Promise<void> {
  * @param selection Passages selected in the editor; empty or absent: all the queries.
  */
 function runAll(selection: SelectionRange[] = []): void {
-  if (sql.value.trim() !== '' && state.status === 'ready') {
+  if (sql.value.trim() !== '' && canRun.value) {
     launch('all', sql.value, selection.length > 0 ? { selection } : {})
   }
 }
@@ -721,7 +725,7 @@ function runAll(selection: SelectionRange[] = []): void {
  * @param selection Passages selected in the editor.
  */
 function runExact(selection: SelectionRange[] = []): void {
-  if (selection.length > 0 && state.status === 'ready') {
+  if (selection.length > 0 && canRun.value) {
     launch('exact', sql.value, { selection, exact: true })
   }
 }
@@ -836,7 +840,7 @@ defineExpose({
                 :icon="stopsOne ? Square : Play"
                 variant="solid"
                 :tone="stopsOne ? 'error' : 'primary'"
-                :disabled="!stopsOne && state.status !== 'ready'"
+                :disabled="!stopsOne && !canRun"
                 @click="stopsOne ? session.cancel() : run()"
               />
               <ui-button
@@ -844,7 +848,7 @@ defineExpose({
                 label="Exécuter précisément"
                 :icon="stopsExact ? Square : ScanText"
                 :tone="stopsExact ? 'error' : 'neutral'"
-                :disabled="!stopsExact && (state.status !== 'ready' || !textSelected)"
+                :disabled="!stopsExact && (!canRun || !textSelected)"
                 @click="stopsExact ? session.cancel() : runExact(editor?.selection())"
               />
               <ui-button
@@ -861,7 +865,7 @@ defineExpose({
                 label="Exécuter tout"
                 :icon="stopsAll ? Square : FastForward"
                 :tone="stopsAll ? 'error' : 'neutral'"
-                :disabled="!stopsAll && state.status !== 'ready'"
+                :disabled="!stopsAll && !canRun"
                 @click="stopsAll ? session.cancel() : runAll(editor?.selection())"
               />
               <ui-button
@@ -899,7 +903,7 @@ defineExpose({
         </panel-header>
 
         <ui-alert v-if="state.status === 'closed'" tone="warning" title="Session fermée.">
-          <ui-button label="Reconnecter" @click="emit('reconnect')" />
+          <ui-button label="Reconnecter" @click="session.reopen()" />
         </ui-alert>
         <ui-alert v-if="versionNotice" tone="warning" :title="versionNotice" />
         <ui-alert v-if="state.error" tone="error" :title="state.error" />

@@ -1098,7 +1098,10 @@ describe('refresh', () => {
     expect(refreshState(state, running)).toBe('unavailable')
     applyMessage(state, done(0))
     expect(refreshState(state, running)).toBe('idle')
+    // A closed session opens again for the refresh.
     state.status = 'closed'
+    expect(refreshState(state, running)).toBe('idle')
+    state.status = 'connecting'
     expect(refreshState(state, running)).toBe('unavailable')
   })
 
@@ -1299,21 +1302,60 @@ describe('saved tabs read in the background', () => {
 class FakeSocket {
   static opened: FakeSocket[] = []
 
+  /**
+   * Listeners of the page, by event.
+   */
+  listeners = new Map<string, ((event: { data?: string }) => void)[]>()
+
+  /**
+   * Messages sent by the page, parsed.
+   */
+  sent: unknown[] = []
+
   constructor(public url: string) {
     FakeSocket.opened.push(this)
   }
 
-  addEventListener(): void {
-    //
+  addEventListener(type: string, listener: (event: { data?: string }) => void): void {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
   }
 
-  send(): void {
-    //
+  send(data: string): void {
+    this.sent.push(JSON.parse(data))
   }
 
   close(): void {
     //
   }
+
+  /**
+   * Delivers an event of the server to the page: a message, or the closing.
+   *
+   * @param type Type of the event.
+   * @param message Message of the server, for `message`.
+   */
+  emit(type: 'message' | 'close', message?: ServerMessage): void {
+    const event = message === undefined ? {} : { data: JSON.stringify(message) }
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(event)
+    }
+  }
+}
+
+/**
+ * `ready` message of a session on the `shop` database.
+ */
+const READY: ServerMessage = {
+  type: 'ready',
+  server: {
+    flavor: 'mariadb',
+    version: '11.3.2',
+    ansi_quotes: false,
+    no_backslash_escapes: false,
+    oldest_supported: null,
+  },
+  database: 'shop',
+  transaction: false,
 }
 
 describe('useQuerySession', () => {
@@ -1371,6 +1413,73 @@ describe('useQuerySession', () => {
       expect(session.state.tabs[0]!.result?.rows).toEqual([['1.0'], ['1.1']])
     })
     expect(session.state.tabs[0]!.done).toBe(true)
+    scope.stop()
+  })
+  it('reopens a closed session for a run, which waits for it to be ready', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('WebSocket', FakeSocket)
+    const scope = effectScope()
+    const session = scope.run(() =>
+      useQuerySession(
+        1,
+        () => Promise.resolve([]),
+        () => Promise.resolve([]),
+        () => undefined,
+        'billing',
+      ),
+    )!
+    await vi.waitFor(() => expect(FakeSocket.opened).toHaveLength(1))
+    const first = FakeSocket.opened[0]!
+    expect(first.url).toContain('?database=billing')
+    first.emit('message', READY)
+    first.emit('close')
+    vi.advanceTimersByTime(100)
+    expect(session.state.status).toBe('closed')
+
+    session.run('SELECT 1', { cursor: 0 })
+    expect(session.state.status).toBe('connecting')
+    expect(FakeSocket.opened).toHaveLength(2)
+    // Opened again on the database the server saved, not on that of the first opening.
+    const second = FakeSocket.opened[1]!
+    expect(second.url).not.toContain('?database=')
+    expect(second.sent).toEqual([])
+
+    second.emit('message', READY)
+    vi.advanceTimersByTime(100)
+    expect(second.sent).toEqual([{ type: 'run', sql: 'SELECT 1', cursor: 0 }])
+    expect(session.state.status).toBe('running')
+    scope.stop()
+  })
+
+  it('drops the waiting run when the reopened session fails to open', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('WebSocket', FakeSocket)
+    const scope = effectScope()
+    const session = scope.run(() =>
+      useQuerySession(
+        1,
+        () => Promise.resolve([]),
+        () => Promise.resolve([]),
+        () => undefined,
+      ),
+    )!
+    await vi.waitFor(() => expect(FakeSocket.opened).toHaveLength(1))
+    FakeSocket.opened[0]!.emit('close')
+    vi.advanceTimersByTime(100)
+
+    session.run('SELECT 1')
+    const second = FakeSocket.opened[1]!
+    second.emit('close')
+    vi.advanceTimersByTime(100)
+    expect(session.state.status).toBe('closed')
+
+    // "Reconnecter": the run asked before does not come back.
+    session.reopen()
+    const third = FakeSocket.opened[2]!
+    third.emit('message', READY)
+    vi.advanceTimersByTime(100)
+    expect(third.sent).toEqual([])
+    expect(session.state.status).toBe('ready')
     scope.stop()
   })
 })
