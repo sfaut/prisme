@@ -197,18 +197,15 @@ describe('NavigatorPanel', () => {
     wrapper.unmount()
   })
 
-  it('offers a menu on the title and another one on each source', async () => {
+  it('offers buttons on the title and a menu on each source', async () => {
     savedConnections = [connection(1, 'Origen 2')]
     const wrapper = mountNavigator({ selectedId: null, currentDatabase: null })
     await vi.waitFor(() => expect(wrapper.findAll('.node-menu')).toHaveLength(1))
-    const title = wrapper
-      .findAll('[aria-label="Actions"]')
-      .find((button) => !button.classes('node-menu'))
+    expect(wrapper.find('[aria-label="Rafraîchir"]').exists()).toBe(true)
+    await wrapper.find('[aria-label="Ajouter une connexion"]').trigger('click')
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull())
     const options = () =>
       [...document.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim())
-    await click(title, 1)
-    await vi.waitFor(() => expect(options()).toEqual(['Ajouter une connexion', 'Tout rafraîchir']))
-    await click(title, 1)
     await click(wrapper.find('.node-menu'), 1)
     await vi.waitFor(() =>
       expect(options()).toEqual(['Modifier', 'Rafraîchir', 'Tester', 'Déconnecter', 'Supprimer']),

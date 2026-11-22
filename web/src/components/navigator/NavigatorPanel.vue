@@ -48,9 +48,9 @@
   procedure, function, column, index, foreign key, trigger, and a spinning
   circle during a load.
 
-  The "⋮" menu of the title adds a connection or reads again all the
-  catalogs already read; on hovering each source, another one changes or
-  tests the connection, reads its catalog again or deletes the connection
+  Two buttons of the title, always shown, read again all the catalogs
+  already read and add a connection; on hovering each source, a "⋮" menu
+  changes or tests the connection, reads its catalog again or deletes the connection
   (after confirmation, which warns of the transactions it rolls back);
   "Déconnecter" there closes the session of the editor, like the button of
   the line.
@@ -73,7 +73,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { EllipsisVertical, Pencil, PlugZap, Plus, RefreshCw, Trash2, Unplug } from '@lucide/vue'
+import { Pencil, PlugZap, Plus, RefreshCw, Trash2, Unplug } from '@lucide/vue'
 import {
   TreeItem,
   type TreeItemSelectEvent,
@@ -101,7 +101,7 @@ import { openTransactionsNotice } from './transactionNotice'
 import UiAlert from '@/components/ui/UiAlert.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiDialog from '@/components/ui/UiDialog.vue'
-import UiDropdownMenu from '@/components/ui/UiDropdownMenu.vue'
+import { vTooltip } from '@/components/ui/tooltip'
 import type { MenuItem } from '@/components/ui/menuItem'
 
 const props = defineProps<{
@@ -357,14 +357,6 @@ function expand(keys: string[]): void {
 function sessionOf(connectionId: number): SessionStatus | null {
   return connectionId === props.selectedId ? props.sessionStatus : null
 }
-
-/**
- * Choices of the "⋮" menu of the title.
- */
-const titleMenu: MenuItem[] = [
-  { label: 'Ajouter une connexion', icon: Plus, onSelect: () => openDialog(null) },
-  { label: 'Tout rafraîchir', icon: RefreshCw, onSelect: refreshAll },
-]
 
 /**
  * Choices of a node's "⋮" menu, `null` for a node without a menu.
@@ -713,9 +705,22 @@ watch(() => visible.value.rows.length, retryScroll)
   <div class="flex min-h-0 flex-1 flex-col gap-3">
     <panel-header title="Navigateur d’objets">
       <template #actions>
-        <ui-dropdown-menu :items="titleMenu">
-          <ui-button :icon="EllipsisVertical" variant="ghost" small aria-label="Actions" />
-        </ui-dropdown-menu>
+        <ui-button
+          :icon="RefreshCw"
+          variant="ghost"
+          small
+          aria-label="Rafraîchir"
+          v-tooltip="{ title: 'Rafraîchir', description: 'Relit les catalogues déjà lus' }"
+          @click="refreshAll"
+        />
+        <ui-button
+          :icon="Plus"
+          variant="ghost"
+          small
+          aria-label="Ajouter une connexion"
+          v-tooltip="{ title: 'Ajouter', description: 'Nouvelle connexion' }"
+          @click="openDialog(null)"
+        />
       </template>
     </panel-header>
     <ui-alert v-if="probed" :tone="probed.tone" :title="probed.title" @close="probed = null" />
