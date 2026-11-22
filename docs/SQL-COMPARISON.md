@@ -539,3 +539,30 @@ Pragmas, which the classification gives a role by a closed list of those of the 
 - A table function takes no value to set: `pragma_journal_mode('wal')` reads `'wal'` as a schema ("unknown database 'wal'"), `pragma_foreign_keys(1)` fails ("too many arguments on pragma_foreign_keys() - max 0").
 - On a read-only connection: `PRAGMA user_version = 3` and `PRAGMA incremental_vacuum` fail ("attempt to write a readonly database"); `PRAGMA optimize`, `PRAGMA wal_checkpoint` (which gives `0, -1, -1`), `PRAGMA foreign_keys = 1` and `PRAGMA cache_size = 10` run.
 - On a read-only connection, `ATTACH 'file:...?mode=rw'` fails: "access mode not allowed: rw".
+
+Outcome of a write, as `changes()`, `total_changes()` and `last_insert_rowid()` report it once the statement ran, measured on 2026-11-23. The table `t (id INTEGER PRIMARY KEY, k TEXT UNIQUE, v INTEGER)` has a trigger that inserts into another table after each `DELETE`; the statements run in this order.
+
+| Statement | `changes()` | `total_changes()` grows by | `last_insert_rowid()` |
+|---|---|---|---|
+| `INSERT` of three rows | 3 | 3 | the id of the last one (3) |
+| `INSERT OR IGNORE` of a duplicate and a new row | 1 | 1 | the id of the new row |
+| `INSERT OR REPLACE` of a duplicate and a new row | 2 | 2 | the id of the last row written |
+| `INSERT ... ON CONFLICT (k) DO UPDATE` of a duplicate and a new row | 2 | 2 | the id of the new row |
+| The same upsert of a duplicate alone, with its values unchanged | 1 | 1 | unchanged |
+| `UPDATE t SET v = v` on 7 rows | 7 | 7 | unchanged |
+| `UPDATE` that finds no row | 0 | 0 | unchanged |
+| `UPDATE OR REPLACE` that deletes a row of the same key | 1 | 1 | unchanged |
+| `DELETE` of one row, its trigger inserting one | 1 | 2 | unchanged |
+| `INSERT ... RETURNING id` | 1 | 1 | the id of the row |
+| `CREATE TABLE`, `CREATE TABLE ... AS SELECT`, `SELECT` | that of the statement before (1) | 0 | unchanged |
+
+`changes()` counts the rows the statement wrote itself: an `UPDATE` counts the rows found, changed or not, an upsert its rows inserted and updated together, a replacement its rows written without the rows it deleted; the rows written by triggers are left out. After a statement that writes no row, it still gives the count of the last write: only a growth of `total_changes()` tells that the statement wrote.
+
+Opening of the databases of a connection, measured on 2026-11-23:
+
+- A database in memory (`file:/<name>?vfs=memdb`, or `:memory:`) opens without `SQLITE_OPEN_CREATE`, and takes tables. Opened read-only, a new one refuses its first table ("attempt to write a readonly database"); an existing one, opened read-only by another connection, gives its rows and refuses an `INSERT`.
+- `ATTACH ?1 AS ?2` takes the file and the name of the schema as bound parameters: `ATTACH ?1 AS ?2` with the name `other db` gives a schema read as `"other db".t`.
+- `pragma_database_list` gives `main` (seq 0, file empty for a database in memory), then `temp` (seq 1) only once the connection created a temporary table, then the attached databases (seq 2 on), with the path of their file.
+- `pragma_table_list` lists the tables and views of every schema, `sqlite_schema` (`sqlite_temp_schema` in `temp`) included, with their type (`table`, `view`, `virtual`, `shadow`) and `wr` (1 for a table `WITHOUT ROWID`).
+- An interruption (`sqlite3_interrupt`) sent while no statement runs stops nothing: the next statement runs.
+- `prepare` takes a statement followed by a comment (`SELECT 1; -- end`); a comment alone prepares a statement without columns.

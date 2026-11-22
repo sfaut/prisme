@@ -6,7 +6,10 @@
 //! transactions after an error, detaching while in use, paths on Windows,
 //! values kept by `INT`, `NUMERIC` and `REAL` columns, lexical rules of the
 //! texts (comments, quotes, end of a statement), `LIMIT` after `VALUES`,
-//! pragmas (forms, unknown names, functions, read-only files). The results go to
+//! pragmas (forms, unknown names, functions, read-only files), what
+//! `changes()` and `last_insert_rowid()` report after each write, how the
+//! connector opens its databases (flags of a database in memory, `ATTACH` with
+//! parameters, `database_list`). The results go to
 //! `docs/SQL-COMPARISON.md`, section "SQLite embedded in Prisme".
 //!
 //! From the root of the repository:
@@ -54,6 +57,8 @@ fn main() {
     lexical_rules();
     limit_after_values();
     pragmas(&folder);
+    write_outcomes();
+    connector_opening(&folder);
 
     std::fs::remove_dir_all(&folder).ok();
 }
@@ -732,5 +737,172 @@ fn pragmas(folder: &Path) {
     report(
         "INSERT INTO other.t (name) VALUES ('two')",
         connection.execute("INSERT INTO other.t (name) VALUES ('two')", []),
+    );
+}
+
+/// What `changes()` and `last_insert_rowid()` report after each kind of
+/// write: the outcome the connector shows (`crates/connectors/src/sqlite`).
+fn write_outcomes() {
+    println!(
+        "
+13. Outcome of a write"
+    );
+    let connection = Connection::open_in_memory().expect("connection");
+    connection
+        .execute_batch(
+            "CREATE TABLE t (id INTEGER PRIMARY KEY, k TEXT UNIQUE, v INTEGER);
+             CREATE TABLE log (x);
+             CREATE TRIGGER tr AFTER DELETE ON t BEGIN INSERT INTO log VALUES (old.id); END;",
+        )
+        .expect("tables");
+    for sql in [
+        "INSERT INTO t (k, v) VALUES ('a', 1), ('b', 2), ('c', 3)",
+        "INSERT INTO t (k, v) VALUES ('d', 4)",
+        "INSERT OR IGNORE INTO t (k, v) VALUES ('a', 9), ('e', 5)",
+        "INSERT OR REPLACE INTO t (k, v) VALUES ('a', 10), ('f', 6)",
+        "INSERT INTO t (k, v) VALUES ('b', 20), ('g', 7) ON CONFLICT (k) DO UPDATE SET v = excluded.v",
+        "INSERT INTO t (k, v) VALUES ('b', 20) ON CONFLICT (k) DO UPDATE SET v = excluded.v",
+        "UPDATE t SET v = v",
+        "UPDATE t SET v = 0 WHERE k = 'zzz'",
+        "UPDATE OR REPLACE t SET k = 'c' WHERE k = 'd'",
+        "DELETE FROM t WHERE k = 'g'",
+        "INSERT INTO t (k, v) VALUES ('h', 8) RETURNING id",
+        "CREATE TABLE u (a)",
+        "CREATE TABLE v AS SELECT * FROM t",
+        "SELECT 1",
+        "DELETE FROM t",
+    ] {
+        let before = connection.last_insert_rowid();
+        let total = connection.total_changes();
+        let outcome = connection.prepare(sql).and_then(|mut statement| {
+            let rows = statement.query_map([], |_| Ok(()))?.count();
+            Ok(rows)
+        });
+        match outcome {
+            Ok(rows) => println!(
+                "  {sql}: rows {rows}, changes {}, total_changes +{}, last_insert_rowid {before} -> {}",
+                connection.changes(),
+                connection.total_changes() - total,
+                connection.last_insert_rowid()
+            ),
+            Err(error) => println!("  {sql}: error \"{error}\""),
+        }
+    }
+}
+
+/// How the connector opens its databases: the flags a database in memory
+/// takes, `ATTACH` whose file and schema are parameters, the schemas
+/// `database_list` gives, an interruption sent while nothing runs.
+fn connector_opening(folder: &Path) {
+    println!(
+        "
+14. Opening of the connector"
+    );
+    for (label, flags) in [
+        ("read-write without CREATE", READ_WRITE),
+        ("read-only", READ_ONLY),
+    ] {
+        let uri = format!("file:/prisme-opening-{}?vfs=memdb", label.len());
+        report(
+            &format!("new memdb database opened {label}, then a table created"),
+            Connection::open_with_flags(&uri, flags)
+                .and_then(|connection| connection.execute_batch("CREATE TABLE m (x)")),
+        );
+        report(
+            &format!(":memory: opened {label}, then a table created"),
+            Connection::open_with_flags(":memory:", flags)
+                .and_then(|connection| connection.execute_batch("CREATE TABLE m (x)")),
+        );
+    }
+    let writer = Connection::open_with_flags("file:/prisme-opening-ro?vfs=memdb", CREATE)
+        .expect("memdb writer");
+    writer
+        .execute_batch("CREATE TABLE m (x); INSERT INTO m VALUES (1)")
+        .expect("table");
+    report(
+        "existing memdb database opened read-only: rows read",
+        Connection::open_with_flags("file:/prisme-opening-ro?vfs=memdb", READ_ONLY).and_then(
+            |reader| reader.query_row("SELECT count(*) FROM m", [], |row| row.get::<_, i64>(0)),
+        ),
+    );
+    report(
+        "the same, then INSERT",
+        Connection::open_with_flags("file:/prisme-opening-ro?vfs=memdb", READ_ONLY)
+            .and_then(|reader| reader.execute_batch("INSERT INTO m VALUES (2)")),
+    );
+    drop(writer);
+
+    let path = folder.join("opening.db");
+    create_database(&path);
+    let connection = Connection::open_in_memory().expect("connection");
+    report(
+        "ATTACH ?1 AS ?2 (file and schema bound)",
+        connection.execute(
+            "ATTACH ?1 AS ?2",
+            [path.to_str().expect("path"), "other db"],
+        ),
+    );
+    report(
+        "rows of the schema bound",
+        connection.query_row("SELECT count(*) FROM \"other db\".t", [], |row| {
+            row.get::<_, i64>(0)
+        }),
+    );
+    let list = |connection: &Connection| {
+        connection
+            .prepare("SELECT seq, name, file FROM pragma_database_list")
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| {
+                        Ok(format!(
+                            "{} {} {:?}",
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?
+                        ))
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })
+    };
+    report(
+        "database_list before any temporary table",
+        list(&connection),
+    );
+    connection
+        .execute_batch("CREATE TEMP TABLE x (a)")
+        .expect("temporary table");
+    report("database_list after a temporary table", list(&connection));
+    report(
+        "table list of a schema (pragma_table_list)",
+        connection
+            .prepare("SELECT schema, name, type, wr FROM pragma_table_list ORDER BY schema, name")
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| {
+                        Ok(format!(
+                            "{}.{} {} {}",
+                            row.get::<_, String>(0)?,
+                            row.get::<_, String>(1)?,
+                            row.get::<_, String>(2)?,
+                            row.get::<_, i64>(3)?
+                        ))
+                    })?
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            }),
+    );
+    connection.get_interrupt_handle().interrupt();
+    report(
+        "SELECT 1 after an interruption sent while nothing ran",
+        connection.query_row("SELECT 1", [], |row| row.get::<_, i64>(0)),
+    );
+    report(
+        "prepare of a statement followed by a comment",
+        connection.prepare("SELECT 1; -- end").map(|_| ()),
+    );
+    report(
+        "prepare of a comment alone",
+        connection
+            .prepare("-- nothing")
+            .map(|statement| statement.column_count()),
     );
 }
