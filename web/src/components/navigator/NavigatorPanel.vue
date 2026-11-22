@@ -43,9 +43,10 @@
   tables by name (by default) or by row count, the largest first, with the
   two buttons of its line; the choice is kept per folder with the tree.
 
-  Each line carries the icon of its level: source, database, folder
-  (open or closed), table, view, procedure, function, column, index, foreign
-  key, trigger, and a spinning circle during a load.
+  Each line carries the icon of its level: source (that of its kind, a
+  server for a database), database, folder (open or closed), table, view,
+  procedure, function, column, index, foreign key, trigger, and a spinning
+  circle during a load.
 
   The "⋮" menu of the title adds a connection or reads again all the
   catalogs already read; on hovering each source, another one changes or

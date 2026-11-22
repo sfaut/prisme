@@ -16,7 +16,6 @@
 import {
   ArrowDownWideNarrow,
   ArrowUpAZ,
-  Cable,
   CalendarClock,
   ChevronDown,
   ChevronRight,
@@ -34,6 +33,7 @@ import {
   PencilRuler,
   Rows3,
   ScrollText,
+  Server,
   SquareFunction,
   Table,
   Unplug,
@@ -190,7 +190,9 @@ const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
 function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
   switch (node.role) {
     case 'source':
-      return Cable
+      // The icon of its kind of source: every connection is a database
+      // server for now; another kind (CSV) will get its own here.
+      return Server
     case 'database':
       return Database
   }
