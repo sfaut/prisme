@@ -20,12 +20,13 @@ Functional:
 12. A database in memory has **Enregistrer dans un fichier…** (SQLite's backup API), an existing file refused.
 13. The interface is coded with the `frontend-design` skill, in Prisme's theme and rules.
 14. Numbers are shown in one normalized writing, whatever the engine: plain decimal, roughly `[+-]?[0-9]*\.?[0-9]+`, never in scientific notation. A floating-point number is written with the fewest digits that read back the same value (`100`, `100000000000000000000`, `0.0000001`, `3.141592653589793`). MySQL and MariaDB send their `DOUBLE`s in scientific notation beyond some sizes (`1e20`, `1.5e300`, `1.2345678901234568e17`, measured on 8.0.11, the latest MySQL, 10.6.3 and the latest MariaDB on 2026-11-22), and SQLite writes `1.0e+20`, `100.0`: the connectors normalize them.
+15. Remote locations (`http`, `https`): 10 s to connect, 5 min for a whole download, 1 GiB at most per download, 5 redirects at most and never from `https` to `http`; private addresses (`127.0.0.1`, local network) accepted. Prisme keeps the copy of a remote database in its data folder (`cache/locations/`), opens it read-only and downloads it again only when the server says it changed (`ETag` / `Last-Modified`); a copy no session opened for 30 days is deleted. The timeouts, the largest download and the delay of the purge are preferences of each user, saved in the internal database.
 
 Architecture:
 
-15. Connectors through **traits and a registry**, no dispatch enum.
-16. Settings of an engine in **columns and tables** of the internal database, with their `CHECK`s; reference tables `engines`, `flavors`, `schemes`.
-17. Catalog of the navigator in **namespaces of variable depth** and **open kinds of objects**, labels given by the engine.
+16. Connectors through **traits and a registry**, no dispatch enum.
+17. Settings of an engine in **columns and tables** of the internal database, with their `CHECK`s; reference tables `engines`, `flavors`, `schemes`.
+18. Catalog of the navigator in **namespaces of variable depth** and **open kinds of objects**, labels given by the engine.
 
 ## Contracts
 
@@ -68,6 +69,7 @@ Architecture:
 - ⬜ `connections` rebuilt; `connection_servers`, `connection_files`, `connection_probes`
 - ⬜ API of the connections tagged by family of settings
 - ⬜ Module `location`: parsing, registry, `FileProvider`, `HttpProvider`, cache, tests
+- ⬜ Preferences of the remote locations: timeouts, largest download, delay of the purge
 - ⬜ Migration tried on a copy of the development internal database
 
 ## 3. SQLite dialect
@@ -119,4 +121,3 @@ Architecture:
 - `ATTACH` written in SQL whose location is not a literal: refusal proposed.
 - Switch needed by **Enregistrer dans un fichier…**, and its fate in a read-only session.
 - Exact form of the neutral variant of `FailureCause`, given what `recorder.rs` saved already.
-- Remote locations: timeouts, largest download, redirects followed, size and purge of the cache, private addresses refused when Prisme serves several users.
