@@ -231,6 +231,7 @@ Rules:
 | `CopyPlus` | Duplicate a connection: a new one with its settings | card of the connection |
 | `ChevronDown` / `ChevronRight` | Unfold / fold a family of sources | list |
 | `Check` | Step of a creation passed | steps of a creation (`ConnectionManagerSteps`) |
+| `ArrowLeft` / `ArrowRight` | Previous / next step of a creation, the arrow after the label of the next one | footer of the creation |
 | `Server`, `ChartNoAxesColumn`, `HardDrive`, `FileSpreadsheet`, `Sheet`, `Braces`, `Layers` | Kinds of sources: database server, ClickHouse, database file (SQLite, DuckDB), CSV, Excel, JSON, Parquet | list, card, choice of the kind (`sourceTypes.ts`) |
 
 #### Types of the grid's columns (`typeIcons.ts`)

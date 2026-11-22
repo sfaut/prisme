@@ -33,7 +33,7 @@
   The server checks the input; its message shows in the right pane.
 -->
 <script setup lang="ts">
-import { CopyPlus, PlugZap, Trash2 } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, CopyPlus, PlugZap, Trash2 } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
 
 import { probeConnection, probeMessage, probeSettings } from '@/api/connections'
@@ -663,7 +663,7 @@ function onRemoved(id: number): void {
       </div>
       <template v-if="shownCreation">
         <ui-button label="Abandonner" @click="abandon" />
-        <ui-button v-if="shownCreation.step > 1" label="Retour" @click="back" />
+        <ui-button v-if="shownCreation.step > 1" :icon="ArrowLeft" label="Retour" @click="back" />
         <ui-button
           type="submit"
           form="connection-manager-form"
@@ -674,6 +674,7 @@ function onRemoved(id: number): void {
                 ? 'Tester'
                 : 'Suivant'
           "
+          :trailing-icon="shownCreation.step === 3 ? undefined : ArrowRight"
           variant="solid"
           tone="primary"
           :loading="probing || saving"
