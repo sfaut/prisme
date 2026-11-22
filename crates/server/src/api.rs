@@ -22,7 +22,7 @@
 //! | `PUT /api/display`                  | Saves the display settings (204).                             |
 //! | `POST /api/beautify`                | Beautifies SQL (keywords in capitals...).                     |
 //! | `POST /api/analyze`                 | Analyses the editor's text (see `analyze.rs`).                |
-//! | `GET /api/dialects/{flavor}/keywords` | Keywords of the dialect (`?version=`: those of the version). |
+//! | `GET /api/dialects/{flavor}/syntax` | Keywords of the dialect (`?version=`: those of the version) and lexical rules of its texts. |
 //! | `GET /api/console/...`              | History of the queries, and its stream (see `console.rs`).    |
 //! | `/api/exports...`                   | Exports of full results to CSV files (see `exports.rs`).      |
 //! | `GET /` and any other path          | Files of the interface (see `web_assets.rs`).                 |
@@ -46,6 +46,7 @@ use prisme_dialects::Dialect;
 use prisme_dialects::analysis::CatalogNames;
 use prisme_dialects::beautify::{BeautifyOptions, DEFAULT_INDENT_SIZE, beautify_with};
 use prisme_dialects::keywords::keywords;
+use prisme_splitter::LexicalRules;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -179,7 +180,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/profile", get(get_profile).put(put_profile))
         .route("/api/beautify", post(beautify_sql))
         .route("/api/analyze", post(analyze_sql))
-        .route("/api/dialects/{flavor}/keywords", get(dialect_keywords))
+        .route("/api/dialects/{flavor}/syntax", get(dialect_syntax))
         .merge(navigator::routes())
         .merge(console::routes())
         .merge(editors::routes())
@@ -511,12 +512,13 @@ struct KeywordsQuery {
     version: Option<String>,
 }
 
-/// Keywords of a dialect, in capitals, by category
-/// (`crates/dialects/keywords/*.yaml` files): the editor's highlighting sorts
-/// them into its word classes.
+/// What the editor's highlighting reads of a dialect: its keywords, in
+/// capitals, by category (`crates/dialects/keywords/*.yaml` files), which it
+/// sorts into its word classes, and the lexical rules of its texts, which the
+/// splitter follows too.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
-struct DialectKeywords {
+struct DialectSyntax {
     /// Reserved words.
     reserved: Vec<String>,
     /// Non-reserved keywords.
@@ -525,20 +527,24 @@ struct DialectKeywords {
     types: Vec<String>,
     /// Words that designate a value (`NULL`, `CURRENT_DATE`...).
     literals: Vec<String>,
+    /// Lexical rules of the texts: comments, quotes, escapes.
+    lexical: LexicalRules,
 }
 
-/// `GET /api/dialects/{flavor}/keywords`: keywords of the dialect, limited to
-/// those of the requested version.
-async fn dialect_keywords(
+/// `GET /api/dialects/{flavor}/syntax`: keywords of the dialect, limited to
+/// those of the requested version, and lexical rules of its texts.
+async fn dialect_syntax(
     Path(flavor): Path<Flavor>,
     Query(query): Query<KeywordsQuery>,
-) -> Json<DialectKeywords> {
-    let words = keywords(dialect_of(flavor), query.version.as_deref());
-    Json(DialectKeywords {
+) -> Json<DialectSyntax> {
+    let dialect = dialect_of(flavor);
+    let words = keywords(dialect, query.version.as_deref());
+    Json(DialectSyntax {
         reserved: words.reserved,
         keywords: words.keywords,
         types: words.types,
         literals: words.literals,
+        lexical: *dialect.lexical_rules(),
     })
 }
 
@@ -776,22 +782,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gives_the_keywords_of_a_dialect_and_version() {
+    async fn gives_the_syntax_of_a_dialect_and_version() {
         let app = test_app();
-        let (status, all) = send(&app, "GET", "/api/dialects/mysql/keywords", None).await;
+        let (status, all) = send(&app, "GET", "/api/dialects/mysql/syntax", None).await;
         assert_eq!(status, StatusCode::OK);
         let has = |body: &Value, category: &str, word: &str| {
             body[category].as_array().unwrap().contains(&json!(word))
         };
         assert!(has(&all, "reserved", "SELECT") && has(&all, "reserved", "WINDOW"));
         assert!(has(&all, "types", "VARCHAR") && has(&all, "literals", "NULL"));
+        assert_eq!(all["lexical"]["hash_comments"], true);
+        assert_eq!(all["lexical"]["identifier_quotes"], "`");
 
         // MySQL 5.7: the reserved words that appeared with MySQL 8.0 are not kept.
-        let uri = "/api/dialects/mysql/keywords?version=5.7.44";
+        let uri = "/api/dialects/mysql/syntax?version=5.7.44";
         let (_, old) = send(&app, "GET", uri, None).await;
         assert!(has(&old, "reserved", "SELECT") && !has(&old, "reserved", "WINDOW"));
 
-        let (status, _) = send(&app, "GET", "/api/dialects/mariadb/keywords", None).await;
+        let (status, _) = send(&app, "GET", "/api/dialects/mariadb/syntax", None).await;
         assert_eq!(status, StatusCode::OK);
     }
 

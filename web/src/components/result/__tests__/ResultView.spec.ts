@@ -25,8 +25,8 @@ vi.mock('@/api/exports', () => ({
   }),
 }))
 
-vi.mock('@/api/keywords', () => ({
-  fetchKeywords: async () => ({ reserved: ['SELECT'], keywords: [], types: [], literals: [] }),
+vi.mock('@/api/dialectSyntax', () => ({
+  fetchDialectSyntax: async () => ({ reserved: ['SELECT'], keywords: [], types: [], literals: [] }),
 }))
 
 beforeEach(() => {

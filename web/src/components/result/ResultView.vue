@@ -85,7 +85,7 @@ import { ALL_FLAVORS, FLAVORS } from '@/api/flavors'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { NoticeLevel } from '@/api/generated/NoticeLevel'
 import type { SourceInfo } from '@/api/generated/SourceInfo'
-import { fetchKeywords } from '@/api/keywords'
+import { fetchDialectSyntax } from '@/api/dialectSyntax'
 import {
   type QueryTab,
   type UserFilter,
@@ -554,7 +554,10 @@ async function cteOf(flavor: Flavor): Promise<{ query: string; rows: number } | 
     )
     return null
   }
-  const keywords = await fetchKeywords(flavor, flavor === server.flavor ? server.version : null)
+  const keywords = await fetchDialectSyntax(
+    flavor,
+    flavor === server.flavor ? server.version : null,
+  )
   const query = await cteText(frame, result.rows, result.columns, result.columnTypes, {
     flavor,
     ansiQuotes: server.ansi_quotes,

@@ -2,7 +2,8 @@
   SQL editor, based on CodeMirror 6.
 
   Highlighting according to the dialect and the version of the server (MySQL or
-  MariaDB: keywords read from the server, see `sqlDialect.ts`), line numbers
+  MariaDB: keywords and lexical rules read from the server, see
+  `sqlDialect.ts`), line numbers
   alone in their gutter, like the row numbers of the grid (`sqlSetup.ts`:
   no fold arrows, folding stays on Ctrl+Shift+[ and Ctrl+Shift+]),
   light or dark theme like the interface (`editorTheme.ts`), undo history,
@@ -39,11 +40,11 @@ import { EditorView } from 'codemirror'
 import { computed, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue'
 
 import { analyzeSql } from '@/api/analyze'
-import type { DialectKeywords } from '@/api/generated/DialectKeywords'
+import type { DialectSyntax } from '@/api/generated/DialectSyntax'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { SelectionRange } from '@/api/generated/SelectionRange'
 import type { SqlPosition } from '@/api/generated/SqlPosition'
-import { fetchKeywords } from '@/api/keywords'
+import { fetchDialectSyntax } from '@/api/dialectSyntax'
 import { describe } from '@/api/messages'
 import type { CatalogSchema } from '@/stores/catalog'
 
@@ -186,10 +187,11 @@ async function analyze(): Promise<void> {
 }
 
 /**
- * Keywords of the server's dialect and version, `null` as long as they are
- * not received: highlighting then uses the lists of `lang-sql`.
+ * Syntax of the server's dialect and version (keywords, lexical rules),
+ * `null` as long as it is not received: highlighting then uses the dialect
+ * of `lang-sql`.
  */
-let keywords: DialectKeywords | null = null
+let syntax: DialectSyntax | null = null
 
 /**
  * Reserved words of the server's dialect and version, in capitals: a name of
@@ -204,23 +206,24 @@ const reserved = shallowRef<ReadonlySet<string>>(new Set())
 const completion = computed(() => completionSchema(props.schemas, props.ansiQuotes, reserved.value))
 
 /**
- * Number of the last keywords request: an answer that arrives after a newer
- * request is ignored, as it may describe another dialect or version.
+ * Number of the last request of the syntax: an answer that arrives after a
+ * newer request is ignored, as it may describe another dialect or version.
  */
 let keywordsRequest = 0
 
 /**
- * Reads the keywords of the server's dialect and version, then highlights
- * the text again. A failure keeps the highlighting in place.
+ * Reads the syntax of the server's dialect and version (keywords, lexical
+ * rules), then highlights the text again. A failure keeps the highlighting
+ * in place.
  */
 async function loadKeywords(): Promise<void> {
   const request = ++keywordsRequest
   try {
-    const received = await fetchKeywords(props.flavor, props.version)
+    const received = await fetchDialectSyntax(props.flavor, props.version)
     if (request !== keywordsRequest) {
       return
     }
-    keywords = received
+    syntax = received
     reserved.value = new Set(received.reserved)
     view?.dispatch({ effects: language.reconfigure(currentLanguage()) })
   } catch {
@@ -229,18 +232,18 @@ async function loadKeywords(): Promise<void> {
 }
 
 /**
- * Dialect of CodeMirror of each flavor, used as long as the keywords of the
- * server are not received.
+ * Dialect of CodeMirror of each flavor, used as long as the syntax of the
+ * server is not received.
  */
 const FALLBACK_DIALECTS: Record<Flavor, SQLDialect> = { mysql: MySQL, mariadb: MariaSQL }
 
 /**
  * CodeMirror language of the editor: dialect and completion, from the
- * properties and the keywords received.
+ * properties and the syntax received.
  */
 function currentLanguage(): LanguageSupport {
   const fallback = FALLBACK_DIALECTS[props.flavor]
-  const dialect = keywords === null ? fallback : editorDialect(keywords, props.ansiQuotes)
+  const dialect = syntax === null ? fallback : editorDialect(syntax, props.ansiQuotes)
   // Workaround: language assembled by hand, because `sql()` always adds the
   // completion of keywords; only the names of the catalog are offered
   // (`docs/DEVELOPER.md`, section "Workarounds").
