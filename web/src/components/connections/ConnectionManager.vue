@@ -30,7 +30,8 @@
   connection shown under another name; its password, left empty, is that of
   the copied connection, which the server copies.
 
-  The server checks the input; its message shows in the right pane.
+  The server checks the input; its message shows in the right pane. On
+  opening, the focus goes to the window, not to the filter of the list.
 -->
 <script setup lang="ts">
 import { ArrowLeft, ArrowRight, CopyPlus, PlugZap, Trash2 } from '@lucide/vue'
@@ -529,7 +530,7 @@ function onRemoved(id: number): void {
 </script>
 
 <template>
-  <ui-dialog v-model:open="open" title="Connexions" wide>
+  <ui-dialog v-model:open="open" title="Connexions" wide focus-window>
     <div class="flex min-h-0 flex-1">
       <connection-manager-list
         :entries="entries"
