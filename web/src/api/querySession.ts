@@ -1243,7 +1243,9 @@ export function startRefresh(state: SessionState, tab: QueryTab): void {
  * - `running`: the refresh runs, it can be stopped;
  * - `queued`: it waits for the end of the running batch, it can be cancelled;
  * - `idle`: the tab can be refreshed;
- * - `unavailable`: no refresh (query still running, session closed).
+ * - `unavailable`: no refresh (query still running, session opening).
+ *
+ * A tab of a closed session can be refreshed: the refresh reopens it.
  */
 export type RefreshState = 'running' | 'queued' | 'idle' | 'unavailable'
 
@@ -1260,8 +1262,7 @@ export function refreshState(state: SessionState, tab: QueryTab): RefreshState {
   if (state.refreshQueue.includes(tab.id)) {
     return 'queued'
   }
-  const open = state.status === 'ready' || state.status === 'running'
-  return open && tab.done ? 'idle' : 'unavailable'
+  return state.status !== 'connecting' && tab.done ? 'idle' : 'unavailable'
 }
 
 /**
@@ -1492,7 +1493,9 @@ export function sessionUrl(editorId: number, location: Location, database?: stri
  * the background, chunk by chunk.
  *
  * The WebSocket closes when the component that opened it disappears; the
- * server's session stays open for the delay set on the connection.
+ * server's session stays open for the delay set on the connection. A
+ * closed session opens again on demand (`reopen`), and when a query runs or
+ * a tab is refreshed: the run waits for the new session to be ready.
  *
  * @param editorId Id of the editor.
  * @param loadSaved Reading of the editor's saved result tabs, without their rows.
@@ -1500,8 +1503,11 @@ export function sessionUrl(editorId: number, location: Location, database?: stri
  * @param shownTab Id of the tab shown, whose rows are read first.
  * @param database
  *     Database to open a new session on, in place of the connection's (see
- *     `sessionUrl`).
- * @returns The reactive state of the session, and the functions to run queries and close the session.
+ *     `sessionUrl`); the first opening only: a session opened again opens
+ *     on the last current database of the editor, which the server saved.
+ * @returns
+ *     The reactive state of the session, and the functions to run queries,
+ *     reopen and close the session.
  */
 export function useQuerySession(
   editorId: number,
@@ -1521,6 +1527,17 @@ export function useQuerySession(
    * Has the session been closed (component gone)?
    */
   let closed = false
+
+  /**
+   * Database of the first opening, forgotten once the WebSocket is opened.
+   */
+  let opening = database
+
+  /**
+   * Run asked while the session was closed, with its arguments: sent once
+   * the session opened again is ready, dropped if it closes before.
+   */
+  let waitingRun: Parameters<typeof run> | null = null
 
   /**
    * Messages received, not applied yet, with their instant of reception and
@@ -1551,6 +1568,7 @@ export function useQuerySession(
         }
       }
     }
+    startWaitingRun()
     startQueuedRefresh()
   }
 
@@ -1572,7 +1590,8 @@ export function useQuerySession(
     if (closed) {
       return
     }
-    socket = new WebSocket(sessionUrl(editorId, window.location, database))
+    socket = new WebSocket(sessionUrl(editorId, window.location, opening))
+    opening = undefined
     socket.addEventListener('message', (event: MessageEvent<string>) => {
       const message = parseMessage(event.data)
       if (message === null) {
@@ -1586,8 +1605,10 @@ export function useQuerySession(
       flush()
       state.status = 'closed'
       state.transaction = false
-      // The refreshes will not end: the tabs get their result back.
+      // The refreshes will not end: the tabs get their result back. A run
+      // waiting for a reopened session that failed to open is dropped.
       state.refreshQueue = []
+      waitingRun = null
       for (const tab of state.tabs) {
         endRefresh(tab, null)
       }
@@ -1658,7 +1679,22 @@ export function useQuerySession(
     })
 
   /**
-   * Sends the editor's text, if the session is ready.
+   * Opens the session again once it is closed ("Reconnecter", or a run on
+   * the closed session): a new WebSocket, which the server opens on the last
+   * current database of the editor. The tabs stay as they are.
+   */
+  function reopen(): void {
+    if (closed || state.status !== 'closed') {
+      return
+    }
+    state.status = 'connecting'
+    state.error = null
+    connect()
+  }
+
+  /**
+   * Sends the editor's text, if the session is ready. On a closed session,
+   * the session opens again first, and the run waits for it.
    *
    * @param sql Whole text of the editor.
    * @param target
@@ -1667,6 +1703,11 @@ export function useQuerySession(
    * @param rowLimit Row limit; when absent, the one of the settings applies.
    */
   function run(sql: string, target: RunTarget = {}, rowLimit?: number): void {
+    if (state.status === 'closed') {
+      waitingRun = [sql, target, rowLimit]
+      reopen()
+      return
+    }
     if (state.status !== 'ready') {
       return
     }
@@ -1713,7 +1754,8 @@ export function useQuerySession(
 
   /**
    * Refreshes a tab: its query runs again, right away if the session is
-   * ready, otherwise at the end of the running batch.
+   * ready, otherwise at the end of the running batch, or once a closed
+   * session, which opens again, is ready.
    *
    * @param tab Tab to refresh.
    */
@@ -1723,9 +1765,10 @@ export function useQuerySession(
     }
     if (state.status === 'ready') {
       runRefresh(tab)
-    } else {
-      state.refreshQueue.push(tab.id)
+      return
     }
+    state.refreshQueue.push(tab.id)
+    reopen()
   }
 
   /**
@@ -1750,6 +1793,18 @@ export function useQuerySession(
   function runRefresh(tab: QueryTab): void {
     startRefresh(state, tab)
     send({ type: 'run', sql: tab.sql, tab: tab.id })
+  }
+
+  /**
+   * Sends the run asked while the session was closed, once the session
+   * opened again is ready.
+   */
+  function startWaitingRun(): void {
+    if (state.status === 'ready' && waitingRun !== null) {
+      const [sql, target, rowLimit] = waitingRun
+      waitingRun = null
+      run(sql, target, rowLimit)
+    }
   }
 
   /**
@@ -1816,6 +1871,7 @@ export function useQuerySession(
   return {
     state,
     run,
+    reopen,
     changeDatabase,
     cancel,
     refresh,

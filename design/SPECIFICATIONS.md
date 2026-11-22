@@ -191,7 +191,7 @@ An editor without a connection shows, centered: a round `bg-surface-raised p-4` 
 
 ### 7.5 Results
 
-- Banners first, when they apply: **Session fermée.** (Session closed.) in warning, with a **Reconnecter** (Reconnect) outline button; server older than the oldest supported version (warning); error of the session (error).
+- Banners first, when they apply: **Session fermée.** (Session closed.) in warning, with a **Reconnecter** (Reconnect) outline button (the run buttons stay enabled: a run reopens the session); server older than the oldest supported version (warning); error of the session (error).
 - While the saved results load: a centered spinning `LoaderCircle` and **Chargement des résultats…** (Loading the results…), `fg-secondary`.
 - Results' bar: one document tab per query, with its progress dot, its label (`1 · SELECT c.id, c.name, c.email FROM customer c…`: number, then the start of the query, 40 characters), its pin (`Pin`, always visible and in primary when pinned) and its close button; its progress bar on the bottom edge. At the right end: **Rafraîchir** (Refresh, `RefreshCw`; while it runs, `RefreshCwOff` in primary, which stops it), the filter toggle (`Funnel`, in primary while a filter text applies), then the fold button of the results (`PanelBottomClose` / `PanelBottomOpen`).
 - Content of the tab shown, `gap-3`: error banner of the query; the filter's form when its toggle is pressed (field with a `Search` icon, placeholder **Filtrer** (Filter), at most 80 steps wide, clear button; list **Toutes les colonnes** (All columns) or one column, at most 67 steps wide); the grid; the status bar.

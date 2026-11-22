@@ -402,6 +402,42 @@ pub fn connection_of(
         .optional()?)
 }
 
+/// Last current database saved for the open editor `id` (see
+/// `save_database`), empty if none was, or if the editor does not exist or
+/// belongs to another user: its session then opens on the database of the
+/// connection.
+pub fn database_of(db: &Connection, user_id: i64, id: i64) -> Result<String, EditorsError> {
+    Ok(db
+        .query_row(
+            "SELECT database_name FROM editors WHERE id = ?1 AND user_id = ?2 AND closed_at = ''",
+            params![id, user_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .unwrap_or_default())
+}
+
+/// Saves the current database of the query session of editor `id` (empty:
+/// none), on which its next session opens when none is chosen.
+pub fn save_database(db: &Connection, id: i64, database: &str) -> Result<(), EditorsError> {
+    db.execute(
+        "UPDATE editors SET database_name = ?2 WHERE id = ?1",
+        params![id, database],
+    )?;
+    Ok(())
+}
+
+/// Forgets the database saved for editor `id` if it is `database`, which no
+/// longer opens (dropped, access withdrawn): its next session opens on the
+/// database of the connection.
+pub fn forget_database(db: &Connection, id: i64, database: &str) -> Result<(), EditorsError> {
+    db.execute(
+        "UPDATE editors SET database_name = '' WHERE id = ?1 AND database_name = ?2",
+        params![id, database],
+    )?;
+    Ok(())
+}
+
 /// Creates an empty editor after the open editors and returns it.
 pub fn create(db: &Connection, user_id: i64, new: &NewEditor) -> Result<Editor, EditorsError> {
     db.execute(
@@ -419,8 +455,9 @@ pub fn create(db: &Connection, user_id: i64, new: &NewEditor) -> Result<Editor, 
     })
 }
 
-/// Changes the open editor `id`. Returns `false` if it does not exist or
-/// belongs to another user.
+/// Changes the open editor `id`. Another connection forgets the database
+/// saved for its session, which belonged to the previous one. Returns
+/// `false` if it does not exist or belongs to another user.
 pub fn update(
     db: &Connection,
     user_id: i64,
@@ -430,7 +467,9 @@ pub fn update(
     check_name(&changed.name)?;
     let updated = db.execute(
         &format!(
-            "UPDATE editors SET name = ?3, sql = ?4, connection_id = ?5, updated_at = {NOW}
+            "UPDATE editors SET name = ?3, sql = ?4, connection_id = ?5,
+             database_name = CASE WHEN connection_id IS ?5 THEN database_name ELSE '' END,
+             updated_at = {NOW}
              WHERE id = ?1 AND user_id = ?2 AND closed_at = ''"
         ),
         params![
@@ -1276,5 +1315,62 @@ mod tests {
                 .collect::<Vec<_>>(),
             [(second, pivot), (third, TabPivot::default())]
         );
+    }
+
+    /// Creates a connection of the user, named `name`, and returns its id.
+    fn create_connection(db: &Connection, user_id: i64, name: &str) -> i64 {
+        let new = crate::connections::NewConnection {
+            name: name.to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 3306,
+            username: "root".to_string(),
+            password: secrecy::SecretString::from(String::new()),
+            database_name: String::new(),
+            init_sql: String::new(),
+            session_timeout_minutes: 5,
+            show_system_schemas: false,
+        };
+        let key = crate::master_key::MasterKey::generate();
+        crate::connections::insert(db, &key, user_id, &new).unwrap()
+    }
+
+    #[test]
+    fn keeps_the_current_database_while_the_connection_stays() {
+        let (db, user_id) = setup();
+        let local = create_connection(&db, user_id, "local");
+        let prod = create_connection(&db, user_id, "prod");
+        let editor = create(&db, user_id, &NewEditor::default()).unwrap();
+        assert_eq!(database_of(&db, user_id, editor.id).unwrap(), "");
+
+        let mut changed = EditorUpdate {
+            name: String::new(),
+            sql: String::new(),
+            connection_id: Some(local),
+        };
+        assert!(update(&db, user_id, editor.id, &changed).unwrap());
+        save_database(&db, editor.id, "shop").unwrap();
+        assert_eq!(database_of(&db, user_id, editor.id).unwrap(), "shop");
+
+        // Same connection (text typed): the database stays.
+        changed.sql = "SELECT 1".to_string();
+        assert!(update(&db, user_id, editor.id, &changed).unwrap());
+        assert_eq!(database_of(&db, user_id, editor.id).unwrap(), "shop");
+
+        // Another database than the saved one no longer opening: kept.
+        forget_database(&db, editor.id, "billing").unwrap();
+        assert_eq!(database_of(&db, user_id, editor.id).unwrap(), "shop");
+        forget_database(&db, editor.id, "shop").unwrap();
+        assert_eq!(database_of(&db, user_id, editor.id).unwrap(), "");
+
+        // Another connection forgets it.
+        save_database(&db, editor.id, "shop").unwrap();
+        changed.connection_id = Some(prod);
+        assert!(update(&db, user_id, editor.id, &changed).unwrap());
+        assert_eq!(database_of(&db, user_id, editor.id).unwrap(), "");
+
+        // Another user does not read it.
+        save_database(&db, editor.id, "billing").unwrap();
+        let other = store::ensure_user(&db, "other@example.com").unwrap();
+        assert_eq!(database_of(&db, other, editor.id).unwrap(), "");
     }
 }

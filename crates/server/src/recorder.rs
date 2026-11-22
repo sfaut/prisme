@@ -22,6 +22,12 @@
 //! reads them again as the server received them, chunk by chunk. At the end
 //! of the session, an unfinished query is saved as failed.
 //!
+//! The current database of the session (`ready`, `database`, `done`) is
+//! saved on the editor as it changes: the editor's next session opens on it
+//! (`editors::database_of`). A database that no longer opens (dropped,
+//! access withdrawn) is forgotten, so that the next session opens on the
+//! connection's.
+//!
 //! The state of the last batch stays in memory until the next one, finished
 //! queries included: a WebSocket that reattaches to the session receives it
 //! as is (`snapshot`), then the rows received so far, read again from their
@@ -43,6 +49,7 @@ use crate::editors::{self, SavedColumns, SavedResult};
 use crate::error_detail::ErrorDetail;
 use crate::query_session::ServerMessage;
 use crate::query_session::protocol::BatchQuery;
+use prisme_connectors::mysql::ConnectFailure;
 
 /// Rows of a chunk: the rows received are written once they reach this
 /// number, at the end of the `rows` message that reaches it. About 1 MB of
@@ -113,6 +120,9 @@ pub struct Recorder {
     editor_id: i64,
     /// Queries of the last batch, by number.
     records: Mutex<HashMap<u32, Record>>,
+    /// Current database last saved for the editor (empty: none), `None`
+    /// before the first one: saved again only when it changes.
+    database: Mutex<Option<String>>,
 }
 
 /// Result of a query being recorded.
@@ -155,12 +165,14 @@ impl Recorder {
             state,
             editor_id,
             records: Mutex::new(HashMap::new()),
+            database: Mutex::new(None),
         }
     }
 
     /// Takes note of a message before it is sent to the client. For `batch`,
     /// completes each query with the id of its tab.
     pub async fn observe(&self, message: &mut ServerMessage) {
+        self.follow_database(message).await;
         let mut records = self.records.lock().await;
         let bytes = serde_json::to_vec(message).map_or(0, |json| json.len() as u64);
         match message {
@@ -245,6 +257,54 @@ impl Recorder {
                     record.result.error = Some(message.clone());
                     record.result.error_detail = Some(detail.clone());
                     self.end_failed(record).await;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Saves the current database of the session on the editor when a
+    /// message gives it and it has changed, and forgets the saved database
+    /// when the session cannot open on it. A failure is logged, without
+    /// interrupting the session.
+    async fn follow_database(&self, message: &ServerMessage) {
+        match message {
+            ServerMessage::Ready { database, .. }
+            | ServerMessage::Database { database }
+            | ServerMessage::Done { database, .. } => {
+                let database = database.clone().unwrap_or_default();
+                let mut saved = self.database.lock().await;
+                if saved.as_ref() == Some(&database) {
+                    return;
+                }
+                let (editor_id, value) = (self.editor_id, database.clone());
+                let written = self
+                    .state
+                    .with_db(move |db, _| editors::save_database(db, editor_id, &value))
+                    .await;
+                if written.is_ok() {
+                    *saved = Some(database);
+                } else {
+                    tracing::warn!("current database not saved, editor {editor_id}");
+                }
+            }
+            ServerMessage::Error {
+                query: None,
+                detail:
+                    ErrorDetail::Connect {
+                        failure:
+                            ConnectFailure::UnknownDatabase { database, .. }
+                            | ConnectFailure::DatabaseAccessDenied { database, .. },
+                    },
+                ..
+            } => {
+                let (editor_id, database) = (self.editor_id, database.clone());
+                let forgotten = self
+                    .state
+                    .with_db(move |db, _| editors::forget_database(db, editor_id, &database))
+                    .await;
+                if forgotten.is_err() {
+                    tracing::warn!("saved database not forgotten, editor {editor_id}");
                 }
             }
             _ => {}
@@ -845,6 +905,41 @@ mod tests {
         recorder.observe(&mut refresh).await;
         assert_eq!(tab_of(&refresh), 0);
         assert!(recorder.snapshot().await.queries.is_empty());
+    }
+
+    #[tokio::test]
+    async fn saves_the_current_database_and_forgets_one_that_no_longer_opens() {
+        let db = store::open_in_memory();
+        let user_id = store::ensure_user(&db, "test@example.com").unwrap();
+        let editor = create_editor(&db, user_id);
+        let state = AppState::new(db, MasterKey::generate(), user_id, exports::unused_folder());
+        let recorder = Recorder::new(state.clone(), editor);
+        let saved = || state.with_db(move |db, _| editors::database_of(db, user_id, editor));
+
+        let mut used = ServerMessage::Database {
+            database: Some("shop".to_string()),
+        };
+        recorder.observe(&mut used).await;
+        assert_eq!(saved().await.unwrap(), "shop");
+
+        // A query that leaves the session without a database.
+        let mut ended = done();
+        recorder.observe(&mut ended).await;
+        assert_eq!(saved().await.unwrap(), "");
+
+        recorder.observe(&mut used).await;
+        let mut refused = ServerMessage::Error {
+            query: None,
+            message: String::new(),
+            detail: ErrorDetail::Connect {
+                failure: ConnectFailure::UnknownDatabase {
+                    database: "shop".to_string(),
+                    address: "127.0.0.1:3306".to_string(),
+                },
+            },
+        };
+        recorder.observe(&mut refused).await;
+        assert_eq!(saved().await.unwrap(), "");
     }
 
     /// Creates an editor of the user, and returns its id.
