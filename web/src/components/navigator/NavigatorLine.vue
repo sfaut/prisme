@@ -16,7 +16,6 @@
 import {
   ArrowDownWideNarrow,
   ArrowUpAZ,
-  Cable,
   CalendarClock,
   ChevronDown,
   ChevronRight,
@@ -31,7 +30,6 @@ import {
   Link,
   ListOrdered,
   LoaderCircle,
-  Notebook,
   PencilRuler,
   Rows3,
   ScrollText,
@@ -181,8 +179,9 @@ const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
 }
 
 /**
- * Icon of a node, before its label: each level has its own (roots, source,
- * database, open or closed folder, table, view, column...). A column has a
+ * Icon of a node, before its label: each level has its own (source,
+ * database, open or closed folder, table, view, column...), a spinning
+ * circle while a source's catalog is being received. A column has a
  * single icon, which tells its key: a key for the primary key, a link for a
  * foreign key, the column icon otherwise.
  *
@@ -191,14 +190,13 @@ const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
  */
 function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
   switch (node.role) {
-    case 'sources':
-      return Server
     case 'source':
-      return Cable
+      // The icon of its kind of source: every connection is a database
+      // server for now; another kind (CSV) will get its own here. A spinning
+      // circle replaces it while its catalog is being received.
+      return node.receiving ? LoaderCircle : Server
     case 'database':
       return Database
-    case 'notebooks':
-      return Notebook
   }
   if (node.column?.primaryKey) {
     return KeyRound
@@ -213,12 +211,15 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
 }
 
 /**
- * Name of a column's key icon, for screen readers; none for the other
- * icons, which repeat the label.
+ * Name of a column's key icon and of a source's spinning circle, for screen
+ * readers; none for the other icons, which repeat the label.
  *
  * @param node Node of the tree.
  */
 function iconLabel(node: NavigatorNode): string | undefined {
+  if (node.receiving) {
+    return 'Chargement'
+  }
   if (node.column?.primaryKey) {
     return 'Clef primaire'
   }
@@ -237,7 +238,7 @@ function iconLabel(node: NavigatorNode): string | undefined {
     :is="nodeIcon(node, expanded)"
     class="size-5 shrink-0 text-fg-secondary"
     :aria-label="iconLabel(node)"
-    :class="{ 'animate-spin': node.entry === 'loading' }"
+    :class="{ 'animate-spin': node.entry === 'loading' || node.receiving }"
   />
 
   <!-- Column: name (bold if indexed), type and nullability. -->
@@ -257,11 +258,11 @@ function iconLabel(node: NavigatorNode): string | undefined {
     </span>
   </span>
   <!--
-    Other nodes: label, then the note if any (UNIQUE, chargement…, row count
-    of a table, its digits of equal width), and for a
-    source the badge of the server's flavor, right after the name, whose
-    tooltip gives the name and version of the server. The whole takes the
-    room left, which pushes the menu to the end of the line.
+    Other nodes: label, then the note if any (UNIQUE, row count of a table,
+    its digits of equal width), and for a source the badge of the server's
+    flavor, right after the name, whose tooltip gives the name and version
+    of the server. The whole takes the room left, which pushes the menu to
+    the end of the line.
   -->
   <span v-else class="flex min-w-0 flex-1 items-center gap-3">
     <span
@@ -269,8 +270,7 @@ function iconLabel(node: NavigatorNode): string | undefined {
       :class="{
         'current-database': node.current,
         'chosen-source': node.chosen,
-        'font-bold':
-          node.current || node.chosen || node.role === 'sources' || node.role === 'notebooks',
+        'font-bold': node.current || node.chosen,
       }"
     >
       <span class="truncate text-trim">{{ node.label }}</span>

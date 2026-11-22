@@ -36,7 +36,7 @@ function saved(): EditorDisplay {
   display.panels.navigator = { open: false, size: 320 }
   display.panels.console = { open: false, size: 200 }
   display.navigator = {
-    expanded: ['sources', 'source:2'],
+    expanded: ['source:2'],
     scroll_top: 48,
     tables_by_rows: ['folder:tables:2/shop'],
   }
@@ -65,7 +65,7 @@ describe('display of an editor', () => {
     display.panels.navigator = { open: false, size: 320 }
     display.panels.console.open = false
     display.panels.console.size = 200
-    display.navigator.expanded = ['sources', 'source:2']
+    display.navigator.expanded = ['source:2']
     display.navigator.tables_by_rows = ['folder:tables:2/shop']
     await nextTick()
     display.navigator.scroll_top = 48
@@ -115,14 +115,14 @@ describe('display of an editor', () => {
     store.reset(1, 2)
     const fresh = defaultEditorDisplay()
     expect(display.panels).toEqual(fresh.panels)
-    expect(display.navigator).toEqual({ ...fresh.navigator, expanded: ['sources', 'source:2'] })
+    expect(display.navigator).toEqual({ ...fresh.navigator, expanded: ['source:2'] })
     expect(display.navigator).toBe(tree)
     expect(display.sql.anchor).toBe(4)
     expect(listener).toHaveBeenCalledOnce()
 
     stop()
     store.reset(1, null)
-    expect(display.navigator.expanded).toEqual(['sources'])
+    expect(display.navigator.expanded).toEqual([])
     expect(listener).toHaveBeenCalledOnce()
   })
 })

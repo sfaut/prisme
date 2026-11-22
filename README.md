@@ -44,7 +44,7 @@ Prisme is at the start of its first version (v1). Today it queries **MySQL and M
 2. **Run it** from a terminal. On Linux and macOS, first make it executable (see [Installation](#installation)).
 3. **Answer the two setup questions**: listening port and your email address. Press Enter to keep the defaults (`10000`, `me@local`).
 4. **Open** <http://prisme.localhost:10000> in your browser (or <http://127.0.0.1:10000>).
-5. **Add a connection**: in the left panel, open the **⋮** menu of **Sources de données** (Data sources), choose **Ajouter une connexion** (Add a connection), fill in host, port, user and password, click **Tester** (Test), then save.
+5. **Add a connection**: in the left panel, click the **+** button of **Navigateur d’objets** (Object navigator), **Ajouter** (Add), fill in host, port, user and password, click **Tester** (Test), then save.
 6. **Query**: **Ctrl+click** the new source (**Cmd+click** on macOS), type a query in the editor, press **Ctrl+Enter**.
 
 ## Installation
@@ -139,7 +139,7 @@ The version of Prisme shows next to its name, at the top left.
 
 Connections are managed from the navigator:
 
-- **Add**: **⋮** menu of **Sources de données** (Data sources) → **Ajouter une connexion** (Add a connection). **Tester** (Test) tries the settings before saving.
+- **Add**: **+** button of **Navigateur d’objets** (Object navigator), **Ajouter** (Add). **Tester** (Test) tries the settings before saving.
 - **Edit, refresh, test, delete**: **⋮** menu of each source. A blank password when editing keeps the current one. Deleting asks for confirmation.
 - **Session settings**: the **À la connexion** (On connect) field runs queries each time a connection opens, separated by `;`, for example `SET NAMES utf8mb4; SET SESSION sql_mode = ...`. Only session settings are allowed.
 - **System databases** (`information_schema`, `mysql`, `performance_schema`, `sys`) can be hidden per source.
@@ -162,7 +162,7 @@ How it behaves:
 - A **Ctrl+click** (**Cmd+click** on macOS), or **Enter** on the focused row, acts on it without opening or closing it: on a source, makes it the connection of the editor; on a database, makes it the current database (like `USE`); on a table or view, shows its content: its `SELECT` goes after the last query of the editor, without overwriting anything, and runs; on an index, writes the operations on it after the last query, commented out: adding a primary key, a unique index or an index, then making the index visible or invisible (ignored in MariaDB), removing or renaming it, as far as the version of the server allows (a primary key can only be removed). Uncomment the line to run and fill in the names left as placeholders (`column_name`, `new_index_name`).
 - On hovering a row, a button on its right does the same: the **plug** of a database makes it the current database, the **eye** of a table or view shows its content, the **pencil and ruler** of an index writes the operations on it.
 - **Déconnecter** (Disconnect), the **unplugged plug** on hovering a source or the current database, or the **⋮** menu of the source, closes the session of the editor at once: its connection to the server closes, and the editor shows **Session fermée** (Session closed) with **Reconnecter** (Reconnect). Running a query or refreshing a result tab also opens a new session, then runs. It is only available on the source of the editor, once its session is open, and stays disabled while queries run: stop them first. Afterwards, choosing the source again, making one of its databases current or opening one of its tables also opens a new session, on the database of the connection; a database made current opens it on that database directly.
-- The catalog loads progressively, and the source of the editor opens by itself, in a new navigator and when the editor changes its connection. **Tout rafraîchir** (Refresh all) in the root menu reloads the catalogs already read.
+- The catalog loads progressively, and the source of the editor opens by itself, in a new navigator and when the editor changes its connection. The **refresh** button of **Navigateur d’objets** (Object navigator), **Rafraîchir** (Refresh), reloads the catalogs already read.
 - The current database is in **bold**.
 - Each table shows, after its name, its row count as estimated by the server: exact below 1,000 (`345`), shortened above (`1,3 k`, `4,5 M`). The estimate can differ from the real count, and on MySQL can be up to a day old. Views show none.
 - On hovering a **Tables** folder of two tables or more, two buttons sort its tables: by name (A to Z, the default), or by row count, the largest first, tables without an estimate last. Sorted by row count, its button stays shown. Each folder keeps its order, with the editor.

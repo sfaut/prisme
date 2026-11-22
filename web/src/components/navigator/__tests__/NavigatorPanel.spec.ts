@@ -181,35 +181,32 @@ afterEach(() => {
 })
 
 describe('NavigatorPanel', () => {
-  it('puts the sources under a root and opens that of the chosen connection', async () => {
+  it('puts the sources at the root and opens that of the chosen connection', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const wrapper = mountNavigator({ selectedId: 1, currentDatabase: null })
     expect(wrapper.find('h2').text()).toBe('Navigateur d’objets')
-    await vi.waitFor(() =>
-      expect(labels(wrapper)).toEqual([
-        'Sources de données',
-        'Origen 2',
-        'a',
-        'b',
-        'c',
-        'Autre',
-        'Notebooks',
-      ]),
-    )
+    await vi.waitFor(() => expect(labels(wrapper)).toEqual(['Origen 2', 'a', 'b', 'c', 'Autre']))
     wrapper.unmount()
   })
 
-  it('offers a menu on the root and another one on each source', async () => {
+  it('says so when there is no connection', async () => {
+    savedConnections = []
+    const wrapper = mountNavigator({ selectedId: null, currentDatabase: null })
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Aucune connexion.'))
+    expect(wrapper.find('[role="tree"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('offers buttons on the title and a menu on each source', async () => {
     savedConnections = [connection(1, 'Origen 2')]
     const wrapper = mountNavigator({ selectedId: null, currentDatabase: null })
-    await vi.waitFor(() => expect(wrapper.findAll('.node-menu')).toHaveLength(3))
-    const [root, source] = wrapper.findAll('.node-menu')
+    await vi.waitFor(() => expect(wrapper.findAll('.node-menu')).toHaveLength(1))
+    expect(wrapper.find('[aria-label="Rafraîchir"]').exists()).toBe(true)
+    await wrapper.find('[aria-label="Ajouter une connexion"]').trigger('click')
+    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull())
     const options = () =>
       [...document.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim())
-    await click(root, 1)
-    await vi.waitFor(() => expect(options()).toEqual(['Ajouter une connexion', 'Tout rafraîchir']))
-    await click(root, 1)
-    await click(source, 1)
+    await click(wrapper.find('.node-menu'), 1)
     await vi.waitFor(() =>
       expect(options()).toEqual(['Modifier', 'Rafraîchir', 'Tester', 'Déconnecter', 'Supprimer']),
     )
@@ -260,12 +257,12 @@ describe('NavigatorPanel', () => {
       wrapper.findAll('[aria-hidden="true"] .tree-label').map((node) => node.text())
 
     expect(pinned()).toEqual([])
-    // Ten rows down: the first row under the pinned ones is a database of the
-    // source, so the pinned rows are the root and the source.
+    // Ten rows down: the first row under the pinned one is a database of the
+    // source, so the pinned row is the source.
     const tree = wrapper.find('[role="tree"]')
     Object.defineProperty(tree.element, 'scrollTop', { value: 10 * 24, configurable: true })
     await tree.trigger('scroll')
-    expect(pinned()).toEqual(['Sources de données', 'Origen 2'])
+    expect(pinned()).toEqual(['Origen 2'])
 
     // Back to the top: nothing is pinned any more.
     Object.defineProperty(tree.element, 'scrollTop', { value: 0, configurable: true })

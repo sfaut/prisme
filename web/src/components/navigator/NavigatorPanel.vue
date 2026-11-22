@@ -1,9 +1,8 @@
 <!--
   Object navigator: under its title, "Navigateur d’objets" (`PanelHeader`),
-  the collapsible
-  "Sources de données" root, one branch per source (saved
-  connection), then its databases, tables and columns; next, the
-  "Notebooks" root, empty for now.
+  one collapsible root per source (saved connection), then its databases,
+  tables and columns. Without any connection, "Aucune connexion." stands in
+  place of the tree.
 
   Each editor has its own navigator, in its tab, which acts on it: its
   connection is the chosen source, its session's database is the current
@@ -44,16 +43,18 @@
   tables by name (by default) or by row count, the largest first, with the
   two buttons of its line; the choice is kept per folder with the tree.
 
-  Each line carries the icon of its level: roots, source, database, folder
-  (open or closed), table, view, procedure, function, column, index, foreign
-  key, trigger, and a spinning circle during a load.
+  Each line carries the icon of its level: source (that of its kind, a
+  server for a database), database, folder (open or closed), table, view,
+  procedure, function, column, index, foreign key, trigger, and a spinning
+  circle during a load, in place of the source's icon while its catalog
+  arrives.
 
-  On hovering the root, a "⋮" menu on the right adds a connection or reads
-  again all the catalogs already read; on hovering each source, another one
-  changes or tests the connection, reads its catalog again or deletes the
-  connection (after confirmation, which warns of the transactions it rolls
-  back); "Déconnecter" there closes the session of the editor, like the
-  button of the line.
+  Two buttons of the title, always shown, read again all the catalogs
+  already read and add a connection; on hovering each source, a "⋮" menu
+  changes or tests the connection, reads its catalog again or deletes the connection
+  (after confirmation, which warns of the transactions it rolls back);
+  "Déconnecter" there closes the session of the editor, like the button of
+  the line.
 
   The tree is Reka UI's (`TreeRoot`, `TreeItem`: keyboard, opening of the
   levels, accessibility), with virtual scrolling (`TreeVirtualizer`); the
@@ -73,7 +74,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { NotebookPen, Pencil, PlugZap, Plus, RefreshCw, Trash2, Unplug } from '@lucide/vue'
+import { Pencil, PlugZap, Plus, RefreshCw, Trash2, Unplug } from '@lucide/vue'
 import {
   TreeItem,
   type TreeItemSelectEvent,
@@ -95,12 +96,13 @@ import { useNavigatorStore } from '@/stores/navigator'
 import ConnectionDialog from './ConnectionDialog.vue'
 import NavigatorLine from './NavigatorLine.vue'
 import PanelHeader from '@/components/panel/PanelHeader.vue'
-import { type NavigatorNode, navigatorTree, sourceKey } from './navigatorNodes'
+import { type NavigatorNode, sourceKey, sourceNodes } from './navigatorNodes'
 import { pinnedRows, visibleRows } from './stickyRows'
 import { openTransactionsNotice } from './transactionNotice'
 import UiAlert from '@/components/ui/UiAlert.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiDialog from '@/components/ui/UiDialog.vue'
+import { vTooltip } from '@/components/ui/tooltip'
 import type { MenuItem } from '@/components/ui/menuItem'
 
 const props = defineProps<{
@@ -176,6 +178,12 @@ const loadingIds = ref<number[]>([])
 const listError = ref<string | null>(null)
 
 /**
+ * Was the list of connections received? Until then, an empty list does not
+ * mean that there is no connection.
+ */
+const listed = ref(false)
+
+/**
  * Message of the last successful test of a source (name, flavor and version
  * of the server, and the warning of an unsupported version), `null` if none.
  */
@@ -229,16 +237,6 @@ const expandedKeys = computed({
 })
 
 /**
- * Is a catalog still being received?
- */
-const receiving = computed(() =>
-  connections.connections.some((connection) => {
-    const current = catalog.catalogOf(connection.id)
-    return current !== undefined && !current.done
-  }),
-)
-
-/**
  * Last tree built, kept while the editor is not active.
  */
 let built: NavigatorNode[] = []
@@ -249,18 +247,21 @@ let built: NavigatorNode[] = []
  */
 const nodes = computed(() => {
   if (props.active) {
-    built = navigatorTree(
-      connections.connections.map((connection) => ({
-        connectionId: connection.id,
-        name: connection.name,
-        catalog: catalog.catalogOf(connection.id),
-        chosen: connection.id === props.selectedId,
-        currentDatabase: connection.id === props.selectedId ? props.currentDatabase : null,
-        flavor: catalog.catalogOf(connection.id)?.flavor ?? connection.server_flavor,
-        version: catalog.catalogOf(connection.id)?.version ?? connection.server_version,
-        showSystemSchemas: connection.show_system_schemas,
-      })),
-      receiving.value,
+    built = sourceNodes(
+      connections.connections.map((connection) => {
+        const read = catalog.catalogOf(connection.id)
+        return {
+          connectionId: connection.id,
+          name: connection.name,
+          catalog: read,
+          receiving: read !== undefined && !read.done,
+          chosen: connection.id === props.selectedId,
+          currentDatabase: connection.id === props.selectedId ? props.currentDatabase : null,
+          flavor: read?.flavor ?? connection.server_flavor,
+          version: read?.version ?? connection.server_version,
+          showSystemSchemas: connection.show_system_schemas,
+        }
+      }),
       new Set(tree.tables_by_rows),
     )
   }
@@ -366,14 +367,6 @@ function sessionOf(connectionId: number): SessionStatus | null {
 function menuItems(node: NavigatorNode): MenuItem[] | null {
   const connection = connections.connections.find((item) => item.id === node.connectionId) ?? null
   switch (node.role) {
-    case 'sources':
-      return [
-        { label: 'Ajouter une connexion', icon: Plus, onSelect: () => openDialog(null) },
-        { label: 'Tout rafraîchir', icon: RefreshCw, onSelect: refreshAll },
-      ]
-    case 'notebooks':
-      // Notebooks are not saved yet (stage 3 of the v1).
-      return [{ label: 'Créer un notebook', icon: NotebookPen, disabled: true }]
     case 'source':
       // The connection may have been deleted since the tree was built: no menu then.
       if (connection === null) {
@@ -621,6 +614,7 @@ function onScroll(event: Event): void {
 onMounted(async () => {
   try {
     await connections.ensureLoaded()
+    listed.value = true
   } catch (failure) {
     listError.value = `Connexions illisibles.
 
@@ -710,13 +704,36 @@ watch(() => visible.value.rows.length, retryScroll)
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-3">
-    <panel-header title="Navigateur d’objets" />
+    <panel-header title="Navigateur d’objets">
+      <template #actions>
+        <ui-button
+          :icon="RefreshCw"
+          variant="ghost"
+          small
+          aria-label="Rafraîchir"
+          v-tooltip="{ title: 'Rafraîchir', description: 'Relit les catalogues déjà lus' }"
+          @click="refreshAll"
+        />
+        <ui-button
+          :icon="Plus"
+          variant="ghost"
+          small
+          aria-label="Ajouter une connexion"
+          v-tooltip="{ title: 'Ajouter', description: 'Nouvelle connexion' }"
+          @click="openDialog(null)"
+        />
+      </template>
+    </panel-header>
     <ui-alert v-if="probed" :tone="probed.tone" :title="probed.title" @close="probed = null" />
     <ui-alert v-if="listError" tone="error" :title="listError" />
     <!-- Index as key: the same message can come twice, from two errors of one source. -->
     <ui-alert v-for="(message, index) in messages" :key="index" tone="warning" :title="message" />
 
+    <p v-if="listed && connections.connections.length === 0" class="text-fg-secondary">
+      Aucune connexion.
+    </p>
     <div
+      v-else
       ref="frame"
       class="relative flex min-h-0 flex-1 flex-col"
       @wheel.passive="stopRestoring"

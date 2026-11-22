@@ -109,7 +109,7 @@ Common rules:
 | `panels.results` | panel | closed | Results; its size is a height |
 | `panels.pivot` | panel | closed | Pivoteur; its size is a height |
 | `panels.console` | panel | open | Console; its size is a height |
-| `navigator.expanded` | keys | `["sources"]` | Open nodes of the tree (`navigatorNodes.ts`) |
+| `navigator.expanded` | keys | `[]` | Open nodes of the tree (`navigatorNodes.ts`) |
 | `navigator.scroll_top` | number | `0` | Scroll of the tree, in CSS pixels |
 | `navigator.tables_by_rows` | keys | `[]` | "Tables" folders sorted by row count; the others by name |
 | `active_result` | id or `null` | `null` | Result tab shown; `null`, or a tab no longer there: the first one |

@@ -11,7 +11,6 @@ import {
 import {
   catalogNodes,
   displayedType,
-  navigatorTree,
   foreignKeyLabel,
   indexLabel,
   indexNote,
@@ -101,6 +100,7 @@ describe('sourceNodes', () => {
           done: true,
           errors: [],
         },
+        receiving: false,
         chosen: true,
         currentDatabase: 'shop',
         flavor: 'mariadb',
@@ -111,6 +111,7 @@ describe('sourceNodes', () => {
         connectionId: 2,
         name: 'Origen 2',
         catalog: { schemas: catalog, flavor: 'mariadb', version: null, done: true, errors: [] },
+        receiving: false,
         chosen: false,
         currentDatabase: null,
         flavor: 'mysql',
@@ -121,6 +122,7 @@ describe('sourceNodes', () => {
         connectionId: 3,
         name: 'Jamais lue',
         catalog: undefined,
+        receiving: false,
         chosen: false,
         currentDatabase: null,
         flavor: null,
@@ -165,6 +167,7 @@ describe('system databases', () => {
       connectionId: 1,
       name: 'Origen 2',
       catalog: { schemas, flavor: null, version: null, done: true, errors: [] },
+      receiving: false,
       chosen: false,
       currentDatabase: null,
       flavor: null,
@@ -181,24 +184,22 @@ describe('system databases', () => {
   })
 })
 
-describe('navigatorTree', () => {
-  it('puts the sources under "Sources de données", then "Notebooks"', () => {
-    const source = {
+describe('receiving', () => {
+  it('marks a source whose catalog is being received, without a note', () => {
+    const source = (receiving: boolean) => ({
       connectionId: 1,
       name: 'Origen 2',
       catalog: undefined,
+      receiving,
       chosen: false,
       currentDatabase: null,
       flavor: null,
       version: null,
       showSystemSchemas: true,
-    }
-    const [root, notebooks] = navigatorTree([source], true)
-    expect(notebooks?.label).toBe('Notebooks')
-    expect(root?.label).toBe('Sources de données')
-    expect(root?.note).toBe('chargement…')
-    expect(labels(root)).toEqual(['Origen 2'])
-    expect(navigatorTree([], false)[0]?.isLeaf).toBe(true)
+    })
+    expect(sourceNodes([source(true)])[0]?.receiving).toBe(true)
+    expect(sourceNodes([source(true)])[0]?.note).toBeUndefined()
+    expect(sourceNodes([source(false)])[0]?.receiving).toBe(false)
   })
 })
 
