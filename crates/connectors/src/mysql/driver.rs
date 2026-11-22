@@ -105,7 +105,10 @@ pub fn capabilities() -> Capabilities {
             ObjectKind::Function,
             ObjectKind::Event,
         ],
-        write_kinds: WriteKind::ALL.to_vec(),
+        write_kinds: WriteKind::ALL
+            .into_iter()
+            .filter(|kind| !matches!(kind, WriteKind::Attach | WriteKind::Maintenance))
+            .collect(),
         notices: true,
         rows_estimate: true,
     }

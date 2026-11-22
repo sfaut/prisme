@@ -120,7 +120,7 @@ describe('writes', () => {
     await flushPromises()
     expect(writeBox('INSERT').matches(':disabled')).toBe(false)
     // One allowed out of every kind of the server (`WriteKind::ALL`).
-    expect(document.body.textContent).toContain('1 sur 21.')
+    expect(document.body.textContent).toContain('1 sur 23.')
 
     writeBox('CREATE TABLE').click()
     await submit()

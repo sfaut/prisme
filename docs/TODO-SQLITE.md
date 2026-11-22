@@ -9,14 +9,14 @@ Functional:
 1. A database is designated by a location whose protocol is explicit: `file` (a bare absolute path, with `\` or `/`, or a `file:///` URL), public `http` / `https` (no authentication), `memory` (`:memory:`). `s3`, `ftp` and others come later through the same contract. Any file the process of Prisme can reach.
 2. The protocol of each database shows in the interface: settings, check, list and card of the connections, navigator.
 3. Writes: the same switches as MySQL; the files open read-only while **Sessions en lecture seule** is on. A remote database (`http`, `https`) is always read-only.
-4. `PRAGMA` without a value is a read; `PRAGMA` with an assignment is refused; the `pragma_*()` functions stay possible in a `SELECT`.
+4. A closed list of the pragmas of the library gives each its role (`crates/dialects/src/sqlite_pragmas.rs`): a read without a value; a read with an argument (`table_info(t)`); a setting of the connection (`busy_timeout`, `cache_size`, `case_sensitive_like`, `defer_foreign_keys`, `foreign_keys`, `recursive_triggers`, `temp_store`), changed like a `SET SESSION` in the editor and in the SQL run at connection, whose field states the list; a write in the file, under the **Maintenance** switch (`optimize`, `wal_checkpoint`, `incremental_vacuum`). Any other assignment, and any pragma out of the list, which SQLite would run silently, are refused. The `pragma_*()` functions stay possible in a `SELECT`; `pragma_optimize`, the only one that writes, needs **Maintenance**.
 5. New database: the empty file is created when the connection is saved, refused if it exists; a session then only opens existing files. Only for `file`.
 6. Settings in two sections: the **main database** (`main`: existing file, new file or in memory), then the **attached databases** (0 to n: schema, location and "create the file" box, or `:memory:`). Every database of the connection is attached at each opening of a session.
 7. Step 3 of a creation, **Vérification**, database by database: correct (size, journal, read-only), to create, in memory, not found ("create it" / "remove"). A database not found does not prevent saving; the session opens without it and says so.
 8. Detaching: in the navigator, **Détacher pour la session** (`DETACH`, back at the next session) and **Retirer de la connexion…** (opens the connections manager); in the manager, removal for good, the line struck through and restorable until saved, with the warning of the sessions closed and transactions rolled back; the file stays on the disk.
 9. Attaching from the navigator: "⋮" menu of the source, window **Attacher une base** (origin, schema, location), for this session only or in the connection (attached at once, without closing the session).
-10. `ATTACH` / `DETACH` written in SQL: allowed for the session under an `ATTACH / DETACH` switch.
-11. `VACUUM`, `REINDEX`, `ANALYZE` under a **Maintenance** switch; `VACUUM INTO` always refused.
+10. `ATTACH` / `DETACH` written in SQL: allowed for the session under an `ATTACH / DETACH` switch. The file of an `ATTACH` is a literal absolute path or `':memory:'`: a computed name, a relative path or a URI is refused.
+11. `VACUUM`, `REINDEX`, `ANALYZE` under a **Maintenance** switch, with the pragmas that write in the file (decision 4); `VACUUM INTO` always refused. `CREATE VIRTUAL TABLE` needs `CREATE TABLE`, a table of the schema `temp` is a temporary table, triggers are refused.
 12. A database in memory has **Enregistrer dans un fichier…** (SQLite's backup API), an existing file refused.
 13. The interface is coded with the `frontend-design` skill, in Prisme's theme and rules.
 14. Numbers are shown in one normalized writing, whatever the engine: plain decimal, roughly `[+-]?[0-9]*\.?[0-9]+`, never in scientific notation. A floating-point number is written with the fewest digits that read back the same value (`100`, `100000000000000000000`, `0.0000001`, `3.141592653589793`). MySQL and MariaDB send their `DOUBLE`s in scientific notation beyond some sizes (`1e20`, `1.5e300`, `1.2345678901234568e17`, measured on 8.0.11, the latest MySQL, 10.6.3 and the latest MariaDB on 2026-11-22), and SQLite writes `1.0e+20`, `100.0`: the connectors normalize them.
@@ -76,8 +76,8 @@ Architecture:
 
 - ✅ `DialectSpec`, `LexicalRules` (splitter and editor)
 - ✅ Default limit, `LIMIT -1` counted as a limit written; a query ending with `VALUES`, which takes no `LIMIT`, read up to the extra row (`capped`)
-- ⬜ Classification: `PRAGMA`, `ATTACH` / `DETACH`, maintenance, `VACUUM INTO`, triggers, `INSERT OR REPLACE`, `ON CONFLICT DO UPDATE`, `temp.`
-- ⬜ `ends_transaction`, `session_setting_refusal`
+- ✅ Classification: `PRAGMA`, `ATTACH` / `DETACH`, maintenance, `VACUUM INTO`, triggers, `INSERT OR REPLACE`, `ON CONFLICT DO UPDATE`, `temp.`
+- ✅ `ends_transaction`, `session_setting_refusal`
 - ✅ `keywords/sqlite.yaml`, checked against `sqlite3_keyword_name`
 
 ## 4. SQLite connector
@@ -109,6 +109,7 @@ Architecture:
 - ⬜ Navigator: schemas, protocol, menus, window **Attacher une base**; labels of the namespace levels (`NamespaceLevel`) in the navigator and the completion
 - ⬜ Editor dialect, CTE and `IN` clause in SQLite
 - ⬜ Switches of the engine in the settings
+- ⬜ SQL run at connection: the pragmas of the connection it accepts, stated beside the field (decision 4)
 
 ## 7. Documentation
 
@@ -118,7 +119,5 @@ Architecture:
 
 ## Open points, settled at their step
 
-- `PRAGMA` with an assignment in the SQL run at connection: allow-list of the pragmas of the connection, never those that change the file.
-- `ATTACH` written in SQL whose location is not a literal: refusal proposed.
 - Switch needed by **Enregistrer dans un fichier…**, and its fate in a read-only session.
 - Exact form of the neutral variant of `FailureCause`, given what `recorder.rs` saved already.

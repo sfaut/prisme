@@ -25,6 +25,7 @@ mod mysql_parser;
 mod mysql_statements;
 mod offsets;
 mod parse;
+mod sqlite_pragmas;
 mod sqlite_statements;
 pub mod syntax;
 pub mod temporary;
@@ -60,6 +61,10 @@ pub struct DialectSpec {
     /// Does a `LIMIT` follow a `VALUES` (MySQL, MariaDB)? SQLite refuses it:
     /// its `LIMIT` belongs to a `SELECT`.
     values_take_limit: bool,
+    /// Schema of the temporary tables, whose name says they are temporary
+    /// (`temp.t` in SQLite); `None` where a schema is a database like any
+    /// other.
+    temporary_schema: Option<&'static str>,
 }
 
 /// Statements of a dialect that Prisme parses itself (`parse.rs`).
@@ -94,6 +99,7 @@ static MYSQL: DialectSpec = DialectSpec {
     keywords: include_str!("../keywords/mysql.yaml"),
     statements: Statements::MySql,
     values_take_limit: true,
+    temporary_schema: None,
 };
 
 /// MariaDB, read as MySQL with keywords of its own.
@@ -103,6 +109,7 @@ static MARIADB: DialectSpec = DialectSpec {
     keywords: include_str!("../keywords/mariadb.yaml"),
     statements: Statements::MySql,
     values_take_limit: true,
+    temporary_schema: None,
 };
 
 /// SQLite, as measured on the library Prisme ships (`docs/SQL-COMPARISON.md`,
@@ -123,6 +130,7 @@ static SQLITE: DialectSpec = DialectSpec {
     keywords: include_str!("../keywords/sqlite.yaml"),
     statements: Statements::Sqlite,
     values_take_limit: false,
+    temporary_schema: Some("temp"),
 };
 
 impl Dialect {

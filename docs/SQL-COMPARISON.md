@@ -529,3 +529,13 @@ A trigger whose body holds `CASE … END;` is created, and runs: SQLite ends the
 | `SELECT * FROM (VALUES (1), (2)) LIMIT 1` | 1 row |
 
 A `LIMIT` follows a `SELECT` only: a query whose last term is a `VALUES` takes none, and Prisme stops reading it after the extra row.
+
+Pragmas, which the classification gives a role by a closed list of those of the library (`crates/dialects/src/sqlite_pragmas.rs`):
+
+- `pragma_list` names 67 pragmas; 59 of them have a table function `pragma_<name>`, all but `case_sensitive_like`, `data_store_directory`, `incremental_vacuum`, `mmap_size`, `shrink_memory`, `temp_store_directory`, `wal_autocheckpoint` and `wal_checkpoint`. Of the three pragmas that write in the file (`optimize`, `wal_checkpoint`, `incremental_vacuum`), only `optimize` has one: `SELECT * FROM pragma_optimize` runs it.
+- `PRAGMA no_such_pragma` and `PRAGMA no_such_pragma = 1` run without an error, and return nothing.
+- `PRAGMA table_info = t` and `PRAGMA table_info(t)` return the same rows: the value of a pragma that reads is its argument, in either form.
+- `PRAGMA foreign_keys(1)` sets the pragma as `PRAGMA foreign_keys = 1` does (`PRAGMA foreign_keys` then gives `1`); `PRAGMA main.cache_size(-100)` likewise.
+- A table function takes no value to set: `pragma_journal_mode('wal')` reads `'wal'` as a schema ("unknown database 'wal'"), `pragma_foreign_keys(1)` fails ("too many arguments on pragma_foreign_keys() - max 0").
+- On a read-only connection: `PRAGMA user_version = 3` and `PRAGMA incremental_vacuum` fail ("attempt to write a readonly database"); `PRAGMA optimize`, `PRAGMA wal_checkpoint` (which gives `0, -1, -1`), `PRAGMA foreign_keys = 1` and `PRAGMA cache_size = 10` run.
+- On a read-only connection, `ATTACH 'file:...?mode=rw'` fails: "access mode not allowed: rw".

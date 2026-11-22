@@ -17,7 +17,7 @@ use sqlparser::parser::{Parser, ParserError};
 use sqlparser::tokenizer::Token;
 
 use crate::mysql_statements::{self, MySqlStatement};
-use crate::sqlite_statements::{SqliteStatement, parse_sqlite_statement};
+use crate::sqlite_statements::{SqliteStatement, parse_replace, parse_sqlite_statement};
 use crate::words::expect_end;
 use crate::{Dialect, Statements};
 
@@ -93,7 +93,8 @@ fn parse_mysql_statement(parser: &mut Parser) -> Result<Parsed, ParserError> {
 
 /// Parses the SQLite statement at the position of the parser, up to its `;`
 /// or the end of the text: a `PRAGMA`, `DETACH`, `VACUUM` or `REINDEX`
-/// (`sqlite_statements.rs`), else a statement of `sqlparser`.
+/// (`sqlite_statements.rs`), a `REPLACE` read as `INSERT OR REPLACE`, else a
+/// statement of `sqlparser`.
 ///
 /// Workaround: the statements `sqlparser` does not parse (`docs/DEVELOPER.md`,
 /// section "Workarounds").
@@ -101,7 +102,10 @@ fn parse_sqlite(parser: &mut Parser) -> Result<Parsed, ParserError> {
     if let Some(statement) = parse_sqlite_statement(parser) {
         return statement.map(Parsed::Sqlite);
     }
-    let statement = parser.parse_statement()?;
+    let statement = match parse_replace(parser) {
+        Some(statement) => statement?,
+        None => parser.parse_statement()?,
+    };
     expect_end(parser)?;
     Ok(Parsed::Sql(statement))
 }

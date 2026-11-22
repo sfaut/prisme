@@ -1,7 +1,8 @@
 //! SQLite statements that `sqlparser` (0.64) does not parse, or misreads:
 //! `PRAGMA` (its value may be a name, `PRAGMA journal_mode = WAL`, or the
 //! argument of a pragma that reads, `PRAGMA table_info(t)`), `DETACH`,
-//! `VACUUM` (with `INTO`) and `REINDEX`.
+//! `VACUUM` (with `INTO`) and `REINDEX`; and `REPLACE`, which it only
+//! parses for MySQL, read as the `INSERT OR REPLACE` it stands for.
 //!
 //! Prisme refuses a query it cannot parse, as nothing proves what it does:
 //! these statements need their own tree for the write switches (see
@@ -11,6 +12,7 @@
 //!
 //! Workaround: `sqlparser` does not parse these statements (`docs/DEVELOPER.md`, section "Workarounds").
 
+use sqlparser::ast::{Insert, SqliteOnConflict, Statement};
 use sqlparser::parser::{Parser, ParserError};
 use sqlparser::tokenizer::Token;
 
@@ -75,6 +77,22 @@ pub(crate) fn parse_sqlite_statement(
     }))
 }
 
+/// Parses a `REPLACE` of SQLite at the position of the parser, as the
+/// `INSERT OR REPLACE` it stands for: `None` (nothing consumed) if the
+/// statement does not start with `REPLACE`.
+pub(crate) fn parse_replace(parser: &mut Parser) -> Option<Result<Statement, ParserError>> {
+    if !word_is(parser, 0, "REPLACE") {
+        return None;
+    }
+    let replace = parser.next_token();
+    Some(parser.parse_insert(replace).map(|mut statement| {
+        if let Statement::Insert(Insert { or, .. }) = &mut statement {
+            *or = Some(SqliteOnConflict::Replace);
+        }
+        statement
+    }))
+}
+
 /// `PRAGMA` after its keyword.
 fn pragma(parser: &mut Parser) -> Result<SqliteStatement, ParserError> {
     let name = parser.parse_object_name(false)?;
@@ -95,15 +113,16 @@ fn pragma(parser: &mut Parser) -> Result<SqliteStatement, ParserError> {
     Ok(SqliteStatement::Pragma { name, form })
 }
 
-/// Value of a pragma: a number with its sign, a name, a keyword (`ON`,
-/// `WAL`) or a string.
+/// Value of a pragma: a number with its sign (decimal or hexadecimal), a
+/// name, a keyword (`ON`, `WAL`) or a string.
 fn pragma_value(parser: &mut Parser) -> Result<(), ParserError> {
     let signed = matches!(parser.peek_token_ref().token, Token::Plus | Token::Minus);
     if signed {
         parser.advance_token();
     }
     match parser.peek_token_ref().token {
-        Token::Number(..) => {}
+        // `0x10002` is read as a hexadecimal literal.
+        Token::Number(..) | Token::HexStringLiteral(_) => {}
         Token::Word(_) | Token::SingleQuotedString(_) | Token::DoubleQuotedString(_) if !signed => {
         }
         _ => return expected(parser, "a pragma value"),
@@ -175,6 +194,10 @@ mod tests {
         assert_eq!(
             pragma_of("pragma Main.Journal_Mode = WAL"),
             pragma("journal_mode", PragmaForm::Equals)
+        );
+        assert_eq!(
+            pragma_of("PRAGMA optimize(-0x10002)"),
+            pragma("optimize", PragmaForm::Parentheses)
         );
         assert_eq!(
             pragma_of("PRAGMA cache_size = -2000"),

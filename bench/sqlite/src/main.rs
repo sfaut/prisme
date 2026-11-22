@@ -5,7 +5,8 @@
 //! between connections (`memdb`), text of the real numbers, interruption,
 //! transactions after an error, detaching while in use, paths on Windows,
 //! values kept by `INT`, `NUMERIC` and `REAL` columns, lexical rules of the
-//! texts (comments, quotes, end of a statement), `LIMIT` after `VALUES`. The results go to
+//! texts (comments, quotes, end of a statement), `LIMIT` after `VALUES`,
+//! pragmas (forms, unknown names, functions, read-only files). The results go to
 //! `docs/SQL-COMPARISON.md`, section "SQLite embedded in Prisme".
 //!
 //! From the root of the repository:
@@ -52,6 +53,7 @@ fn main() {
     numeric_affinity();
     lexical_rules();
     limit_after_values();
+    pragmas(&folder);
 
     std::fs::remove_dir_all(&folder).ok();
 }
@@ -621,4 +623,114 @@ fn limit_after_values() {
             }),
         );
     }
+}
+
+/// Text of a value: a text as such, the other values with their type.
+fn shown(value: ValueRef<'_>) -> String {
+    match value {
+        ValueRef::Text(bytes) => String::from_utf8_lossy(bytes).into_owned(),
+        ValueRef::Integer(number) => number.to_string(),
+        other => format!("{other:?}"),
+    }
+}
+
+/// Pragmas: the forms of their value, an unknown name, their functions in a
+/// `SELECT`, and those that write on a read-only file; where Prisme's list
+/// of the pragmas (`crates/dialects/src/sqlite_pragmas.rs`) gives each its
+/// role.
+fn pragmas(folder: &Path) {
+    println!(
+        "
+12. Pragmas"
+    );
+    let path = folder.join("pragmas.db");
+    create_database(&path);
+    let connection = Connection::open_with_flags(&path, READ_WRITE).expect("connection");
+    let rows = |connection: &Connection, sql: &str| {
+        connection.prepare(sql).and_then(|mut statement| {
+            let columns = statement.column_count();
+            statement
+                .query_map([], |row| {
+                    (0..columns)
+                        .map(|index| row.get_ref(index).map(shown))
+                        .collect::<rusqlite::Result<Vec<_>>>()
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        })
+    };
+    let names: Vec<String> = rows(
+        &connection,
+        "SELECT name FROM pragma_pragma_list ORDER BY name",
+    )
+    .expect("pragma_list")
+    .into_iter()
+    .map(|row| row[0].clone())
+    .collect();
+    println!(
+        "  pragma_list: {} pragmas: {}",
+        names.len(),
+        names.join(" ")
+    );
+    // Pragmas that a function of their name gives in a SELECT.
+    let functions: Vec<&str> = names
+        .iter()
+        .filter(|name| {
+            connection
+                .prepare(&format!("SELECT * FROM pragma_{name}"))
+                .is_ok()
+        })
+        .map(String::as_str)
+        .collect();
+    println!(
+        "  functions pragma_*: {}: {}",
+        functions.len(),
+        functions.join(" ")
+    );
+    for sql in [
+        "PRAGMA no_such_pragma",
+        "PRAGMA no_such_pragma = 1",
+        "PRAGMA table_info = t",
+        "PRAGMA table_info(t)",
+        "PRAGMA foreign_keys(1)",
+        "PRAGMA foreign_keys",
+        "PRAGMA foreign_keys = 0",
+        "PRAGMA main.cache_size(-100)",
+        "PRAGMA cache_size",
+        "PRAGMA integrity_check(1)",
+        "PRAGMA journal_mode",
+        "SELECT * FROM pragma_table_info('t')",
+        "SELECT * FROM pragma_journal_mode",
+        "SELECT * FROM pragma_journal_mode('wal')",
+        "SELECT * FROM pragma_foreign_keys(1)",
+        "SELECT * FROM pragma_user_version",
+        "SELECT * FROM pragma_optimize",
+        "SELECT * FROM pragma_wal_checkpoint",
+        "SELECT * FROM pragma_incremental_vacuum",
+        "SELECT * FROM pragma_integrity_check",
+    ] {
+        report(sql, rows(&connection, sql));
+    }
+    drop(connection);
+    let connection = Connection::open_with_flags(&path, READ_ONLY).expect("connection");
+    println!("  On a read-only connection:");
+    for sql in [
+        "PRAGMA optimize",
+        "PRAGMA wal_checkpoint",
+        "PRAGMA incremental_vacuum",
+        "PRAGMA user_version = 3",
+        "PRAGMA foreign_keys = 1",
+        "PRAGMA cache_size = 10",
+    ] {
+        report(sql, rows(&connection, sql));
+    }
+    let uri = format!(
+        "file:{}?mode=rw",
+        path.display().to_string().replace('\\', "/")
+    );
+    let attach = format!("ATTACH {} AS other", literal(&uri));
+    report(&attach, connection.execute_batch(&attach));
+    report(
+        "INSERT INTO other.t (name) VALUES ('two')",
+        connection.execute("INSERT INTO other.t (name) VALUES ('two')", []),
+    );
 }

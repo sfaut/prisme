@@ -31,6 +31,8 @@ export const WRITE_KIND_STATEMENTS: Record<WriteKind, string> = {
   create_event: 'CREATE EVENT',
   alter_event: 'ALTER EVENT',
   drop_event: 'DROP EVENT',
+  attach: 'ATTACH / DETACH',
+  maintenance: 'VACUUM, REINDEX, ANALYZE',
 }
 
 /**
@@ -38,17 +40,23 @@ export const WRITE_KIND_STATEMENTS: Record<WriteKind, string> = {
  */
 export const WRITE_KIND_NOTES: Partial<Record<WriteKind, string>> = {
   insert:
-    'Tables temporaires comprises. Avec DELETE : REPLACE. Avec UPDATE : INSERT … ON DUPLICATE KEY UPDATE.',
-  update: 'Sur une table ou plusieurs (jointure), tables temporaires comprises',
+    'Tables temporaires comprises. Avec DELETE : REPLACE, INSERT OR REPLACE. Avec UPDATE : INSERT … ON DUPLICATE KEY UPDATE, INSERT … ON CONFLICT DO UPDATE.',
+  update:
+    'Sur une table ou plusieurs (jointure), tables temporaires comprises. Avec DELETE : UPDATE OR REPLACE.',
   delete:
-    'Sur une table ou plusieurs (jointure), tables temporaires comprises. Avec INSERT : REPLACE.',
+    'Sur une table ou plusieurs (jointure), tables temporaires comprises. Avec INSERT : REPLACE, INSERT OR REPLACE. Avec UPDATE : UPDATE OR REPLACE.',
   truncate_table: 'Tables temporaires comprises',
+  create_table: 'Aussi CREATE VIRTUAL TABLE (SQLite)',
   alter_table: 'Aussi CREATE INDEX et DROP INDEX',
   create_temporary_table:
-    'Prisme suit les tables temporaires créées par la session : les changements qui ne portent que sur elles relèvent de ce groupe, leurs données du groupe Données',
+    'Prisme suit les tables temporaires créées par la session, et celles du schéma temp de SQLite : les changements qui ne portent que sur elles relèvent de ce groupe, leurs données du groupe Données',
   alter_temporary_table: 'Aussi CREATE INDEX et DROP INDEX',
   drop_temporary_table: 'Aussi DROP TABLE, quand toutes les tables nommées sont temporaires',
   create_view: 'Aussi ALTER VIEW',
+  attach:
+    'Pour la session. Un fichier nommé par un chemin absolu, ou :memory: ; une base attachée en lecture seule le reste.',
+  maintenance:
+    'Aussi les pragmas qui écrivent dans le fichier : optimize, wal_checkpoint, incremental_vacuum. VACUUM INTO reste refusé.',
 }
 
 /**
@@ -123,6 +131,13 @@ export const WRITE_KIND_GROUPS: WriteKindGroup[] = [
       { kind: 'create_event', verb: 'CREATE' },
       { kind: 'alter_event', verb: 'ALTER' },
       { kind: 'drop_event', verb: 'DROP' },
+    ],
+  },
+  {
+    label: 'Fichiers SQLite',
+    kinds: [
+      { kind: 'attach', verb: 'ATTACH' },
+      { kind: 'maintenance', verb: 'VACUUM' },
     ],
   },
 ]
