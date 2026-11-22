@@ -695,7 +695,7 @@ Only reads pass: `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` and `USE`. Writes (`UPD
 
 The development servers serve here too (see "Development servers"): the connection above goes to the latest MariaDB LTS, port `3322`; the latest MySQL LTS answers on port `3312`, also as `root` without a password.
 
-To look at the internal database, open `./tmp/prisme.db` with any SQLite client (DBeaver, DB Browser for SQLite, `sqlite3`). The `password_secret` column only holds encrypted bytes.
+To look at the internal database, open `./tmp/prisme.db` with any SQLite client (DBeaver, DB Browser for SQLite, `sqlite3`). The `password_secret` column of `connection_servers` only holds encrypted bytes.
 
 ## SQL keywords
 

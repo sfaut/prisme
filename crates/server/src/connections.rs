@@ -14,6 +14,10 @@
 //! page is closed (see `sessions.rs`), and remembers the server's flavor
 //! (MySQL or MariaDB) and version seen on the last successful connection,
 //! with its date.
+//!
+//! The settings every engine shares are in `connections`, those of the
+//! servers in `connection_servers`, the last successful connection in
+//! `connection_probes` (`migrations/0037_connections_by_family.sql`).
 
 use prisme_connectors::api::{Engine, ServerSettings, Settings, SourceInfo, Target};
 use prisme_connectors::flavor::Flavor;
@@ -42,6 +46,9 @@ const DATABASE_NAME_MAX_LENGTH: usize = 64;
 
 /// Maximum length of the on-connect queries, in characters.
 const INIT_SQL_MAX_LENGTH: usize = 4000;
+
+/// Maximum length of the version of a source kept, in characters.
+const VERSION_MAX_LENGTH: usize = 100;
 
 /// Maximum keep-alive delay of a detached session, in minutes (24 hours).
 const SESSION_TIMEOUT_MAX_MINUTES: u32 = 1440;
@@ -269,7 +276,9 @@ pub fn insert_copy(
     new.validate()?;
     let saved_secret: Option<Vec<u8>> = db
         .query_row(
-            "SELECT password_secret FROM connections WHERE id = ?1 AND user_id = ?2",
+            "SELECT s.password_secret
+             FROM connections c JOIN connection_servers s ON s.connection_id = c.id
+             WHERE c.id = ?1 AND c.user_id = ?2",
             params![source_id, user_id],
             |row| row.get(0),
         )
@@ -285,7 +294,7 @@ pub fn insert_copy(
     insert_row(db, user_id, new, &password_secret).map(Some)
 }
 
-/// Inserts the row of a validated connection, its password already
+/// Inserts the rows of a validated connection, its password already
 /// encrypted, and returns its id.
 fn insert_row(
     db: &Connection,
@@ -293,25 +302,35 @@ fn insert_row(
     new: &NewConnection,
     password_secret: &[u8],
 ) -> Result<i64, ConnectionsError> {
-    let result = db.execute(
-        "INSERT INTO connections (user_id, name, engine, host, port, username, password_secret, database_name, init_sql, session_timeout_minutes, show_system_schemas)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+    let transaction = db.unchecked_transaction()?;
+    let result = transaction.execute(
+        "INSERT INTO connections (user_id, name, engine, init_sql, session_timeout_minutes, show_system_schemas)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             user_id,
             new.name,
             Engine::Mysql.key(),
-            new.host,
-            new.port,
-            new.username,
-            password_secret,
-            new.database_name,
             new.init_sql,
             new.session_timeout_minutes,
             new.show_system_schemas,
         ],
     );
     result.map_err(|error| name_error(error, &new.name))?;
-    Ok(db.last_insert_rowid())
+    let id = transaction.last_insert_rowid();
+    transaction.execute(
+        "INSERT INTO connection_servers (connection_id, host, port, username, password_secret, database_name)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            id,
+            new.host,
+            new.port,
+            new.username,
+            password_secret,
+            new.database_name,
+        ],
+    )?;
+    transaction.commit()?;
+    Ok(id)
 }
 
 /// Changes connection `id` of user `user_id`. An empty password keeps the
@@ -332,28 +351,40 @@ pub fn update(
         Some(secrets::encrypt(key, &changed.password)?)
     };
 
-    let result = db.execute(
+    let transaction = db.unchecked_transaction()?;
+    let result = transaction.execute(
         "UPDATE connections
-         SET name = ?3, host = ?4, port = ?5, username = ?6,
-             password_secret = COALESCE(?7, password_secret), database_name = ?8, init_sql = ?9,
-             session_timeout_minutes = ?10, show_system_schemas = ?11
+         SET name = ?3, init_sql = ?4, session_timeout_minutes = ?5, show_system_schemas = ?6
          WHERE id = ?1 AND user_id = ?2",
         params![
             id,
             user_id,
             changed.name,
-            changed.host,
-            changed.port,
-            changed.username,
-            password_secret,
-            changed.database_name,
             changed.init_sql,
             changed.session_timeout_minutes,
             changed.show_system_schemas,
         ],
     );
     let updated = result.map_err(|error| name_error(error, &changed.name))?;
-    Ok(updated == 1)
+    if updated != 1 {
+        return Ok(false);
+    }
+    transaction.execute(
+        "UPDATE connection_servers
+         SET host = ?2, port = ?3, username = ?4,
+             password_secret = COALESCE(?5, password_secret), database_name = ?6
+         WHERE connection_id = ?1",
+        params![
+            id,
+            changed.host,
+            changed.port,
+            changed.username,
+            password_secret,
+            changed.database_name,
+        ],
+    )?;
+    transaction.commit()?;
+    Ok(true)
 }
 
 /// Translates a violation of the name's uniqueness into `DuplicateName`, lets the other errors through.
@@ -371,10 +402,13 @@ fn name_error(error: rusqlite::Error, name: &str) -> ConnectionsError {
 /// Lists the connections of user `user_id`, by name, without their password.
 pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, ConnectionsError> {
     let mut statement = db.prepare(
-        "SELECT id, name, engine, host, port, username, database_name, init_sql,
-                session_timeout_minutes, show_system_schemas, server_flavor, server_version,
-                connected_at, created_at
-         FROM connections WHERE user_id = ?1 ORDER BY name",
+        "SELECT c.id, c.name, c.engine, s.host, s.port, s.username, s.database_name, c.init_sql,
+                c.session_timeout_minutes, c.show_system_schemas, p.flavor, p.version,
+                p.connected_at, c.created_at
+         FROM connections c
+         JOIN connection_servers s ON s.connection_id = c.id
+         LEFT JOIN connection_probes p ON p.connection_id = c.id
+         WHERE c.user_id = ?1 ORDER BY c.name",
     )?;
     let rows = statement.query_map(params![user_id], |row| {
         Ok(ConnectionSummary {
@@ -388,9 +422,12 @@ pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, Con
             init_sql: row.get(7)?,
             session_timeout_minutes: row.get(8)?,
             show_system_schemas: row.get(9)?,
-            server_flavor: flavor_of(&row.get::<_, String>(10)?),
-            server_version: Some(row.get::<_, String>(11)?).filter(|version| !version.is_empty()),
-            connected_at: Some(row.get::<_, String>(12)?).filter(|date| !date.is_empty()),
+            server_flavor: row
+                .get::<_, Option<String>>(10)?
+                .as_deref()
+                .and_then(Flavor::from_key),
+            server_version: row.get(11)?,
+            connected_at: row.get(12)?,
             created_at: row.get(13)?,
         })
     })?;
@@ -419,8 +456,10 @@ pub fn load_target(
 ) -> Result<Option<Target>, ConnectionsError> {
     let row = db
         .query_row(
-            "SELECT engine, host, port, username, password_secret, database_name, init_sql
-             FROM connections WHERE id = ?1 AND user_id = ?2",
+            "SELECT c.engine, s.host, s.port, s.username, s.password_secret, s.database_name,
+                    c.init_sql
+             FROM connections c JOIN connection_servers s ON s.connection_id = c.id
+             WHERE c.id = ?1 AND c.user_id = ?2",
             params![id, user_id],
             |row| {
                 Ok((
@@ -439,7 +478,7 @@ pub fn load_target(
     let Some((engine, host, port, username, password_secret, database_name, init_sql)) = row else {
         return Ok(None);
     };
-    // The CHECK of the column keeps the engines Prisme knows.
+    // The foreign key of the column keeps the engines Prisme knows.
     let engine = Engine::from_key(&engine).unwrap_or(Engine::Mysql);
     Ok(Some(Target {
         engine,
@@ -475,27 +514,16 @@ pub fn remember_server(
     id: i64,
     server: &SourceInfo,
 ) -> Result<(), ConnectionsError> {
-    let flavor = match server.flavor {
-        Flavor::MySql => "mysql",
-        Flavor::MariaDb => "mariadb",
-    };
+    let version: String = server.version.chars().take(VERSION_MAX_LENGTH).collect();
     db.execute(
-        "UPDATE connections
-         SET server_flavor = ?3, server_version = ?4,
-             connected_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-         WHERE id = ?1 AND user_id = ?2",
-        params![id, user_id, flavor, server.version],
+        "INSERT INTO connection_probes (connection_id, flavor, version)
+         SELECT id, ?3, ?4 FROM connections WHERE id = ?1 AND user_id = ?2
+         ON CONFLICT (connection_id) DO UPDATE
+         SET flavor = excluded.flavor, version = excluded.version,
+             connected_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+        params![id, user_id, server.flavor.key(), version],
     )?;
     Ok(())
-}
-
-/// Saved flavor, `None` for the empty string (never connected).
-fn flavor_of(name: &str) -> Option<Flavor> {
-    match name {
-        "mysql" => Some(Flavor::MySql),
-        "mariadb" => Some(Flavor::MariaDb),
-        _ => None,
-    }
 }
 
 /// Keep-alive delay of the sessions of connection `id`, in minutes.
@@ -637,9 +665,11 @@ mod tests {
         insert(&db, &key, user_id, &new_connection("prod")).unwrap();
 
         let stored: Vec<u8> = db
-            .query_row("SELECT password_secret FROM connections", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT password_secret FROM connection_servers",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert!(!stored.windows(6).any(|window| window == b"secret"));
     }
@@ -684,6 +714,13 @@ mod tests {
         assert!(delete(&db, alice, id).unwrap());
         assert!(list(&db, alice).unwrap().is_empty());
         assert!(!delete(&db, alice, id).unwrap());
+        // The settings of the server go with the connection.
+        let servers: i64 = db
+            .query_row("SELECT COUNT(*) FROM connection_servers", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(servers, 0);
     }
 
     #[test]
@@ -839,6 +876,25 @@ mod tests {
         assert_eq!(summary.server_version.as_deref(), Some("10.11.11-MariaDB"));
         let connected_at = summary.connected_at.as_deref().unwrap();
         assert!(connected_at.ends_with('Z'), "{connected_at}");
+
+        // A later connection replaces the probe; another user's changes nothing.
+        let server = SourceInfo {
+            flavor: Flavor::MySql,
+            version: "8".repeat(VERSION_MAX_LENGTH + 10),
+            ..server
+        };
+        remember_server(&db, user_id + 1, id, &server).unwrap();
+        assert_eq!(
+            list(&db, user_id).unwrap()[0].server_flavor,
+            Some(Flavor::MariaDb)
+        );
+        remember_server(&db, user_id, id, &server).unwrap();
+        let summary = &list(&db, user_id).unwrap()[0];
+        assert_eq!(summary.server_flavor, Some(Flavor::MySql));
+        assert_eq!(
+            summary.server_version.as_deref(),
+            Some("8".repeat(VERSION_MAX_LENGTH).as_str())
+        );
     }
 
     #[test]

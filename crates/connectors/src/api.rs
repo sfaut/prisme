@@ -45,6 +45,10 @@ pub enum Engine {
 }
 
 impl Engine {
+    /// Every engine, as the reference table `engines` of the internal
+    /// database lists them.
+    pub const ALL: [Self; 1] = [Self::Mysql];
+
     /// Key of the engine, as the internal database stores it
     /// (`connections.engine`).
     pub fn key(self) -> &'static str {
@@ -53,11 +57,43 @@ impl Engine {
         }
     }
 
+    /// Family of the settings of its sources.
+    pub fn family(self) -> Family {
+        match self {
+            Self::Mysql => Family::Server,
+        }
+    }
+
     /// Engine of the key `key`, as the internal database stores it.
     pub fn from_key(key: &str) -> Option<Self> {
         match key {
             "mysql" => Some(Self::Mysql),
             _ => None,
+        }
+    }
+}
+
+/// Family of the settings of a source: what reaching it takes. Each family
+/// has its table of settings in the internal database, and its form in the
+/// interface; several engines can share one (SQLite and DuckDB, files).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Family {
+    /// A server reached over the network: host, port, account.
+    Server,
+    /// Databases held in files, each at a location.
+    Files,
+}
+
+impl Family {
+    /// Every family, as the reference table `setting_families` of the
+    /// internal database lists them.
+    pub const ALL: [Self; 2] = [Self::Server, Self::Files];
+
+    /// Key of the family, as the internal database stores it.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Server => "server",
+            Self::Files => "files",
         }
     }
 }

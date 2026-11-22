@@ -5,6 +5,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::api::Engine;
+
 /// Flavor of the server, detected on connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -17,6 +19,31 @@ pub enum Flavor {
 }
 
 impl Flavor {
+    /// Every flavor, as the reference table `flavors` of the internal
+    /// database lists them.
+    pub const ALL: [Self; 2] = [Self::MySql, Self::MariaDb];
+
+    /// Key of the flavor, as serialized and as the internal database stores
+    /// it.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::MySql => "mysql",
+            Self::MariaDb => "mariadb",
+        }
+    }
+
+    /// Flavor of the key `key`.
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|flavor| flavor.key() == key)
+    }
+
+    /// Engine that detects the flavor.
+    pub fn engine(self) -> Engine {
+        match self {
+            Self::MySql | Self::MariaDb => Engine::Mysql,
+        }
+    }
+
     /// Oldest version of the flavor that Prisme supports: the first general
     /// availability release of MySQL 8.0 and of MariaDB 10.6. An older server
     /// still works, with a warning (`docs/V1.md`, section 2.10).
