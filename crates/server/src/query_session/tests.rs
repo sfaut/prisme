@@ -778,12 +778,13 @@ async fn closing_the_editor_session_ends_it_at_once() {
         .await;
         assert!(closed.is_ok());
 
-        // A new WebSocket opens another session: back to the default database.
+        // A new WebSocket opens another session, on the last current
+        // database of the editor.
         let (mut socket, _) = connect_async(&url).await.unwrap();
         let ready = next_json(&mut socket).await;
         assert_eq!(
             (ready["type"].as_str(), ready["database"].as_str()),
-            (Some("ready"), Some(target.database_name.as_str()))
+            (Some("ready"), Some("mysql"))
         );
         }).await;
     }
