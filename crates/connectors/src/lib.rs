@@ -8,8 +8,11 @@
 //! (`failure`) and the trace of the statements sent (`sql_log`); numbers
 //! are written alike for every engine (`number_text`). The databases held in
 //! files are reached through the providers of their locations (`location`).
+//! The engines whose driver blocks run each connection on a thread of its
+//! own (`blocking`).
 
 pub mod api;
+pub mod blocking;
 pub mod catalog;
 pub mod columns;
 pub mod drivers;

@@ -21,7 +21,7 @@ serde_json = "1.0.154"
 # Names of the copies of the web files in the cache: digest of their URL (location/http.rs).
 sha2 = "0.11.1"
 thiserror = "2.0.21"
-tokio = { version = "1.54.1", features = ["fs", "io-util", "time"] }
+tokio = { version = "1.54.1", features = ["fs", "io-util", "sync", "time"] }
 tracing = "0.1.44"
 ts-rs = "12.0.1"
 # URLs of the locations typed (`file:///`, `https://`), read by location.rs.

@@ -82,7 +82,7 @@ Architecture:
 
 ## 4. SQLite connector
 
-- ⬜ Module `blocking`
+- ✅ Module `blocking`
 - ⬜ `Driver`, `Session`, `CatalogReader`, `Rows`, `Canceller`
 - ⬜ Attachments, remote copies read-only, databases in `memdb`
 - ⬜ Backup of a database in memory
