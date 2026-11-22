@@ -7,15 +7,25 @@ license.workspace = true
 [dependencies]
 # Boxed futures of the contracts of the connectors (api.rs), behind `dyn`.
 futures-util = "0.3.34"
+# Dates of the web servers (`Last-Modified`), read by the provider of the web files (location/http.rs).
+httpdate = "1.0.3"
 mysql_async = "0.37.1"
 # The verb of a statement, which tells what the counts of its OK packet mean.
 prisme-dialects = { path = "../dialects" }
+# Client of the web files (location/http.rs), TLS by rustls: nothing to install on the system.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls"] }
 secrecy = "0.10.3"
 serde = { version = "1.0.229", features = ["derive"] }
+# Records of the copies of the web files in the cache (location/http.rs).
+serde_json = "1.0.154"
+# Names of the copies of the web files in the cache: digest of their URL (location/http.rs).
+sha2 = "0.11.1"
 thiserror = "2.0.21"
-tokio = { version = "1.54.1", features = ["time"] }
+tokio = { version = "1.54.1", features = ["fs", "io-util", "time"] }
 tracing = "0.1.44"
 ts-rs = "12.0.1"
+# URLs of the locations typed (`file:///`, `https://`), read by location.rs.
+url = "2.5.8"
 
 [features]
 # The development servers of compose.yaml (src/test_servers.rs), for the
@@ -23,11 +33,13 @@ ts-rs = "12.0.1"
 test-servers = []
 
 [dev-dependencies]
+# Local web server of the tests of the web files (location/http.rs).
+axum = "0.8.9"
 # The crate itself, with the development servers for its tests on real servers.
 prisme-connectors = { path = ".", features = ["test-servers"] }
-# Reference files of the exports (tests/fixtures/export/), read by the tests on real servers.
-serde_json = "1.0.154"
 # Generated TypeScript types formatted (dprint), only in the tests that write them.
+# Temporary folders of the tests of the locations.
+tempfile = "3.27.0"
 ts-rs = { version = "12.0.1", features = ["format"] }
-tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "time"] }
+tokio = { version = "1.54.1", features = ["macros", "net", "rt-multi-thread", "time"] }
 

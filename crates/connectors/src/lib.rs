@@ -6,7 +6,8 @@
 //! flavor of its source (`flavor`), the columns and cells of a result
 //! (`columns`), the outcome of a statement (`outcome`), its failures
 //! (`failure`) and the trace of the statements sent (`sql_log`); numbers
-//! are written alike for every engine (`number_text`).
+//! are written alike for every engine (`number_text`). The databases held in
+//! files are reached through the providers of their locations (`location`).
 
 pub mod api;
 pub mod catalog;
@@ -14,6 +15,7 @@ pub mod columns;
 pub mod drivers;
 pub mod failure;
 pub mod flavor;
+pub mod location;
 pub mod mysql;
 pub mod number_text;
 pub mod outcome;

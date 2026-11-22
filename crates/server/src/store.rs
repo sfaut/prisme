@@ -149,6 +149,7 @@ pub fn open_in_memory() -> Connection {
 mod tests {
     use prisme_connectors::api::{Engine, Family};
     use prisme_connectors::flavor::Flavor;
+    use prisme_connectors::location::Scheme;
     use prisme_dialects::classify::WriteKind;
 
     use super::*;
@@ -574,6 +575,9 @@ mod tests {
             keys("SELECT key || ':' || engine FROM flavors ORDER BY key"),
             flavors
         );
+        let mut schemes: Vec<String> = Scheme::ALL.map(|scheme| scheme.key().to_owned()).to_vec();
+        schemes.sort();
+        assert_eq!(keys("SELECT key FROM schemes ORDER BY key"), schemes);
     }
 
     #[test]
