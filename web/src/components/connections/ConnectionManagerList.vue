@@ -3,8 +3,9 @@
   button, the connection being created right under it, then the saved
   connections grouped by family of sources (`sourceTypes.ts`).
 
-  The servers' family folds and unfolds, and its "+" starts a creation; the
-  files' family has no connection yet: it shows "à venir", without "+".
+  The servers' family folds and unfolds; the files' family has no
+  connection yet: it shows "à venir". A creation starts from the "Nouvelle
+  connexion" button alone.
 
   Each connection shows its icon, its name and where it points, and a dot:
   green once connected, grey never. A connection changed and not saved shows
@@ -149,14 +150,6 @@ function lineClasses(active: boolean): string {
             <span class="text-trim">à venir</span>
           </span>
         </span>
-        <ui-button
-          v-if="family.ready"
-          :icon="Plus"
-          variant="ghost"
-          small
-          :aria-label="family.addLabel"
-          @click="emit('create')"
-        />
       </div>
 
       <div v-if="family.ready && !folded" class="flex flex-col gap-1">

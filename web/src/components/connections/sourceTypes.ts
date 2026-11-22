@@ -68,10 +68,6 @@ export interface SourceFamily {
    */
   heading: string
   /**
-   * Label of the button that creates a connection of the family.
-   */
-  addLabel: string
-  /**
    * Kinds of the family, in the order shown.
    */
   types: SourceType[]
@@ -101,7 +97,6 @@ export const SOURCE_FAMILIES: SourceFamily[] = [
     key: 'server',
     title: 'Serveurs',
     heading: 'Serveurs de bases de données',
-    addLabel: 'Nouveau serveur',
     ready: true,
     types: [
       MYSQL,
@@ -125,7 +120,6 @@ export const SOURCE_FAMILIES: SourceFamily[] = [
     key: 'file',
     title: 'Fichiers',
     heading: 'Fichiers',
-    addLabel: 'Nouveau fichier',
     ready: false,
     types: [
       {
