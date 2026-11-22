@@ -182,7 +182,7 @@ describe('system databases', () => {
 })
 
 describe('navigatorTree', () => {
-  it('puts the sources under "Sources de données", then "Notebooks"', () => {
+  it('puts the sources under "Sources de données"', () => {
     const source = {
       connectionId: 1,
       name: 'Origen 2',
@@ -193,8 +193,7 @@ describe('navigatorTree', () => {
       version: null,
       showSystemSchemas: true,
     }
-    const [root, notebooks] = navigatorTree([source], true)
-    expect(notebooks?.label).toBe('Notebooks')
+    const [root] = navigatorTree([source], true)
     expect(root?.label).toBe('Sources de données')
     expect(root?.note).toBe('chargement…')
     expect(labels(root)).toEqual(['Origen 2'])

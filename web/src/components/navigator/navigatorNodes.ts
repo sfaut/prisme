@@ -15,7 +15,6 @@
  *       ├─ Vues (n)       ── vue ─── Colonnes (n)
  *       ├─ Procédures (n)
  *       └─ Fonctions (n)
- * Notebooks
  * ```
  *
  * Several sources sit side by side: each saved connection is a branch under
@@ -135,11 +134,11 @@ export interface NavigatorNode extends Place {
    */
   isLeaf: boolean
   /**
-   * Role of the nodes that can be acted on (menu, double click): the roots
-   * "Sources de données" (`sources`) and "Notebooks" (`notebooks`), a source
-   * (`source`) or a database (`database`).
+   * Role of the nodes that can be acted on (menu, double click): the root
+   * "Sources de données" (`sources`), a source (`source`) or a database
+   * (`database`).
    */
-  role?: 'sources' | 'notebooks' | 'source' | 'database'
+  role?: 'sources' | 'source' | 'database'
   /**
    * Nature of a catalog node without a role (folder, table, column...).
    */
@@ -246,13 +245,7 @@ export interface Reference {
 export const SOURCES_KEY = 'sources'
 
 /**
- * Key of the "Notebooks" root.
- */
-export const NOTEBOOKS_KEY = 'notebooks'
-
-/**
- * Roots of the tree: "Sources de données", with one branch per source, then
- * "Notebooks", empty for now.
+ * Root of the tree: "Sources de données", with one branch per source.
  *
  * @param sources Sources, in display order.
  * @param receiving Is a catalog being received ("chargement…" note)?
@@ -273,14 +266,6 @@ export function navigatorTree(
       role: 'sources',
       note: receiving ? 'chargement…' : undefined,
       children: sourceNodes(sources, tablesByRows),
-    },
-    {
-      key: NOTEBOOKS_KEY,
-      label: 'Notebooks',
-      isLeaf: true,
-      connectionId: 0,
-      schema: '',
-      role: 'notebooks',
     },
   ]
 }

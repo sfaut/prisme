@@ -186,15 +186,7 @@ describe('NavigatorPanel', () => {
     const wrapper = mountNavigator({ selectedId: 1, currentDatabase: null })
     expect(wrapper.find('h2').text()).toBe('Navigateur d’objets')
     await vi.waitFor(() =>
-      expect(labels(wrapper)).toEqual([
-        'Sources de données',
-        'Origen 2',
-        'a',
-        'b',
-        'c',
-        'Autre',
-        'Notebooks',
-      ]),
+      expect(labels(wrapper)).toEqual(['Sources de données', 'Origen 2', 'a', 'b', 'c', 'Autre']),
     )
     wrapper.unmount()
   })
@@ -202,7 +194,7 @@ describe('NavigatorPanel', () => {
   it('offers a menu on the root and another one on each source', async () => {
     savedConnections = [connection(1, 'Origen 2')]
     const wrapper = mountNavigator({ selectedId: null, currentDatabase: null })
-    await vi.waitFor(() => expect(wrapper.findAll('.node-menu')).toHaveLength(3))
+    await vi.waitFor(() => expect(wrapper.findAll('.node-menu')).toHaveLength(2))
     const [root, source] = wrapper.findAll('.node-menu')
     const options = () =>
       [...document.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim())

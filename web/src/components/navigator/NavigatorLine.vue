@@ -31,7 +31,6 @@ import {
   Link,
   ListOrdered,
   LoaderCircle,
-  Notebook,
   PencilRuler,
   Rows3,
   ScrollText,
@@ -181,7 +180,7 @@ const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
 }
 
 /**
- * Icon of a node, before its label: each level has its own (roots, source,
+ * Icon of a node, before its label: each level has its own (root, source,
  * database, open or closed folder, table, view, column...). A column has a
  * single icon, which tells its key: a key for the primary key, a link for a
  * foreign key, the column icon otherwise.
@@ -197,8 +196,6 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
       return Cable
     case 'database':
       return Database
-    case 'notebooks':
-      return Notebook
   }
   if (node.column?.primaryKey) {
     return KeyRound
@@ -269,8 +266,7 @@ function iconLabel(node: NavigatorNode): string | undefined {
       :class="{
         'current-database': node.current,
         'chosen-source': node.chosen,
-        'font-bold':
-          node.current || node.chosen || node.role === 'sources' || node.role === 'notebooks',
+        'font-bold': node.current || node.chosen || node.role === 'sources',
       }"
     >
       <span class="truncate text-trim">{{ node.label }}</span>

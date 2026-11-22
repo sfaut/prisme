@@ -2,8 +2,7 @@
   Object navigator: under its title, "Navigateur d’objets" (`PanelHeader`),
   the collapsible
   "Sources de données" root, one branch per source (saved
-  connection), then its databases, tables and columns; next, the
-  "Notebooks" root, empty for now.
+  connection), then its databases, tables and columns.
 
   Each editor has its own navigator, in its tab, which acts on it: its
   connection is the chosen source, its session's database is the current
@@ -44,7 +43,7 @@
   tables by name (by default) or by row count, the largest first, with the
   two buttons of its line; the choice is kept per folder with the tree.
 
-  Each line carries the icon of its level: roots, source, database, folder
+  Each line carries the icon of its level: root, source, database, folder
   (open or closed), table, view, procedure, function, column, index, foreign
   key, trigger, and a spinning circle during a load.
 
@@ -73,7 +72,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { NotebookPen, Pencil, PlugZap, Plus, RefreshCw, Trash2, Unplug } from '@lucide/vue'
+import { Pencil, PlugZap, Plus, RefreshCw, Trash2, Unplug } from '@lucide/vue'
 import {
   TreeItem,
   type TreeItemSelectEvent,
@@ -371,9 +370,6 @@ function menuItems(node: NavigatorNode): MenuItem[] | null {
         { label: 'Ajouter une connexion', icon: Plus, onSelect: () => openDialog(null) },
         { label: 'Tout rafraîchir', icon: RefreshCw, onSelect: refreshAll },
       ]
-    case 'notebooks':
-      // Notebooks are not saved yet (stage 3 of the v1).
-      return [{ label: 'Créer un notebook', icon: NotebookPen, disabled: true }]
     case 'source':
       // The connection may have been deleted since the tree was built: no menu then.
       if (connection === null) {
