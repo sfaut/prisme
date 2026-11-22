@@ -252,7 +252,49 @@ pub fn insert(
 ) -> Result<i64, ConnectionsError> {
     new.validate()?;
     let password_secret = secrets::encrypt(key, &new.password)?;
+    insert_row(db, user_id, new, &password_secret)
+}
 
+/// Saves a copy of connection `source_id` of user `user_id`, with the
+/// settings of `new`, and returns its id. An empty password takes that of the
+/// source: the interface does not know it, so it cannot send it. The secret
+/// is copied as stored, without being decrypted.
+///
+/// Returns `None` if the source does not exist or belongs to another user.
+pub fn insert_copy(
+    db: &Connection,
+    key: &MasterKey,
+    user_id: i64,
+    source_id: i64,
+    new: &NewConnection,
+) -> Result<Option<i64>, ConnectionsError> {
+    new.validate()?;
+    let saved_secret: Option<Vec<u8>> = db
+        .query_row(
+            "SELECT password_secret FROM connections WHERE id = ?1 AND user_id = ?2",
+            params![source_id, user_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(saved_secret) = saved_secret else {
+        return Ok(None);
+    };
+    let password_secret = if new.password.expose_secret().is_empty() {
+        saved_secret
+    } else {
+        secrets::encrypt(key, &new.password)?
+    };
+    insert_row(db, user_id, new, &password_secret).map(Some)
+}
+
+/// Inserts the row of a validated connection, its password already
+/// encrypted, and returns its id.
+fn insert_row(
+    db: &Connection,
+    user_id: i64,
+    new: &NewConnection,
+    password_secret: &[u8],
+) -> Result<i64, ConnectionsError> {
     let result = db.execute(
         "INSERT INTO connections (user_id, name, engine, host, port, username, password_secret, database_name, init_sql, session_timeout_minutes, show_system_schemas)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
@@ -667,6 +709,43 @@ mod tests {
         assert_eq!(target.password.expose_secret(), "new");
 
         assert!(!update(&db, &key, bob, id, &changed).unwrap());
+    }
+
+    #[test]
+    fn copy_takes_the_source_password_when_left_empty() {
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let alice = store::ensure_user(&db, "alice@example.com").unwrap();
+        let bob = store::ensure_user(&db, "bob@example.com").unwrap();
+        let source = insert(&db, &key, alice, &new_connection("prod")).unwrap();
+
+        let mut copy = new_connection("prod (copie)");
+        copy.password = SecretString::from("");
+        let id = insert_copy(&db, &key, alice, source, &copy)
+            .unwrap()
+            .unwrap();
+        let target = load_target(&db, &key, alice, id).unwrap().unwrap();
+        assert_eq!(target.password.expose_secret(), "secret");
+
+        copy.name = "prod (autre)".to_string();
+        copy.password = SecretString::from("other");
+        let id = insert_copy(&db, &key, alice, source, &copy)
+            .unwrap()
+            .unwrap();
+        let target = load_target(&db, &key, alice, id).unwrap().unwrap();
+        assert_eq!(target.password.expose_secret(), "other");
+
+        // The name stays unique, and another user's connection cannot be copied.
+        assert!(matches!(
+            insert_copy(&db, &key, alice, source, &copy),
+            Err(ConnectionsError::DuplicateName(_))
+        ));
+        copy.name = "bob".to_string();
+        assert!(
+            insert_copy(&db, &key, bob, source, &copy)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

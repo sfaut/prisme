@@ -11,6 +11,7 @@
 //! | `PUT /api/connections/{id}`         | Changes a connection; empty password: unchanged (204).        |
 //! | `DELETE /api/connections/{id}`      | Deletes a connection (204).                                   |
 //! | `POST /api/connections/{id}/probe`  | Connects and returns the server's flavor and version.         |
+//! | `POST /api/connections/{id}/copies` | Saves a copy; empty password: that of the copied connection (201). |
 //! | `GET /api/connections/{id}/query`   | WebSocket: query session (see `query_session.rs`), closed with it. |
 //! | `GET /api/connections/{id}/catalog` | Databases, tables and columns (see `navigator.rs`).           |
 //! | `GET /api/settings`                 | Settings of the user: row limit (with the allowed choices), read-only sessions, retention of the console. |
@@ -166,6 +167,7 @@ pub fn router(state: AppState) -> Router {
             put(update_connection).delete(delete_connection),
         )
         .route("/api/connections/{id}/probe", post(probe_connection))
+        .route("/api/connections/{id}/copies", post(copy_connection))
         .route("/api/connections/{id}/query", get(query_socket))
         .route(
             "/api/editors/{id}/session",
@@ -221,6 +223,22 @@ async fn create_connection(
     let id = state
         .with_db(move |db, key| connections::insert(db, key, user.id, &new))
         .await?;
+    Ok((StatusCode::CREATED, Json(Created { id })))
+}
+
+/// `POST /api/connections/{id}/copies`: saves a copy of a connection of the
+/// current user, with the settings received, and returns its id (201). An
+/// empty password takes that of the copied connection.
+async fn copy_connection(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<i64>,
+    Json(new): Json<NewConnection>,
+) -> Result<(StatusCode, Json<Created>), ApiError> {
+    let id = state
+        .with_db(move |db, key| connections::insert_copy(db, key, user.id, id, &new))
+        .await?
+        .ok_or(ApiError::NotFound)?;
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
@@ -794,6 +812,31 @@ mod tests {
         let (status, _) = send(&app, "DELETE", &uri, None).await;
         assert_eq!(status, StatusCode::NO_CONTENT);
         let (status, _) = send(&app, "DELETE", &uri, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn copy_then_list() {
+        let app = test_app();
+        let (_, created) = send(
+            &app,
+            "POST",
+            "/api/connections",
+            Some(connection_json("prod", 3306)),
+        )
+        .await;
+        let mut copy = connection_json("prod (copie)", 3306);
+        copy["password"] = json!("");
+        let uri = format!("/api/connections/{}/copies", created["id"]);
+
+        let (status, copied) = send(&app, "POST", &uri, Some(copy.clone())).await;
+        assert_eq!(status, StatusCode::CREATED);
+        assert_ne!(copied["id"], created["id"]);
+        let (_, list) = send(&app, "GET", "/api/connections", None).await;
+        assert_eq!(list[1]["name"], "prod (copie)");
+
+        copy["name"] = json!("other");
+        let (status, _) = send(&app, "POST", "/api/connections/999/copies", Some(copy)).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
 
