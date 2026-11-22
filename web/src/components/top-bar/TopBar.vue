@@ -6,17 +6,21 @@
   connection of the active one (later, a menu: editor or notebook), exports
   manager (`ExportManager`), synchronisation state
   (`SyncStatus`), theme choice, and the account menu, headed by the user
-  (initials, name, email address), which opens the user's profile (`ProfileDialog`) and the preferences, the settings
-  (`PreferencesDialog`).
+  (initials, name, email address), which opens the user's profile
+  (`ProfileDialog`), the connections manager (`ConnectionManager`) and the
+  preferences, the settings (`PreferencesDialog`).
 
   The windows it opens are its own: the menu only chooses which one shows.
+  The connections manager opens through its store, as the navigator opens
+  it too.
 -->
 <script setup lang="ts">
-import { Monitor, Moon, Plus, Settings, Sun, User } from '@lucide/vue'
+import { Monitor, Moon, Plus, Server, Settings, Sun, User } from '@lucide/vue'
 import { onMounted, ref } from 'vue'
 
 import { getVersion } from '@/api/version'
 import { type ColorMode, colorMode } from '@/utils/colorMode'
+import { useConnectionsStore } from '@/stores/connections'
 import { useEditorsStore } from '@/stores/editors'
 import { useProfileStore } from '@/stores/profile'
 
@@ -24,6 +28,7 @@ import ExportManager from './ExportManager.vue'
 import PreferencesDialog from './PreferencesDialog.vue'
 import ProfileDialog from './ProfileDialog.vue'
 import SyncStatus from './SyncStatus.vue'
+import ConnectionManager from '@/components/connections/ConnectionManager.vue'
 import UiDropdownMenu from '@/components/ui/UiDropdownMenu.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiChoiceSwitch from '@/components/ui/UiChoiceSwitch.vue'
@@ -37,6 +42,7 @@ const version = ref<string | null>(null)
 
 const profile = useProfileStore()
 const editors = useEditorsStore()
+const connections = useConnectionsStore()
 
 onMounted(async () => {
   try {
@@ -78,6 +84,7 @@ const preferencesOpen = ref(false)
  */
 const menuItems: MenuItem[] = [
   { label: 'Profil', icon: User, onSelect: () => (profileOpen.value = true) },
+  { label: 'Connexions', icon: Server, onSelect: () => connections.openManager() },
   { label: 'Préférences', icon: Settings, onSelect: () => (preferencesOpen.value = true) },
 ]
 </script>
@@ -134,6 +141,7 @@ const menuItems: MenuItem[] = [
       </ui-dropdown-menu>
     </div>
     <profile-dialog v-model:open="profileOpen" />
+    <connection-manager />
     <preferences-dialog v-model:open="preferencesOpen" />
   </header>
 </template>
