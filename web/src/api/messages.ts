@@ -41,6 +41,10 @@ const FIELD_LABELS: Record<Field, string> = {
   indent_size: 'Indentation',
   concat_max_bytes: 'GROUP_CONCAT',
   pivot_refresh_ms: 'Mise à jour du Pivoteur',
+  remote_connect_timeout_seconds: 'Délai de connexion',
+  remote_download_timeout_minutes: 'Durée d’un téléchargement',
+  remote_max_mebibytes: 'Taille la plus grande',
+  remote_cache_days: 'Copies inutilisées',
 }
 
 /**
@@ -53,6 +57,10 @@ const FIELD_UNITS: Partial<Record<Field, string>> = {
   indent_size: ' espaces',
   concat_max_bytes: ' octets',
   pivot_refresh_ms: ' millisecondes',
+  remote_connect_timeout_seconds: ' secondes',
+  remote_download_timeout_minutes: ' minutes',
+  remote_max_mebibytes: ' Mio',
+  remote_cache_days: ' jours',
 }
 
 /**

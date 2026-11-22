@@ -472,7 +472,8 @@ Both tabs are kept in the internal database, 30 days by default: the **Historiqu
     - **Requêtes** (Queries): the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; **Écritures autorisées** (Writes allowed), the switches of the writes, one row per object and one column per verb, greyed out while the sessions are read-only;
     - **Éditeur SQL** (SQL editor): the **Indentation** of the editor and of **Enjoliver**, from 1 to 8 spaces (4 by default);
     - **Pivoteur**: the longest text of a `GROUP_CONCAT` of the [Pivoteur](#pivoteur), from 100 to 1,048,576 bytes (1,000 by default); **Mise à jour pendant la réception** (Update during the reception), the shortest delay between two computations of its table while the rows arrive, from 0.2 to 60 seconds (1 by default);
-    - **Console**: how many days the [console](#console) keeps its history and its debug log.
+    - **Console**: how many days the [console](#console) keeps its history and its debug log;
+    - **Bases distantes** (Remote databases): the reading of the databases held on a web server (`http`, `https`): **Délai de connexion** (Connection timeout), from 1 to 300 seconds (10 by default); **Durée d’un téléchargement** (Download duration), from 1 to 1,440 minutes (5 by default); **Taille la plus grande** (Largest size), from 1 MiB to 100 GiB (1,024 MiB by default); **Copies inutilisées** (Unused copies), the days after which Prisme deletes its copy of a remote database no session opened, from 1 to 3,650 (30 by default).
 
 ## Your data
 

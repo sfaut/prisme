@@ -55,6 +55,10 @@ vi.mock('@/api/settings', () => ({
     indent_size: 4,
     concat_max_bytes: 1000,
     pivot_refresh_ms: 1000,
+    remote_connect_timeout_seconds: 10,
+    remote_download_timeout_minutes: 5,
+    remote_max_mebibytes: 1024,
+    remote_cache_days: 30,
   }),
   updateSettings: async (update: SettingsUpdate) => ({
     ...update,

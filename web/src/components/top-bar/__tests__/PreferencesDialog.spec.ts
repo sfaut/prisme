@@ -20,6 +20,10 @@ const SAVED: Settings = {
   indent_size: 4,
   concat_max_bytes: 1000,
   pivot_refresh_ms: 1000,
+  remote_connect_timeout_seconds: 10,
+  remote_download_timeout_minutes: 5,
+  remote_max_mebibytes: 1024,
+  remote_cache_days: 30,
 }
 
 const settingsApi = vi.hoisted(() => ({
@@ -174,6 +178,31 @@ describe('delay between two computations of the Pivoteur', () => {
 
     expect(settingsApi.updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({ pivot_refresh_ms: 300 }),
+    )
+  })
+})
+
+describe('reading of the remote databases', () => {
+  it('shows the saved limits, then saves those typed', async () => {
+    await openWindow({ ...SAVED, remote_max_mebibytes: 2048 })
+    await showSection('Bases distantes')
+
+    const size = find<HTMLInputElement>('#preferences-remote-size')
+    expect(size.value).toBe('2048')
+    expect([size.min, size.max]).toEqual(['1', '102400'])
+    expect(find<HTMLInputElement>('#preferences-remote-connect').value).toBe('10')
+
+    type(size, '512')
+    type(find<HTMLInputElement>('#preferences-remote-cache'), '7')
+    await submit()
+
+    expect(settingsApi.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        remote_connect_timeout_seconds: 10,
+        remote_download_timeout_minutes: 5,
+        remote_max_mebibytes: 512,
+        remote_cache_days: 7,
+      }),
     )
   })
 })

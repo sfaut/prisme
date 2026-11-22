@@ -69,7 +69,7 @@ Architecture:
 - ✅ `connections` rebuilt; `connection_servers`, `connection_files`, `connection_probes`
 - ✅ API of the connections tagged by family of settings (the family `files` joins it with the SQLite connector)
 - ✅ Module `location`: parsing, registry, `FileProvider`, `HttpProvider`, `MemoryProvider`, cache and its purge, tests
-- ⬜ Preferences of the remote locations: timeouts, largest download, delay of the purge
+- ✅ Preferences of the remote locations: timeouts, largest download, delay of the purge (`users`, migration 0039; **Bases distantes** section of the preferences)
 - ✅ Migration tried on a copy of the development internal database
 
 ## 3. SQLite dialect
@@ -97,6 +97,7 @@ Architecture:
 - ⬜ Saving a database in memory to a file
 - ⬜ Schemas read again after `ATTACH` / `DETACH`
 - ⬜ Switches `attach` and `maintenance`
+- ⬜ Remote databases read within the preferences of their user (`RemoteLimits`), cache of each user in `cache/locations/<user>`, purged by `location::purge` after `remote_cache_days`
 
 ## 6. SQLite interface
 

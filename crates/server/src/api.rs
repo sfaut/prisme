@@ -995,6 +995,7 @@ mod tests {
         assert_eq!(settings["indent_size"], 4);
         assert_eq!(settings["concat_max_bytes"], 1000);
         assert_eq!(settings["pivot_refresh_ms"], 1000);
+        assert_eq!(settings["remote_max_mebibytes"], 1024);
 
         let update = |row_limit: u32, history_retention_days: u16| {
             json!({
@@ -1006,6 +1007,10 @@ mod tests {
                 "indent_size": 2,
                 "concat_max_bytes": 4000,
                 "pivot_refresh_ms": 2500,
+                "remote_connect_timeout_seconds": 10,
+                "remote_download_timeout_minutes": 5,
+                "remote_max_mebibytes": 1024,
+                "remote_cache_days": 30,
             })
         };
         let (status, settings) = send(&app, "PUT", "/api/settings", Some(update(10000, 90))).await;
@@ -1034,6 +1039,10 @@ mod tests {
         let mut fast = update(1000, 90);
         fast["pivot_refresh_ms"] = json!(199);
         let (status, _) = send(&app, "PUT", "/api/settings", Some(fast)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let mut patient = update(1000, 90);
+        patient["remote_connect_timeout_seconds"] = json!(301);
+        let (status, _) = send(&app, "PUT", "/api/settings", Some(patient)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         let mut unknown = update(1000, 90);
         unknown["allowed_writes"] = json!(["grant"]);

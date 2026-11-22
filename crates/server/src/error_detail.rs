@@ -51,6 +51,14 @@ pub enum Field {
     /// Shortest delay between two computations of the Pivoteur during the
     /// reception of the rows, in milliseconds.
     PivotRefreshMs,
+    /// Longest wait for the connection to a web server, in seconds.
+    RemoteConnectTimeoutSeconds,
+    /// Longest wait for a whole download, in minutes.
+    RemoteDownloadTimeoutMinutes,
+    /// Largest remote file downloaded, in mebibytes.
+    RemoteMaxMebibytes,
+    /// Days after which an unused copy of a remote file is deleted.
+    RemoteCacheDays,
 }
 
 impl fmt::Display for Field {
