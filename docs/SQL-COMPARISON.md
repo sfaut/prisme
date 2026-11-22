@@ -487,3 +487,34 @@ Transaction after an error:
 - Inside a transaction that did not touch it, and once its read is finished: accepted.
 
 Paths on Windows: a path written with `\`, with `/`, the URI `file:///C:/...` and the URI `file:C:\...` open and attach the same file.
+
+Lexical rules of a text, which the splitter of the editor follows (`crates/splitter`), and where `sqlite3_complete`, which tells the `sqlite3` shell that a statement ended, sees one end:
+
+| Text | SQLite | `sqlite3_complete` |
+|---|---|---|
+| `SELECT 1 # comment` | error: unrecognized token `#` | `SELECT 1 # ;` complete: `#` opens no comment |
+| `SELECT 1 --comment` | `1`: `--` opens a comment without a space after it | `SELECT 1 -- ;` not complete |
+| `SELECT 1 /* comment` | `1`: a block comment left open ends with the text | `SELECT 1 /* ; */` not complete |
+| `SELECT 1 /* outer /* inner */ */` | error: block comments do not nest | |
+| `SELECT 'a\'` | the text `a\`: the backslash escapes nothing | `SELECT 'a\';` complete |
+| `SELECT 'it''s'` | the text `it's`: a doubled quote | |
+| `"a b"`, `` `a b` ``, `[a b]` | the same name | `SELECT [;]` not complete |
+| `"a""b"` | the name `a"b` | |
+| `[a]]b]` | error: a bracket does not double | |
+| `SELECT "no_such_column"` | the text `no_such_column`: a name in double quotes that names no column is read as a text | |
+| `x'41'` | a BLOB | |
+
+Triggers, whose body holds statements each ended by `;`:
+
+| Text | `sqlite3_complete` |
+|---|---|
+| `CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1;` | not complete |
+| `… BEGIN SELECT 1; END` | not complete |
+| `… BEGIN SELECT 1; END;` | complete |
+| `CREATE TEMP TRIGGER … END;`, `CREATE TEMPORARY TRIGGER … SELECT 1;` | complete; not complete |
+| `EXPLAIN CREATE TRIGGER … BEGIN SELECT 1;` | not complete |
+| `… BEGIN SELECT CASE WHEN 1 THEN 2 END;` | not complete: `END` closes the body only right after a `;` |
+| `… BEGIN SELECT CASE WHEN 1 THEN 2 END; END;` | complete |
+| `CREATE TABLE trigger_log (a); SELECT 1;` | complete: a name holding `trigger` opens no body |
+
+A trigger whose body holds `CASE … END;` is created, and runs: SQLite ends the body at the `END` that follows a `;`.

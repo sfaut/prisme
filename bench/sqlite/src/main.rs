@@ -4,17 +4,20 @@
 //! attachment, files created by an attachment, databases in memory shared
 //! between connections (`memdb`), text of the real numbers, interruption,
 //! transactions after an error, detaching while in use, paths on Windows,
-//! values kept by `INT`, `NUMERIC` and `REAL` columns. The results go to
+//! values kept by `INT`, `NUMERIC` and `REAL` columns, lexical rules of the
+//! texts (comments, quotes, end of a statement). The results go to
 //! `docs/SQL-COMPARISON.md`, section "SQLite embedded in Prisme".
 //!
 //! From the root of the repository:
 //! `cargo run --release --manifest-path bench/sqlite/Cargo.toml --target-dir target/sqlite-measures`
 
+use std::ffi::CString;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use rusqlite::types::ValueRef;
 use rusqlite::{Connection, OpenFlags};
 
 /// Flags of a connection that reads and writes an existing file, URIs read.
@@ -47,6 +50,7 @@ fn main() {
     detach_while_in_use(&folder);
     windows_paths(&folder);
     numeric_affinity();
+    lexical_rules();
 
     std::fs::remove_dir_all(&folder).ok();
 }
@@ -516,4 +520,81 @@ fn windows_paths(folder: &Path) {
                 }),
         );
     }
+}
+
+/// Lexical rules of the texts: comments, quotes of the strings and of the
+/// names, and where `sqlite3_complete` (the end of a statement of the
+/// `sqlite3` shell) sees a statement end, triggers included.
+fn lexical_rules() {
+    println!("\n10. Lexical rules");
+    let connection = Connection::open_in_memory().expect("connection");
+    let text = |sql: &str| {
+        connection.query_row(sql, [], |row| {
+            row.get_ref(0).map(|value| {
+                let shown = match value {
+                    ValueRef::Text(bytes) => String::from_utf8_lossy(bytes).into_owned(),
+                    ValueRef::Integer(number) => number.to_string(),
+                    other => format!("{other:?}"),
+                };
+                format!("{:?} {shown}", value.data_type())
+            })
+        })
+    };
+    for sql in [
+        "SELECT 1 # comment",
+        "SELECT 1 --comment",
+        "SELECT 1 -- comment",
+        "SELECT 1 /* comment",
+        "SELECT 1 /* outer /* inner */ */",
+        "SELECT 'a\\'",
+        "SELECT 'it''s'",
+        "SELECT \"a b\" FROM (SELECT 1 AS [a b])",
+        "SELECT `a b` FROM (SELECT 1 AS [a b])",
+        "SELECT [a b] FROM (SELECT 1 AS \"a b\")",
+        "SELECT \"a\"\"b\" FROM (SELECT 1 AS [a\"b])",
+        "SELECT [a]]b] FROM (SELECT 1 AS \"a]b\")",
+        "SELECT \"no_such_column\"",
+        "SELECT x'41'",
+    ] {
+        report(sql, text(sql));
+    }
+    let complete = |sql: &str| {
+        let text = CString::new(sql).expect("no NUL");
+        // SAFETY: a NUL-terminated text, read only by the call.
+        unsafe { rusqlite::ffi::sqlite3_complete(text.as_ptr()) != 0 }
+    };
+    for sql in [
+        "SELECT 1",
+        "SELECT 1;",
+        "SELECT ';'",
+        "SELECT 1 -- ;",
+        "SELECT 1 /* ; */",
+        "SELECT [;]",
+        "SELECT 'a\\';",
+        "SELECT 1 # ;",
+        "CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1;",
+        "CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END",
+        "CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END;",
+        "CREATE TEMP TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END;",
+        "CREATE TEMPORARY TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1;",
+        "EXPLAIN CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1;",
+        "CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT CASE WHEN 1 THEN 2 END;",
+        "CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT CASE WHEN 1 THEN 2 END; END;",
+        "CREATE TABLE trigger_log (a); SELECT 1;",
+    ] {
+        println!("  sqlite3_complete({sql:?}): {}", complete(sql));
+    }
+    connection
+        .execute_batch("CREATE TABLE t (a); CREATE TABLE u (b);")
+        .expect("tables");
+    report(
+        "CREATE TRIGGER whose body holds CASE ... END;",
+        connection
+            .execute_batch(
+                "CREATE TRIGGER tr AFTER INSERT ON t BEGIN \
+                 INSERT INTO u VALUES (CASE WHEN new.a > 0 THEN 'pos' END); END; \
+                 INSERT INTO t VALUES (1);",
+            )
+            .and_then(|()| text("SELECT b FROM u")),
+    );
 }
