@@ -3,8 +3,8 @@
 //! connector will, and prints what it does: read-only inherited by an
 //! attachment, files created by an attachment, databases in memory shared
 //! between connections (`memdb`), text of the real numbers, interruption,
-//! transactions after an error, detaching while in use, paths on Windows.
-//! The results go to `docs/SQL-COMPARISON.md`, section "SQLite embedded in
+//! transactions after an error, detaching while in use, paths on Windows,
+//! values kept by `NUMERIC` and `REAL` columns. The results go to `docs/SQL-COMPARISON.md`, section "SQLite embedded in
 //! Prisme".
 //!
 //! From the root of the repository:
@@ -46,6 +46,7 @@ fn main() {
     autocommit_after_errors(&folder);
     detach_while_in_use(&folder);
     windows_paths(&folder);
+    numeric_affinity();
 
     std::fs::remove_dir_all(&folder).ok();
 }
@@ -412,6 +413,60 @@ fn detach_while_in_use(folder: &Path) {
         "DETACH once the read is finished",
         connection.execute("DETACH other", []),
     );
+}
+
+/// Values written into a `NUMERIC` and a `REAL` column: the storage class
+/// SQLite keeps, and the text it gives for them.
+fn numeric_affinity() {
+    println!("\n9. NUMERIC and REAL columns");
+    let connection = Connection::open_in_memory().expect("connection");
+    connection
+        .execute_batch("CREATE TABLE n (written TEXT, numeric_value NUMERIC, real_value REAL)")
+        .expect("table");
+    let values = [
+        "1e10",
+        "1.0e+10",
+        "1e20",
+        "1.5",
+        "10.0",
+        "0.1",
+        "12345678901234567890",
+        "'1e10'",
+        "'1.50'",
+        "'abc'",
+        "9223372036854775807",
+        "9223372036854775808",
+    ];
+    for value in values {
+        connection
+            .execute(
+                &format!(
+                    "INSERT INTO n VALUES ({}, {value}, {value})",
+                    literal(value)
+                ),
+                [],
+            )
+            .expect("insert");
+    }
+    // The text of a value is the one SQLite gives when asked for text
+    // (`CAST(x AS TEXT)` converts as `sqlite3_column_text` does).
+    let mut statement = connection
+        .prepare(
+            "SELECT written, typeof(numeric_value), CAST(numeric_value AS TEXT), \
+             typeof(real_value), CAST(real_value AS TEXT) FROM n",
+        )
+        .expect("prepare");
+    let rows = statement
+        .query_map([], |row| {
+            Ok([0, 1, 2, 3, 4].map(|index| row.get::<_, String>(index).unwrap_or_default()))
+        })
+        .expect("query");
+    for row in rows {
+        let [written, numeric_class, numeric_text, real_class, real_text] = row.expect("row");
+        println!(
+            "  {written}: NUMERIC {numeric_class} {numeric_text}, REAL {real_class} {real_text}"
+        );
+    }
 }
 
 /// Paths written with `/`, `\`, and as `file:` URIs, on this system.

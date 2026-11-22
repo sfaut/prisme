@@ -452,6 +452,20 @@ Text of a `REAL`:
 
 SQLite writes up to 17 significant digits (`printf('%!.17g')` gives the same texts), always with a decimal point, in exponent form from 10¹⁷ on and below 10⁻⁴ (`1e16` gives `10000000000000000.0`); the shortest text sometimes has one digit less (π).
 
+Values written into a `NUMERIC` and a `REAL` column (storage class kept, then the text SQLite gives for it):
+
+| Written | `NUMERIC` | `REAL` |
+|---|---|---|
+| `1e10`, `1.0e+10`, `'1e10'` | INTEGER `10000000000` | REAL `10000000000.0` |
+| `10.0` | INTEGER `10` | REAL `10.0` |
+| `1.5`, `'1.50'` | REAL `1.5` | REAL `1.5` |
+| `1e20` | REAL `1.0e+20` | REAL `1.0e+20` |
+| `12345678901234567890` | REAL `1.2345678901234567e+19` | REAL `1.2345678901234567e+19` |
+| `9223372036854775807` | INTEGER `9223372036854775807` | REAL `9.2233720368547758e+18` |
+| `'abc'` | TEXT `abc` | TEXT `abc` |
+
+A `NUMERIC` column keeps as an integer every real number without a fractional part that fits in 64 bits, and as a real number the others: it writes `1.0e+20` for 10²⁰, as a `REAL` column does. A text that reads as a number is converted, another text stays as it is.
+
 Interruption (`sqlite3_interrupt`, `InterruptHandle` of `rusqlite`), from another thread:
 
 - An endless `WITH RECURSIVE` stops at once (0.2 ms after the call) with the error "interrupted"; the connection stays usable.
