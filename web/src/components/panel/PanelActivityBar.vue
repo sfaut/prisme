@@ -208,7 +208,7 @@ watchEffect((onCleanup) => {
  * Classes of a button of the bar.
  */
 const BUTTON =
-  'activity-button relative inline-flex size-8 cursor-pointer items-center justify-center rounded-lg text-on-activity hover:text-on-activity-strong aria-pressed:bg-on-activity-strong/10 aria-pressed:text-on-activity-strong'
+  'activity-button relative inline-flex size-8 cursor-pointer items-center justify-center rounded-control text-on-activity hover:text-on-activity-strong aria-pressed:bg-on-activity-strong/10 aria-pressed:text-on-activity-strong'
 </script>
 
 <template>

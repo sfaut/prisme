@@ -80,7 +80,7 @@ function columnOf(verb: string, rank: number): string {
           <label
             v-for="({ kind, verb }, rank) in group.kinds"
             :key="kind"
-            class="flex h-8 min-w-0 items-center gap-2 rounded-lg border border-line px-2 font-mono text-fg-strong has-checked:border-primary/40 has-checked:bg-primary/10"
+            class="flex h-8 min-w-0 items-center gap-2 rounded-control border border-line px-2 font-mono text-fg-strong has-checked:border-primary/40 has-checked:bg-primary/10"
             :class="columnOf(verb, rank)"
             v-tooltip="disabled ? null : writeKindTooltip(kind)"
           >

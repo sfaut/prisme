@@ -247,7 +247,7 @@ onBeforeUnmount(() => {
   padding: --spacing(1) --spacing(3);
   overflow: hidden;
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-control);
   background: var(--tooltip-bg);
   color: var(--tooltip-fg);
   font-size: var(--text-sm);

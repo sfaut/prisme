@@ -112,7 +112,7 @@ const classes = computed(() => [
   <button
     :type="type"
     :disabled="disabled || loading"
-    class="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+    class="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-control font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50"
     :class="classes"
   >
     <LoaderCircle v-if="loading" class="size-5 shrink-0 animate-spin" />

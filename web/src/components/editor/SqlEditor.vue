@@ -426,7 +426,7 @@ defineExpose({ cursor, selection, changeText, insertText })
 .sql-editor {
   block-size: 100%;
   border: var(--line-width) solid var(--color-line);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-control);
   overflow: hidden;
 }
 

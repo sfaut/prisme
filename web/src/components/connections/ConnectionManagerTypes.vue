@@ -27,7 +27,7 @@ const type = defineModel<SourceTypeKey>('type', { required: true })
         v-for="item in family.types"
         :key="item.key"
         type="button"
-        class="flex h-26 cursor-pointer items-center gap-4 rounded-xl border p-4 text-start disabled:cursor-not-allowed disabled:opacity-50"
+        class="flex h-26 cursor-pointer items-center gap-4 rounded-control border p-4 text-start disabled:cursor-not-allowed disabled:opacity-50"
         :class="
           type === item.key
             ? 'border-primary bg-primary/10'
@@ -38,7 +38,7 @@ const type = defineModel<SourceTypeKey>('type', { required: true })
         @click="type = item.key"
       >
         <span
-          class="grid size-12 shrink-0 place-items-center rounded-lg bg-primary/15 text-primary"
+          class="grid size-12 shrink-0 place-items-center rounded-control bg-primary/15 text-primary"
           aria-hidden="true"
         >
           <component :is="item.icon" class="size-5" />

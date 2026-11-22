@@ -81,7 +81,7 @@ function focusFirst(event: Event): void {
     <dialog-portal>
       <dialog-overlay class="fixed inset-0 z-50 bg-overlay" />
       <dialog-content
-        class="fixed top-1/2 left-1/2 z-50 flex w-[calc(100vw-(--spacing(11)))] -translate-1/2 flex-col rounded-xl border border-line bg-surface text-base shadow-xl"
+        class="fixed top-1/2 left-1/2 z-50 flex w-[calc(100vw-(--spacing(11)))] -translate-1/2 flex-col rounded-overlay border border-line bg-surface text-base shadow-xl"
         :class="
           wide
             ? 'h-207 max-h-[calc(100dvh-(--spacing(11)))] max-w-266 overflow-hidden'

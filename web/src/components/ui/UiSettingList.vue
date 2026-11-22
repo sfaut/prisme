@@ -28,7 +28,7 @@ const titleId = useId()
     <h4 v-if="title" :id="titleId" class="text-sm font-semibold text-fg-secondary">
       {{ title }}
     </h4>
-    <div class="flex flex-col divide-y divide-line rounded-lg border border-line">
+    <div class="flex flex-col divide-y divide-line rounded-control border border-line">
       <slot />
     </div>
   </component>

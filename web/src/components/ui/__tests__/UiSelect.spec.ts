@@ -21,6 +21,6 @@ describe('UiSelect', () => {
     const button = wrapper.find('button[aria-label="Thème"]')
     expect(button.classes()).toContain('w-38')
     // Its own classes stay.
-    expect(button.classes()).toContain('rounded-lg')
+    expect(button.classes()).toContain('rounded-control')
   })
 })

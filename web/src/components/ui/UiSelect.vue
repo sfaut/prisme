@@ -67,7 +67,7 @@ const current = computed(() => props.items.find((item) => item.value === model.v
     <select-trigger
       v-bind="$attrs"
       :aria-label="label"
-      class="inline-flex h-8 cursor-pointer items-center gap-3 rounded-lg border border-line bg-surface px-3 text-base text-fg-strong hover:bg-surface-sunken"
+      class="inline-flex h-8 cursor-pointer items-center gap-3 rounded-control border border-line bg-surface px-3 text-base text-fg-strong hover:bg-surface-sunken"
     >
       <component :is="current.icon" v-if="current?.icon" class="size-5 shrink-0" />
       <span class="min-w-0 flex-1 truncate text-start text-trim">{{ current?.label }}</span>
@@ -79,7 +79,7 @@ const current = computed(() => props.items.find((item) => item.value === model.v
       <select-content
         position="popper"
         :side-offset="OFFSET"
-        class="z-50 max-h-(--reka-select-content-available-height) min-w-(--reka-select-trigger-width) overflow-hidden rounded-xl border border-line bg-surface p-1 text-base shadow-lg"
+        class="z-50 max-h-(--reka-select-content-available-height) min-w-(--reka-select-trigger-width) overflow-hidden rounded-overlay border border-line bg-surface p-1 text-base shadow-lg"
       >
         <select-viewport>
           <select-item
@@ -87,7 +87,7 @@ const current = computed(() => props.items.find((item) => item.value === model.v
             :key="item.value"
             :value="item.value"
             :disabled="item.disabled"
-            class="flex h-8 cursor-pointer items-center gap-3 rounded-lg px-3 text-fg select-none data-disabled:cursor-not-allowed data-disabled:opacity-50 data-highlighted:bg-surface-raised data-highlighted:text-fg-strong"
+            class="flex h-8 cursor-pointer items-center gap-3 rounded-control px-3 text-fg select-none data-disabled:cursor-not-allowed data-disabled:opacity-50 data-highlighted:bg-surface-raised data-highlighted:text-fg-strong"
             v-tooltip="item.hint"
           >
             <component :is="item.icon" v-if="item.icon" class="size-5 shrink-0" />

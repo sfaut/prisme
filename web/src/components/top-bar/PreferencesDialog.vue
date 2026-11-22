@@ -269,7 +269,7 @@ async function save(): Promise<void> {
             v-for="item in SECTIONS"
             :key="item.value"
             :value="item.value"
-            class="group flex h-9 cursor-pointer items-center gap-3 rounded-lg border border-transparent px-3 text-fg hover:bg-surface-strong hover:text-fg-strong data-[state=active]:border-line data-[state=active]:bg-surface data-[state=active]:font-medium data-[state=active]:text-fg-strong"
+            class="group flex h-9 cursor-pointer items-center gap-3 rounded-control border border-transparent px-3 text-fg hover:bg-surface-strong hover:text-fg-strong data-[state=active]:border-line data-[state=active]:bg-surface data-[state=active]:font-medium data-[state=active]:text-fg-strong"
           >
             <component
               :is="item.icon"

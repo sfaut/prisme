@@ -164,7 +164,7 @@ const shownFraction = computed(() => props.fraction ?? null)
 /* Progress bar, along the tab's bottom edge, between its rounded corners. */
 .tab-progress {
   position: absolute;
-  inset-inline: var(--radius-md);
+  inset-inline: var(--radius-tab);
   inset-block-end: 0;
   block-size: var(--tab-progress-height);
   overflow: hidden;

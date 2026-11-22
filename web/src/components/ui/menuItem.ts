@@ -105,7 +105,7 @@ export interface MenuGroup {
  * header and choices each have their own (`UiDropdownMenu.vue`).
  */
 export const MENU_FRAME =
-  'z-50 min-w-53 rounded-xl border border-line bg-surface text-base shadow-lg'
+  'z-50 min-w-53 rounded-overlay border border-line bg-surface text-base shadow-lg'
 
 /**
  * Classes of the panel that holds the choices: that of the menu, or that of
@@ -119,7 +119,7 @@ export const MENU_PANEL = `${MENU_FRAME} p-1`
  * the pointer or the keyboard.
  */
 export const MENU_ENTRY =
-  'flex h-8 cursor-pointer items-center gap-3 rounded-lg px-3 select-none data-disabled:cursor-not-allowed data-disabled:opacity-50 data-highlighted:bg-surface-raised data-[state=checked]:bg-primary/15 data-[state=checked]:text-primary data-highlighted:data-[state=checked]:bg-primary/25'
+  'flex h-8 cursor-pointer items-center gap-3 rounded-control px-3 select-none data-disabled:cursor-not-allowed data-disabled:opacity-50 data-highlighted:bg-surface-raised data-[state=checked]:bg-primary/15 data-[state=checked]:text-primary data-highlighted:data-[state=checked]:bg-primary/25'
 
 /**
  * Classes of the heading of a group of choices.

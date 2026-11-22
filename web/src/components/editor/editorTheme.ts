@@ -51,7 +51,7 @@ const chrome = EditorView.theme({
     backgroundColor: 'var(--color-surface-raised)',
     color: 'var(--color-fg)',
     border: 'var(--line-width) solid var(--color-line)',
-    borderRadius: 'var(--radius-lg)',
+    borderRadius: 'var(--radius-overlay)',
   },
   '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
     backgroundColor: 'var(--color-primary)',
