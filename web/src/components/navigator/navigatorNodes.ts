@@ -4,22 +4,21 @@
  * Structure of the tree (labels as displayed):
  *
  * ```text
- * Sources de données
- * └─ source (connexion)
- *    └─ base
- *       ├─ Tables (n)     ── table ─┬─ Colonnes (n)
- *       │                           ├─ Index (n)
- *       │                           ├─ Clefs étrangères (n)
- *       │                           ├─ Références (n)
- *       │                           └─ Déclencheurs (n)
- *       ├─ Vues (n)       ── vue ─── Colonnes (n)
- *       ├─ Procédures (n)
- *       └─ Fonctions (n)
+ * source (connexion)
+ * └─ base
+ *    ├─ Tables (n)     ── table ─┬─ Colonnes (n)
+ *    │                           ├─ Index (n)
+ *    │                           ├─ Clefs étrangères (n)
+ *    │                           ├─ Références (n)
+ *    │                           └─ Déclencheurs (n)
+ *    ├─ Vues (n)       ── vue ─── Colonnes (n)
+ *    ├─ Procédures (n)
+ *    └─ Fonctions (n)
  * ```
  *
- * Several sources sit side by side: each saved connection is a branch under
- * the "Sources de données" root, and the keys of the nodes start with the id of
- * their connection, to stay unique from one source to the other.
+ * Several sources sit side by side: each saved connection is a root of the
+ * tree, and the keys of the nodes start with the id of their connection, to
+ * stay unique from one source to the other.
  *
  * The tree is built from the catalog, even incomplete: a part not received
  * yet shows "chargement…" (loading). The tables of a "Tables" folder come
@@ -48,17 +47,17 @@ import { compactCount } from '@/utils/compactCount'
  */
 export interface Place {
   /**
-   * Id of the connection, 0 for the roots.
+   * Id of the connection.
    */
   connectionId: number
   /**
-   * Name of the database, empty string for the roots and for a source's node.
+   * Name of the database, empty string for a source's node.
    */
   schema: string
 }
 
 /**
- * Data source shown at the root of the tree.
+ * Data source, a root of the tree.
  */
 export interface Source {
   /**
@@ -73,6 +72,10 @@ export interface Source {
    * Catalog of the connection, `undefined` if it was never read.
    */
   catalog: Catalog | undefined
+  /**
+   * Is its catalog being received ("chargement…" note)?
+   */
+  receiving: boolean
   /**
    * Is it the source of the editor, its chosen connection (shown in bold)?
    */
@@ -134,11 +137,10 @@ export interface NavigatorNode extends Place {
    */
   isLeaf: boolean
   /**
-   * Role of the nodes that can be acted on (menu, double click): the root
-   * "Sources de données" (`sources`), a source (`source`) or a database
-   * (`database`).
+   * Role of the nodes that can be acted on (menu, Ctrl+click): a source
+   * (`source`) or a database (`database`).
    */
-  role?: 'sources' | 'source' | 'database'
+  role?: 'source' | 'database'
   /**
    * Nature of a catalog node without a role (folder, table, column...).
    */
@@ -183,9 +185,10 @@ export interface NavigatorNode extends Place {
    */
   tableSort?: TableSort
   /**
-   * Note shown after the label, smaller and lighter: `PRIMARY KEY` for the
-   * primary key, `UNIQUE` for a unique index, the estimated row count of a
-   * table (`345`, `1,3 k`).
+   * Note shown after the label, smaller and lighter: `chargement…` for a
+   * source whose catalog is being received, `PRIMARY KEY` for the primary
+   * key, `UNIQUE` for a unique index, the estimated row count of a table
+   * (`345`, `1,3 k`).
    */
   note?: string
   /**
@@ -240,37 +243,6 @@ export interface Reference {
 }
 
 /**
- * Key of the "Sources de données" root.
- */
-export const SOURCES_KEY = 'sources'
-
-/**
- * Root of the tree: "Sources de données", with one branch per source.
- *
- * @param sources Sources, in display order.
- * @param receiving Is a catalog being received ("chargement…" note)?
- * @param tablesByRows Keys of the "Tables" folders sorted by row count.
- */
-export function navigatorTree(
-  sources: Source[],
-  receiving: boolean,
-  tablesByRows: ReadonlySet<string> = new Set(),
-): NavigatorNode[] {
-  return [
-    {
-      key: SOURCES_KEY,
-      label: 'Sources de données',
-      isLeaf: sources.length === 0,
-      connectionId: 0,
-      schema: '',
-      role: 'sources',
-      note: receiving ? 'chargement…' : undefined,
-      children: sourceNodes(sources, tablesByRows),
-    },
-  ]
-}
-
-/**
  * Key of a source's node.
  *
  * @param connectionId Id of the connection.
@@ -291,9 +263,10 @@ export function belongsToSource(key: string, connectionId: number): boolean {
 }
 
 /**
- * Nodes of the sources, their databases below. The catalog of a source
- * never read, or whose databases are not received yet, shows
- * "chargement…": it is read when the source is opened.
+ * Roots of the tree: the nodes of the sources, their databases below. The
+ * catalog of a source never read, or whose databases are not received yet,
+ * shows "chargement…": it is read when the source is opened. A source whose
+ * catalog is being received carries "chargement…" as a note.
  *
  * @param sources Sources, in display order.
  * @param tablesByRows Keys of the "Tables" folders sorted by row count.
@@ -313,6 +286,7 @@ export function sourceNodes(
       ...place,
       role: 'source' as const,
       chosen: source.chosen,
+      note: source.receiving ? 'chargement…' : undefined,
       badge: source.flavor ?? undefined,
       badgeTooltip: source.flavor === null ? undefined : serverName(source.flavor, source.version),
       children:

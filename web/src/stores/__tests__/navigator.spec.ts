@@ -28,7 +28,7 @@ describe('navigator of an editor', () => {
     expect(navigator.isNew(1)).toBe(true)
     expect(navigator.isNew(2)).toBe(false)
 
-    navigator.treeOf(1).expanded = ['sources', 'source:1']
+    navigator.treeOf(1).expanded = ['source:1']
     await nextTick()
     expect(navigator.isNew(1)).toBe(false)
   })
@@ -49,15 +49,15 @@ describe('navigator of an editor', () => {
 
   it('closes a deleted source and the nodes under it, and forgets its sorts, in every navigator', () => {
     const navigator = useNavigatorStore()
-    navigator.treeOf(1).expanded = ['sources', 'source:1', 'schema:1/shop', 'source:11']
-    navigator.treeOf(2).expanded = ['sources', 'table:1/shop.customer', 'schema:2/crm']
+    navigator.treeOf(1).expanded = ['source:1', 'schema:1/shop', 'source:11']
+    navigator.treeOf(2).expanded = ['table:1/shop.customer', 'schema:2/crm']
     navigator.sortTables(2, 'folder:tables:1/shop', 'rows')
     navigator.sortTables(2, 'folder:tables:2/crm', 'rows')
 
     navigator.forgetSource(1)
 
-    expect(navigator.treeOf(1).expanded).toEqual(['sources', 'source:11'])
-    expect(navigator.treeOf(2).expanded).toEqual(['sources', 'schema:2/crm'])
+    expect(navigator.treeOf(1).expanded).toEqual(['source:11'])
+    expect(navigator.treeOf(2).expanded).toEqual(['schema:2/crm'])
     expect(navigator.treeOf(2).tables_by_rows).toEqual(['folder:tables:2/crm'])
   })
 })

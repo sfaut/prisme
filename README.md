@@ -44,7 +44,7 @@ Prisme is at the start of its first version (v1). Today it queries **MySQL and M
 2. **Run it** from a terminal. On Linux and macOS, first make it executable (see [Installation](#installation)).
 3. **Answer the two setup questions**: listening port and your email address. Press Enter to keep the defaults (`10000`, `me@local`).
 4. **Open** <http://prisme.localhost:10000> in your browser (or <http://127.0.0.1:10000>).
-5. **Add a connection**: in the left panel, open the **⋮** menu of **Sources de données** (Data sources), choose **Ajouter une connexion** (Add a connection), fill in host, port, user and password, click **Tester** (Test), then save.
+5. **Add a connection**: in the left panel, open the **⋮** menu of **Navigateur d’objets** (Object navigator), choose **Ajouter une connexion** (Add a connection), fill in host, port, user and password, click **Tester** (Test), then save.
 6. **Query**: **Ctrl+click** the new source (**Cmd+click** on macOS), type a query in the editor, press **Ctrl+Enter**.
 
 ## Installation
@@ -139,7 +139,7 @@ The version of Prisme shows next to its name, at the top left.
 
 Connections are managed from the navigator:
 
-- **Add**: **⋮** menu of **Sources de données** (Data sources) → **Ajouter une connexion** (Add a connection). **Tester** (Test) tries the settings before saving.
+- **Add**: **⋮** menu of **Navigateur d’objets** (Object navigator) → **Ajouter une connexion** (Add a connection). **Tester** (Test) tries the settings before saving.
 - **Edit, refresh, test, delete**: **⋮** menu of each source. A blank password when editing keeps the current one. Deleting asks for confirmation.
 - **Session settings**: the **À la connexion** (On connect) field runs queries each time a connection opens, separated by `;`, for example `SET NAMES utf8mb4; SET SESSION sql_mode = ...`. Only session settings are allowed.
 - **System databases** (`information_schema`, `mysql`, `performance_schema`, `sys`) can be hidden per source.

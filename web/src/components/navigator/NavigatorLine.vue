@@ -34,7 +34,6 @@ import {
   PencilRuler,
   Rows3,
   ScrollText,
-  Server,
   SquareFunction,
   Table,
   Unplug,
@@ -180,7 +179,7 @@ const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
 }
 
 /**
- * Icon of a node, before its label: each level has its own (root, source,
+ * Icon of a node, before its label: each level has its own (source,
  * database, open or closed folder, table, view, column...). A column has a
  * single icon, which tells its key: a key for the primary key, a link for a
  * foreign key, the column icon otherwise.
@@ -190,8 +189,6 @@ const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
  */
 function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
   switch (node.role) {
-    case 'sources':
-      return Server
     case 'source':
       return Cable
     case 'database':
@@ -266,7 +263,7 @@ function iconLabel(node: NavigatorNode): string | undefined {
       :class="{
         'current-database': node.current,
         'chosen-source': node.chosen,
-        'font-bold': node.current || node.chosen || node.role === 'sources',
+        'font-bold': node.current || node.chosen,
       }"
     >
       <span class="truncate text-trim">{{ node.label }}</span>
