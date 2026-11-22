@@ -46,7 +46,8 @@
   Each line carries the icon of its level: source (that of its kind, a
   server for a database), database, folder (open or closed), table, view,
   procedure, function, column, index, foreign key, trigger, and a spinning
-  circle during a load.
+  circle during a load, in place of the source's icon while its catalog
+  arrives.
 
   Two buttons of the title, always shown, read again all the catalogs
   already read and add a connection; on hovering each source, a "⋮" menu

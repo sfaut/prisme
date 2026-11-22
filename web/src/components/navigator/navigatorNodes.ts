@@ -73,7 +73,7 @@ export interface Source {
    */
   catalog: Catalog | undefined
   /**
-   * Is its catalog being received ("chargement…" note)?
+   * Is its catalog being received (spinning circle in place of its icon)?
    */
   receiving: boolean
   /**
@@ -171,6 +171,11 @@ export interface NavigatorNode extends Place {
    */
   chosen?: boolean
   /**
+   * Source whose catalog is being received: a spinning circle replaces its
+   * icon.
+   */
+  receiving?: boolean
+  /**
    * Badge shown after the label of a source: the flavor of its server
    * (`mysql`, `mariadb`).
    */
@@ -185,10 +190,9 @@ export interface NavigatorNode extends Place {
    */
   tableSort?: TableSort
   /**
-   * Note shown after the label, smaller and lighter: `chargement…` for a
-   * source whose catalog is being received, `PRIMARY KEY` for the primary
-   * key, `UNIQUE` for a unique index, the estimated row count of a table
-   * (`345`, `1,3 k`).
+   * Note shown after the label, smaller and lighter: `PRIMARY KEY` for the
+   * primary key, `UNIQUE` for a unique index, the estimated row count of a
+   * table (`345`, `1,3 k`).
    */
   note?: string
   /**
@@ -266,7 +270,7 @@ export function belongsToSource(key: string, connectionId: number): boolean {
  * Roots of the tree: the nodes of the sources, their databases below. The
  * catalog of a source never read, or whose databases are not received yet,
  * shows "chargement…": it is read when the source is opened. A source whose
- * catalog is being received carries "chargement…" as a note.
+ * catalog is being received is marked so, for its icon.
  *
  * @param sources Sources, in display order.
  * @param tablesByRows Keys of the "Tables" folders sorted by row count.
@@ -286,7 +290,7 @@ export function sourceNodes(
       ...place,
       role: 'source' as const,
       chosen: source.chosen,
-      note: source.receiving ? 'chargement…' : undefined,
+      receiving: source.receiving,
       badge: source.flavor ?? undefined,
       badgeTooltip: source.flavor === null ? undefined : serverName(source.flavor, source.version),
       children:

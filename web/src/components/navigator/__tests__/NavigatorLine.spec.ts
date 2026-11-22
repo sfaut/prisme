@@ -122,6 +122,24 @@ describe('NavigatorLine', () => {
     expect(wrapper.emitted('act')).toBeUndefined()
   })
 
+  it('shows a spinning circle in place of the icon of a source while its catalog arrives', () => {
+    const icon = (receiving: boolean) =>
+      mountLine({
+        key: 'source',
+        label: 'visual',
+        isLeaf: false,
+        role: 'source',
+        receiving,
+        connectionId: 1,
+        schema: '',
+      }).find('svg')
+    expect(icon(false).classes()).toContain('lucide-server')
+    expect(icon(true).classes()).toEqual(
+      expect.arrayContaining(['lucide-loader-circle', 'animate-spin']),
+    )
+    expect(icon(true).attributes('aria-label')).toBe('Chargement')
+  })
+
   it('gives the current database the disconnect button instead of its plug', async () => {
     const wrapper = mountLine(
       { key: 'db', label: 'shop', isLeaf: false, role: 'database', current: true, ...place },

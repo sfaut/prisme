@@ -185,7 +185,7 @@ describe('system databases', () => {
 })
 
 describe('receiving', () => {
-  it('notes "chargement…" on a source whose catalog is being received', () => {
+  it('marks a source whose catalog is being received, without a note', () => {
     const source = (receiving: boolean) => ({
       connectionId: 1,
       name: 'Origen 2',
@@ -197,8 +197,9 @@ describe('receiving', () => {
       version: null,
       showSystemSchemas: true,
     })
-    expect(sourceNodes([source(true)])[0]?.note).toBe('chargement…')
-    expect(sourceNodes([source(false)])[0]?.note).toBeUndefined()
+    expect(sourceNodes([source(true)])[0]?.receiving).toBe(true)
+    expect(sourceNodes([source(true)])[0]?.note).toBeUndefined()
+    expect(sourceNodes([source(false)])[0]?.receiving).toBe(false)
   })
 })
 
