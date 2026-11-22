@@ -115,6 +115,8 @@ describe('writes', () => {
 
     expect(writeBox('DELETE').checked).toBe(true)
     expect(writeBox('INSERT').matches(':disabled')).toBe(true)
+    // A read-only session still attaches a database, read-only too.
+    expect(writeBox('ATTACH / DETACH').matches(':disabled')).toBe(false)
 
     find<HTMLButtonElement>('#preferences-read-only').click()
     await flushPromises()

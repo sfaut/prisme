@@ -21,7 +21,6 @@ use prisme_connectors::mysql::MysqlTarget;
 use prisme_connectors::test_servers;
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{WriteKind, classify};
-use std::collections::BTreeSet;
 
 type ClientSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -351,11 +350,14 @@ async fn cancels_one_query_or_the_whole_batch() {
 
 #[test]
 fn refuses_the_writes_not_allowed_and_unparsable_queries() {
+    // `None`: read-only sessions, no switch on.
     let refusal = |sql: &str, writes: Option<&[WriteKind]>| {
-        let writes: Option<BTreeSet<WriteKind>> =
-            writes.map(|kinds| kinds.iter().copied().collect());
+        let writes = super::limits::Writes {
+            read_only: writes.is_none(),
+            allowed: writes.unwrap_or_default().iter().copied().collect(),
+        };
         let kind = classify(sql, Dialect::MariaDb);
-        super::limits::write_refusal(&kind, writes.as_ref())
+        super::limits::write_refusal(&kind, &writes)
     };
     assert_eq!(refusal("SELECT 1", None), None);
     assert_eq!(refusal("SHOW TABLES", None), None);
@@ -408,6 +410,39 @@ fn refuses_the_writes_not_allowed_and_unparsable_queries() {
     assert_eq!(
         refusal("SELECT * FROM t PROCEDURE ANALYSE()", Some(&WriteKind::ALL)),
         Some(ErrorDetail::UnparsedQueryRefused)
+    );
+}
+
+#[test]
+fn a_read_only_session_still_attaches_under_its_switch() {
+    let refusal = |sql: &str, read_only: bool, allowed: &[WriteKind]| {
+        let writes = super::limits::Writes {
+            read_only,
+            allowed: allowed.iter().copied().collect(),
+        };
+        super::limits::write_refusal(&classify(sql, Dialect::Sqlite), &writes)
+    };
+    let attach = "ATTACH ':memory:' AS m";
+    assert_eq!(refusal(attach, true, &[WriteKind::Attach]), None);
+    assert_eq!(refusal("DETACH m", true, &[WriteKind::Attach]), None);
+    assert_eq!(
+        refusal(attach, true, &[]),
+        Some(ErrorDetail::WriteNotAllowed {
+            kinds: vec![WriteKind::Attach]
+        })
+    );
+    // The other writes stay refused, with the attachment or without.
+    assert_eq!(
+        refusal("VACUUM", true, &WriteKind::ALL),
+        Some(ErrorDetail::WriteReadOnly)
+    );
+    assert_eq!(
+        refusal(
+            "ATTACH ':memory:' AS m; DELETE FROM t",
+            true,
+            &WriteKind::ALL
+        ),
+        Some(ErrorDetail::WriteReadOnly)
     );
 }
 

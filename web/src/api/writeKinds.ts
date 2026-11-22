@@ -36,6 +36,13 @@ export const WRITE_KIND_STATEMENTS: Record<WriteKind, string> = {
 }
 
 /**
+ * Kinds that a read-only session still allows, under their switch
+ * (`WriteKind::allowed_read_only`): `ATTACH` / `DETACH`, as a file attached
+ * by a read-only connection is read-only too.
+ */
+export const READ_ONLY_KINDS: readonly WriteKind[] = ['attach']
+
+/**
  * Other statements that a kind allows, alone or with another kind.
  */
 export const WRITE_KIND_NOTES: Partial<Record<WriteKind, string>> = {
@@ -54,7 +61,7 @@ export const WRITE_KIND_NOTES: Partial<Record<WriteKind, string>> = {
   drop_temporary_table: 'Aussi DROP TABLE, quand toutes les tables nommées sont temporaires',
   create_view: 'Aussi ALTER VIEW',
   attach:
-    'Pour la session. Un fichier nommé par un chemin absolu, ou :memory: ; une base attachée en lecture seule le reste.',
+    'Pour la session, même en lecture seule. Un fichier nommé par un chemin absolu, ou :memory: ; une base attachée en lecture seule le reste.',
   maintenance:
     'Aussi les pragmas qui écrivent dans le fichier : optimize, wal_checkpoint, incremental_vacuum. VACUUM INTO reste refusé.',
 }

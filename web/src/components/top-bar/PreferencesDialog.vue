@@ -230,7 +230,7 @@ const rowLimitItems = computed(() =>
  */
 const writesDescription = computed(() => {
   if (form.read_only_session) {
-    return 'Sans effet tant que les sessions sont en lecture seule : la base les refuserait.'
+    return 'Sans effet tant que les sessions sont en lecture seule, sauf ATTACH / DETACH : la base les refuserait.'
   }
   const count = form.allowed_writes.length
   return count === 0
@@ -359,7 +359,7 @@ async function save(): Promise<void> {
             <ui-setting-list title="Écritures">
               <ui-setting-row
                 label="Sessions en lecture seule"
-                description="La base refuse toute écriture, en plus du contrôle de Prisme. Désactivez-la pour autoriser les écritures cochées ci-dessous."
+                description="La base refuse toute écriture, en plus du contrôle de Prisme ; seuls ATTACH et DETACH de SQLite restent possibles, la base attachée étant elle aussi en lecture seule. Désactivez-la pour autoriser les écritures cochées ci-dessous."
                 for="preferences-read-only"
               >
                 <ui-switch id="preferences-read-only" v-model="form.read_only_session" />
@@ -367,7 +367,7 @@ async function save(): Promise<void> {
               <ui-setting-row label="Écritures autorisées" :description="writesDescription" stacked>
                 <preferences-writes
                   v-model="form.allowed_writes"
-                  :disabled="form.read_only_session"
+                  :read-only="form.read_only_session"
                 />
               </ui-setting-row>
             </ui-setting-list>

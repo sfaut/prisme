@@ -212,6 +212,14 @@ impl WriteKind {
         }
     }
 
+    /// Does a read-only session still allow the kind, under its switch? Only
+    /// `ATTACH` / `DETACH`: a file attached by a read-only connection is
+    /// read-only too, and a missing one is not created
+    /// (`docs/SQL-COMPARISON.md`, section 6).
+    pub fn allowed_read_only(self) -> bool {
+        matches!(self, Self::Attach)
+    }
+
     /// Kind of the name `name` (`create_table`), `None` if unknown.
     pub fn from_name(name: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|kind| kind.as_str() == name)

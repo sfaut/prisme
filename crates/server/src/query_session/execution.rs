@@ -220,7 +220,7 @@ impl Session<'_> {
         let database = self.current_database();
         let temporary = |table: &TableName| self.is_temporary(table, database.as_deref());
         let kind = classify_with(sql, dialect_of(flavor), &temporary);
-        if let Some(refusal) = write_refusal(&kind, limits.writes.as_ref()) {
+        if let Some(refusal) = write_refusal(&kind, &limits.writes) {
             self.outbox.error(Some(query), refusal).await?;
             return Ok(None);
         }

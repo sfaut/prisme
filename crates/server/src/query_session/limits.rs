@@ -18,8 +18,18 @@ pub(super) struct RunLimits {
     /// Rows of a result shown at most: the requested limit, otherwise the
     /// user's setting.
     pub(super) max_rows: usize,
-    /// Writes allowed, `None` while the sessions are read-only.
-    pub(super) writes: Option<BTreeSet<WriteKind>>,
+    /// Writes allowed.
+    pub(super) writes: Writes,
+}
+
+/// Writes the settings of the user allow.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct Writes {
+    /// Are the sessions read-only? Only the kinds that write no file stay
+    /// allowed then (`WriteKind::allowed_read_only`).
+    pub(super) read_only: bool,
+    /// Kinds whose switch is on.
+    pub(super) allowed: BTreeSet<WriteKind>,
 }
 
 /// Limits of a request of user `user_id`, with its requested row limit.
@@ -37,33 +47,32 @@ pub(super) async fn run_limits(
         .map_err(|_| ErrorDetail::SettingsUnreadable)?;
     Ok(RunLimits {
         max_rows: requested.unwrap_or(settings.row_limit) as usize,
-        writes: (!settings.read_only_session)
-            .then(|| settings.allowed_writes.into_iter().collect()),
+        writes: Writes {
+            read_only: settings.read_only_session,
+            allowed: settings.allowed_writes.into_iter().collect(),
+        },
     })
 }
 
 /// Returns the reason for the refusal if the query, of nature `kind`
 /// (`classify_with`), is neither a read, a setting, a control of the
-/// transaction nor a write of the kinds `writes` allows (`None`: read-only
-/// sessions).
+/// transaction nor a write of the kinds `writes` allows.
 ///
 /// A write that no switch covers is refused, and so is a query that cannot
 /// be parsed, as nothing proves what it does. A read-only session refuses
-/// the controls of the transaction that would lift its mode.
-pub(super) fn write_refusal(
-    kind: &StatementKind,
-    writes: Option<&BTreeSet<WriteKind>>,
-) -> Option<ErrorDetail> {
+/// the writes, except `ATTACH` / `DETACH` under their switch, and the
+/// controls of the transaction that would lift its mode.
+pub(super) fn write_refusal(kind: &StatementKind, writes: &Writes) -> Option<ErrorDetail> {
     match kind {
         StatementKind::Read | StatementKind::Setting | StatementKind::Transaction => None,
         StatementKind::ReadWriteTransaction => writes
-            .is_none()
+            .read_only
             .then_some(ErrorDetail::ReadWriteTransactionReadOnly),
         StatementKind::Write(kinds) => {
-            let Some(allowed) = writes else {
+            if writes.read_only && !kinds.iter().all(|kind| kind.allowed_read_only()) {
                 return Some(ErrorDetail::WriteReadOnly);
-            };
-            let kinds: Vec<WriteKind> = kinds.difference(allowed).copied().collect();
+            }
+            let kinds: Vec<WriteKind> = kinds.difference(&writes.allowed).copied().collect();
             (!kinds.is_empty()).then_some(ErrorDetail::WriteNotAllowed { kinds })
         }
         StatementKind::Forbidden => Some(ErrorDetail::WriteForbidden),
