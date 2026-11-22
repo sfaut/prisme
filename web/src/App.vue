@@ -287,7 +287,7 @@ watch(
 /**
  * Gives a connection to an editor. Its closed session reopens when the
  * connection stays the same: choosing its source again in the navigator
- * reconnects it, like "Reconnecter".
+ * reconnects it, like "Reconnecter", but on the database of the connection.
  *
  * Another connection closes the session: after a confirmation if its
  * transaction is open.
@@ -316,8 +316,11 @@ async function connectEditor(
   }
   const reopens = editor.connectionId === connectionId && statuses.value[editorId] === 'closed'
   const opens = reopens || editor.connectionId !== connectionId
-  if (opens && database !== undefined) {
-    openingDatabases.value[editorId] = database
+  // The source chosen again reopens on its own database, in place of the
+  // last current database of the editor, on which a session opens otherwise.
+  const opening = database ?? (reopens ? connectionOf(connectionId)?.database_name : undefined)
+  if (opens && opening !== undefined) {
+    openingDatabases.value[editorId] = opening
   }
   if (reopens) {
     attempts.value[editorId] = (attempts.value[editorId] ?? 0) + 1

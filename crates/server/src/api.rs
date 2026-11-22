@@ -291,12 +291,21 @@ async fn query_socket(
     }))
 }
 
+/// Database a session of an editor opens on, in place of the connection's:
+/// the one `chosen` (`?database=`, empty for none), else the last current
+/// database of the editor's sessions, if one was `saved`
+/// (`editors::database_of`, empty if none); `None`: the connection's.
+fn opening_database(chosen: Option<String>, saved: String) -> Option<String> {
+    chosen.or_else(|| (!saved.is_empty()).then_some(saved))
+}
+
 /// `GET /api/editors/{id}/session`: WebSocket, query session of an editor, on
 /// the editor's connection; its results are saved. If the editor's session is
 /// still open (page reloaded), the WebSocket reattaches to it; otherwise it
 /// opens, kept after a disconnection for the delay set on the connection (see
 /// `sessions.rs`). A session that opens does so on the database of
-/// `?database=` when given, in place of the connection's.
+/// `?database=` when given, else on the last current database of the
+/// editor's sessions (`opening_database`), else on the connection's.
 async fn editor_session(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -310,22 +319,23 @@ async fn editor_session(
         .await?
         .ok_or(ApiError::NotFound)?
         .ok_or(ApiError::BadRequest(ErrorDetail::NoConnection))?;
-    let (target, minutes, read_only, name) = state
+    let (target, minutes, read_only, name, saved_database) = state
         .with_db(move |db, key| {
             let target = connections::load_target(db, key, user_id, connection_id)?;
             let minutes = connections::session_timeout(db, user_id, connection_id)?;
             let read_only = settings::load(db, user_id)?.read_only_session;
             let name = connections::name_of(db, user_id, connection_id)?;
+            let saved_database = editors::database_of(db, user_id, id)?;
             Ok::<_, ApiError>(
                 target
                     .zip(minutes)
-                    .map(|(target, minutes)| (target, minutes, read_only, name)),
+                    .map(|(target, minutes)| (target, minutes, read_only, name, saved_database)),
             )
         })
         .await?
         .ok_or(ApiError::NotFound)?;
     let mut target = connections::with_read_only(target, read_only);
-    if let Some(database) = query.database {
+    if let Some(database) = opening_database(query.database, saved_database) {
         target.database_name = database;
     }
     let keep_alive = Duration::from_secs(u64::from(minutes) * 60);
@@ -459,7 +469,8 @@ async fn beautify_sql(Json(request): Json<BeautifyRequest>) -> Result<Json<SqlTe
 /// Database to open an editor's session on.
 #[derive(Debug, Deserialize)]
 struct SessionQuery {
-    /// Database selected on connection; when absent, that of the connection.
+    /// Database selected on connection; when absent, the last current
+    /// database of the editor's sessions, else that of the connection.
     database: Option<String>,
 }
 
@@ -989,5 +1000,20 @@ mod tests {
 
         let (status, _) = send(&app, "POST", &uri, None).await;
         assert_eq!(status, StatusCode::BAD_GATEWAY);
+    }
+
+    #[test]
+    fn a_session_opens_on_the_chosen_database_then_on_the_saved_one() {
+        let chosen = Some("billing".to_string());
+        assert_eq!(opening_database(chosen.clone(), "shop".to_string()), chosen);
+        assert_eq!(
+            opening_database(Some(String::new()), "shop".to_string()),
+            Some(String::new())
+        );
+        assert_eq!(
+            opening_database(None, "shop".to_string()),
+            Some("shop".to_string())
+        );
+        assert_eq!(opening_database(None, String::new()), None);
     }
 }
