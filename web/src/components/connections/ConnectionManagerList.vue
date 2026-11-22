@@ -173,7 +173,7 @@ function lineClasses(active: boolean): string {
             <span v-if="entry.changed" class="truncate text-xs text-warning">
               modifiée, non enregistrée
             </span>
-            <span v-else class="truncate font-mono text-sm text-fg-secondary">
+            <span v-else class="truncate font-mono text-xs text-fg-secondary">
               {{ entry.place }}
             </span>
           </span>
