@@ -84,7 +84,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::ws::WebSocket;
-use prisme_connectors::mysql::MysqlTarget;
+use prisme_connectors::api::{OpenOptions, Target};
 use tokio::sync::{mpsc, watch};
 use tracing::Instrument;
 
@@ -95,10 +95,22 @@ use crate::session_relay::{Relay, SessionHandle};
 use outbox::Outbox;
 use session::serve;
 
+/// The source of a session, and how its connections open on it: read-only
+/// or not, on the namespace chosen for the session, else on the one of its
+/// settings.
+#[derive(Clone)]
+pub(crate) struct Source {
+    /// Settings of the source.
+    pub(crate) target: Target,
+    /// Options of the session's connection; those of its parallel queries
+    /// follow, on the session's current namespace.
+    pub(crate) options: OpenOptions,
+}
+
 /// Number of messages waiting to be sent beyond which reading the results waits.
 const OUTBOX_SIZE: usize = 64;
 
-/// Opens a session on `target`, attached to the WebSocket `socket`, and
+/// Opens a session on `source`, attached to the WebSocket `socket`, and
 /// returns what is needed to reattach another WebSocket to it or to stop it.
 ///
 /// Two tasks share the session: one runs the client's requests (`serve`), the
@@ -111,7 +123,7 @@ pub(crate) fn start(
     socket: WebSocket,
     state: AppState,
     user_id: i64,
-    target: MysqlTarget,
+    source: Source,
     recorder: Option<Recorder>,
     keep_alive: Duration,
     on_end: Box<dyn FnOnce() + Send + Sync>,
@@ -127,7 +139,6 @@ pub(crate) fn start(
         requests: request_sender,
         outbox: sender.downgrade(),
         cancellation: Arc::clone(&cancellation),
-        target: target.clone(),
         recorder,
         stop: stop_sender,
         keep_alive,
@@ -140,7 +151,7 @@ pub(crate) fn start(
             stop,
             state,
             user_id,
-            target,
+            source,
             cancellation,
         )
         .in_current_span(),

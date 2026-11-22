@@ -30,7 +30,7 @@ use std::time::Duration;
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use prisme_connectors::mysql::{MysqlTarget, ServerInfo};
+use prisme_connectors::api::SourceInfo;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep_until};
@@ -82,8 +82,8 @@ impl SessionHandle {
 /// State of the session that a new WebSocket receives before what follows.
 #[derive(Default)]
 struct Replay {
-    /// Identity of the target server, known once the session is ready.
-    server: Option<ServerInfo>,
+    /// Identity of the source, known once the session is ready.
+    server: Option<SourceInfo>,
     /// Current database of the session.
     database: Option<String>,
     /// Is a transaction open on the session's connection?
@@ -106,8 +106,6 @@ pub(crate) struct Relay {
     pub(crate) outbox: mpsc::WeakSender<ServerMessage>,
     /// Stopping of the running queries.
     pub(crate) cancellation: Arc<Cancellation>,
-    /// Connection settings, to interrupt the queries.
-    pub(crate) target: MysqlTarget,
     /// Recorder of the editor's results, absent outside an editor.
     pub(crate) recorder: Option<Recorder>,
     /// Stop signal of the session.
@@ -193,7 +191,6 @@ impl Relay {
                 self.requests.clone(),
                 self.outbox.clone(),
                 Arc::clone(&self.cancellation),
-                self.target.clone(),
             )
             .in_current_span(),
         );
@@ -298,7 +295,7 @@ impl Relay {
             return;
         }
         let _ = self.stop.send(true);
-        self.cancellation.cancel(&self.target).await;
+        self.cancellation.cancel().await;
         if let Some(on_end) = self.on_end.take() {
             on_end();
         }
@@ -354,7 +351,6 @@ async fn read_messages(
     requests: mpsc::Sender<SessionRequest>,
     outbox: mpsc::WeakSender<ServerMessage>,
     cancellation: Arc<Cancellation>,
-    target: MysqlTarget,
 ) {
     while let Some(Ok(message)) = incoming.next().await {
         let Message::Text(text) = message else {
@@ -381,10 +377,8 @@ async fn read_messages(
                     break;
                 }
             }
-            Ok(ClientMessage::Cancel) => cancellation.cancel(&target).await,
-            Ok(ClientMessage::CancelQuery { query }) => {
-                cancellation.cancel_query(&target, query).await
-            }
+            Ok(ClientMessage::Cancel) => cancellation.cancel().await,
+            Ok(ClientMessage::CancelQuery { query }) => cancellation.cancel_query(query).await,
             Err(error) => {
                 let Some(sender) = outbox.upgrade() else {
                     break;

@@ -39,6 +39,7 @@ import type { ServerMessage } from '../generated/ServerMessage'
 import type { StatementOutcome } from '../generated/StatementOutcome'
 import type { TabPivot } from '../generated/TabPivot'
 import { describe as describeError } from '../messages'
+import { MYSQL_CAPABILITIES } from './capabilities'
 
 /**
  * Error message of the server, for the query `query` (`null`: the session).
@@ -69,6 +70,7 @@ function readyState() {
       ansi_quotes: false,
       no_backslash_escapes: false,
       oldest_supported: null,
+      capabilities: MYSQL_CAPABILITIES,
     },
     database: 'xlist',
     transaction: false,
@@ -214,6 +216,7 @@ describe('applyMessage', () => {
         ansi_quotes: false,
         no_backslash_escapes: false,
         oldest_supported: null,
+        capabilities: MYSQL_CAPABILITIES,
       },
       database: null,
       transaction: true,
@@ -1353,6 +1356,7 @@ const READY: ServerMessage = {
     ansi_quotes: false,
     no_backslash_escapes: false,
     oldest_supported: null,
+    capabilities: MYSQL_CAPABILITIES,
   },
   database: 'shop',
   transaction: false,

@@ -4,7 +4,7 @@ import type { ColumnTypeInfo } from "./ColumnTypeInfo";
 import type { ErrorDetail } from "./ErrorDetail";
 import type { LimitReport } from "./LimitReport";
 import type { ResumedQuery } from "./ResumedQuery";
-import type { ServerInfo } from "./ServerInfo";
+import type { SourceInfo } from "./SourceInfo";
 import type { StatementOutcome } from "./StatementOutcome";
 import type { StatementVerb } from "./StatementVerb";
 
@@ -14,7 +14,7 @@ import type { StatementVerb } from "./StatementVerb";
 export type ServerMessage =
   | {
     "type": "ready";
-    server: ServerInfo;
+    server: SourceInfo;
     database: string | null;
     /**
      * Is a transaction open on the session's connection? Always false

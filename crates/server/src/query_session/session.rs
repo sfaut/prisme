@@ -15,7 +15,8 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use prisme_connectors::mysql::{self, Connection, MysqlTarget};
+use prisme_connectors::api::{self, Namespace};
+use prisme_connectors::drivers;
 use prisme_connectors::outcome::StatementOutcome;
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::ends_transaction;
@@ -25,6 +26,7 @@ use prisme_splitter::split;
 use tokio::sync::{mpsc, watch};
 use tracing::Instrument;
 
+use super::Source;
 use super::cancellation::Cancellation;
 use super::execution::{chosen_statements, reads_only, selected_pieces};
 use super::limits::run_limits;
@@ -36,15 +38,15 @@ use crate::api::AppState;
 use crate::console::{self, Action};
 use crate::error_detail::ErrorDetail;
 
-/// Runs a session: connection to the target server, then the client's
-/// requests until the session stops.
+/// Runs a session: connection to the source, then the client's requests
+/// until the session stops.
 pub(super) async fn serve(
     outbox: Outbox,
     mut requests: mpsc::Receiver<SessionRequest>,
     mut stop: watch::Receiver<bool>,
     state: AppState,
     user_id: i64,
-    target: MysqlTarget,
+    source: Source,
     cancellation: Arc<Cancellation>,
 ) {
     let database = Mutex::new(None);
@@ -52,7 +54,7 @@ pub(super) async fn serve(
     let transaction = AtomicBool::new(false);
     let session = Session {
         outbox: &outbox,
-        target: &target,
+        source: &source,
         state: &state,
         user_id,
         cancellation: &cancellation,
@@ -65,7 +67,7 @@ pub(super) async fn serve(
     let Some(mut connection) = session.open().instrument(opening.clone()).await else {
         return;
     };
-    if let Ok(dialect) = session.ready(&mut connection).instrument(opening).await {
+    if let Ok(dialect) = session.ready(connection.as_mut()).instrument(opening).await {
         loop {
             let request = tokio::select! {
                 _ = stop.changed() => break,
@@ -80,13 +82,13 @@ pub(super) async fn serve(
                     let session = Session { batch, ..session };
                     let span = console::action_span(action_of(&request));
                     session
-                        .handle(&mut connection, dialect, request)
+                        .handle(connection.as_mut(), dialect, request)
                         .instrument(span)
                         .await
                 }
                 SessionRequest::Use(database) => {
                     session
-                        .use_database(&mut connection, dialect, &database)
+                        .use_database(connection.as_mut(), dialect, &database)
                         .instrument(console::action_span(Action::Use))
                         .await
                 }
@@ -96,7 +98,7 @@ pub(super) async fn serve(
             }
         }
     }
-    let _ = connection.disconnect().await;
+    connection.close().await;
 }
 
 /// Action of a request, for the history of the queries: a refresh, the
@@ -118,8 +120,8 @@ pub(super) struct Session<'a> {
     pub(super) batch: u64,
     /// Queue of the messages to the client.
     pub(super) outbox: &'a Outbox,
-    /// Connection settings, for the extra connections and the interruptions.
-    pub(super) target: &'a MysqlTarget,
+    /// The source, for the connections of the parallel queries.
+    pub(super) source: &'a Source,
     /// State of the application, to read the settings.
     pub(super) state: &'a AppState,
     /// User of the session.
@@ -189,32 +191,27 @@ impl Session<'_> {
     }
 
     /// Opens the session's connection; on failure, the error goes to the client.
-    async fn open(&self) -> Option<Connection> {
-        match mysql::connect(self.target).await {
+    async fn open(&self) -> Option<Box<dyn api::Session>> {
+        let target = &self.source.target;
+        let opening = drivers::of(target.engine).open(target, self.source.options.clone());
+        match opening.await {
             Ok(connection) => Some(connection),
             Err(error) => {
-                let detail = ErrorDetail::of_mysql(&error, None);
+                let detail = ErrorDetail::of_connector(&error, None);
                 let _ = self.outbox.error(None, detail).await;
                 None
             }
         }
     }
 
-    /// Announces the session to the client: identity of the server and current
-    /// database. Returns the server's dialect.
-    async fn ready(&self, connection: &mut Connection) -> Result<Dialect, SessionStopped> {
-        let info = match mysql::server_info(connection).await {
-            Ok(info) => info,
+    /// Announces the session to the client: identity of the source and current
+    /// database. Returns the source's dialect.
+    async fn ready(&self, connection: &mut dyn api::Session) -> Result<Dialect, SessionStopped> {
+        let info = connection.info().clone();
+        let database = match connection.current_namespace().await {
+            Ok(namespace) => database_of(namespace),
             Err(error) => {
-                let detail = ErrorDetail::of_mysql(&error, None);
-                self.outbox.error(None, detail).await?;
-                return Err(SessionStopped);
-            }
-        };
-        let database = match mysql::current_database(connection).await {
-            Ok(database) => database,
-            Err(error) => {
-                let detail = ErrorDetail::of_mysql(&error, Some(info.flavor));
+                let detail = ErrorDetail::of_connector(&error, Some(info.flavor));
                 self.outbox.error(None, detail).await?;
                 return Err(SessionStopped);
             }
@@ -237,10 +234,10 @@ impl Session<'_> {
     /// (the server closed it) ends the session, with an error for the client.
     async fn follow_transaction(
         &self,
-        connection: &mut Connection,
+        connection: &mut dyn api::Session,
         check: bool,
     ) -> Result<(), SessionStopped> {
-        let Ok(open) = mysql::in_transaction(connection, check).await else {
+        let Ok(open) = connection.transaction_state(check).await else {
             self.outbox
                 .error(None, ErrorDetail::ConnectionClosedByServer)
                 .await?;
@@ -257,21 +254,23 @@ impl Session<'_> {
     /// session error.
     async fn use_database(
         &self,
-        connection: &mut Connection,
+        connection: &mut dyn api::Session,
         dialect: Dialect,
         database: &str,
     ) -> Result<(), SessionStopped> {
-        let changed = match mysql::use_database(connection, database).await {
-            Ok(()) => mysql::current_database(connection).await,
+        let namespace = Namespace::single(database);
+        let changed = match connection.switch_namespace(&namespace).await {
+            Ok(()) => connection.current_namespace().await,
             Err(error) => Err(error),
         };
         match changed {
-            Ok(database) => {
+            Ok(namespace) => {
+                let database = database_of(namespace);
                 self.remember_database(&database);
                 self.outbox.send(ServerMessage::Database { database }).await
             }
             Err(error) => {
-                let detail = ErrorDetail::of_mysql(&error, Some(flavor_of(dialect)));
+                let detail = ErrorDetail::of_connector(&error, Some(flavor_of(dialect)));
                 self.outbox.error(None, detail).await
             }
         }
@@ -285,7 +284,7 @@ impl Session<'_> {
     /// alone, like a cursor at the start.
     async fn handle(
         &self,
-        connection: &mut Connection,
+        connection: &mut dyn api::Session,
         dialect: Dialect,
         request: QueryRequest,
     ) -> Result<(), SessionStopped> {
@@ -328,7 +327,7 @@ impl Session<'_> {
         if cursor.is_some() {
             self.run_on_session(connection, dialect, 0, &chosen[0].sql, &limits)
                 .await?;
-        } else if !self.transaction.load(Ordering::Relaxed) && reads_only(&chosen, dialect) {
+        } else if self.parallel(connection) && reads_only(&chosen, dialect) {
             let database = self.current_database();
             self.run_in_parallel(&chosen, dialect, &limits, &database)
                 .await?;
@@ -342,4 +341,21 @@ impl Session<'_> {
         self.follow_transaction(connection, ends).await?;
         self.outbox.send(ServerMessage::BatchDone).await
     }
+}
+
+impl Session<'_> {
+    /// Can the queries of a batch run in parallel, each on its own
+    /// connection? Only when the engine opens several connections on the
+    /// source, and no transaction is open on the session's connection, where
+    /// it lives.
+    fn parallel(&self, connection: &dyn api::Session) -> bool {
+        connection.info().capabilities.parallel_sessions
+            && !self.transaction.load(Ordering::Relaxed)
+    }
+}
+
+/// Current database of the session, as the protocol carries it: the
+/// innermost level of the namespace, the only level of a MySQL database.
+pub(super) fn database_of(namespace: Option<Namespace>) -> Option<String> {
+    namespace.map(|namespace| namespace.name().to_string())
 }

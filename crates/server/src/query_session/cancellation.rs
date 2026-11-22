@@ -7,19 +7,19 @@
 //! after the stop is not affected. A stop therefore reaches a batch even when
 //! it is sent just after the stop request, while it waits for the session.
 
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
-use prisme_connectors::mysql::{self, MysqlTarget};
+use prisme_connectors::api::Canceller;
 use tracing::Instrument;
 
 use crate::console::{self, Action};
 
 /// Stopping of the running queries, requested by the client.
 ///
-/// Keeps the list of the running queries with their connection, to be able
-/// to interrupt them (`KILL QUERY`), the batches stopped as a whole and the
-/// queries stopped one by one. Queries check them before starting and while
+/// Keeps the list of the running queries with the canceller of their
+/// connection, to be able to interrupt them, the batches stopped as a whole
+/// and the queries stopped one by one. Queries check them before starting and while
 /// reading their rows.
 #[derive(Default)]
 pub(crate) struct Cancellation {
@@ -29,9 +29,23 @@ pub(crate) struct Cancellation {
     stopped_through: AtomicU64,
     /// Queries stopped one by one, by batch and number.
     stopped_queries: Mutex<Vec<(u64, u32)>>,
-    /// Running queries: batch, number of the query and id (`Conn::id()`) of its
-    /// connection.
-    running: Mutex<Vec<(u64, u32, u32)>>,
+    /// Running queries: batch, number of the query, number of the run (the
+    /// key of its guard) and canceller of its connection.
+    running: Mutex<Vec<Running>>,
+    /// Number of the last run tracked.
+    runs: AtomicU64,
+}
+
+/// A running query.
+struct Running {
+    /// Batch of the query.
+    batch: u64,
+    /// Number of the query in its batch.
+    query: u32,
+    /// Number of the run, the key of its guard.
+    run: u64,
+    /// Stop of the statement of its connection.
+    canceller: Arc<dyn Canceller>,
 }
 
 impl Cancellation {
@@ -52,72 +66,82 @@ impl Cancellation {
 
     /// Requests stopping the last batch received, and the batches before it, and
     /// interrupts all the running queries.
-    pub(crate) async fn cancel(&self, target: &MysqlTarget) {
+    pub(crate) async fn cancel(&self) {
         self.stopped_through
             .store(self.received.load(Ordering::SeqCst), Ordering::SeqCst);
-        self.kill(target, |_, _| true).await;
+        self.interrupt(|_, _| true).await;
     }
 
     /// Requests stopping a single query of the last batch received, and
     /// interrupts it if it is running.
-    pub(crate) async fn cancel_query(&self, target: &MysqlTarget, query: u32) {
+    pub(crate) async fn cancel_query(&self, query: u32) {
         let batch = self.received.load(Ordering::SeqCst);
         if let Ok(mut queries) = self.stopped_queries.lock() {
             queries.push((batch, query));
         }
-        self.kill(target, |running_batch, running| {
-            running_batch == batch && running == query
-        })
-        .await;
+        self.interrupt(|running_batch, running| running_batch == batch && running == query)
+            .await;
     }
 
-    /// Interrupts (`KILL QUERY`) the running queries that `selected` keeps, from
-    /// their batch and number.
-    async fn kill(&self, target: &MysqlTarget, selected: impl Fn(u64, u32) -> bool) {
-        let connections: Vec<u32> = self
+    /// Interrupts the running queries that `selected` keeps, from their batch
+    /// and number.
+    async fn interrupt(&self, selected: impl Fn(u64, u32) -> bool) {
+        let cancellers: Vec<Arc<dyn Canceller>> = self
             .running
             .lock()
             .map(|running| {
                 running
                     .iter()
-                    .filter(|(batch, query, _)| selected(*batch, *query))
-                    .map(|(_, _, connection_id)| *connection_id)
+                    .filter(|running| selected(running.batch, running.query))
+                    .map(|running| Arc::clone(&running.canceller))
                     .collect()
             })
             .unwrap_or_default();
-        for connection_id in connections {
-            let killing = mysql::kill_query(target, connection_id)
+        for canceller in cancellers {
+            let interrupting = canceller
+                .interrupt()
                 .instrument(console::action_span(Action::Cancel));
-            if let Err(error) = killing.await {
+            if let Err(error) = interrupting.await {
                 tracing::warn!("cannot interrupt the query: {error}");
             }
         }
     }
 
-    /// Records that query `query` of batch `batch` runs on a connection, until
-    /// the returned guard is dropped.
-    pub(super) fn track(&self, batch: u64, query: u32, connection_id: u32) -> RunningGuard<'_> {
+    /// Records that query `query` of batch `batch` runs on the connection of
+    /// `canceller`, until the returned guard is dropped.
+    pub(super) fn track(
+        &self,
+        batch: u64,
+        query: u32,
+        canceller: Arc<dyn Canceller>,
+    ) -> RunningGuard<'_> {
+        let run = self.runs.fetch_add(1, Ordering::SeqCst) + 1;
         if let Ok(mut running) = self.running.lock() {
-            running.push((batch, query, connection_id));
+            running.push(Running {
+                batch,
+                query,
+                run,
+                canceller,
+            });
         }
         RunningGuard {
             cancellation: self,
-            connection_id,
+            run,
         }
     }
 }
 
-/// Guard of a running query: when it is dropped, the connection leaves the list.
+/// Guard of a running query: when it is dropped, the query leaves the list.
 pub(super) struct RunningGuard<'a> {
     cancellation: &'a Cancellation,
-    connection_id: u32,
+    run: u64,
 }
 
 impl Drop for RunningGuard<'_> {
-    /// Removes the connection from the list of the running queries.
+    /// Removes the query from the list of the running queries.
     fn drop(&mut self) {
         if let Ok(mut running) = self.cancellation.running.lock() {
-            running.retain(|&(_, _, id)| id != self.connection_id);
+            running.retain(|running| running.run != self.run);
         }
     }
 }

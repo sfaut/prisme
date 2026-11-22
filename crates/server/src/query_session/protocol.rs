@@ -1,8 +1,8 @@
 //! Messages of the query session, as JSON text: what the client sends, and
 //! what the session answers. The types are exported to the interface by `ts-rs`.
 
+use prisme_connectors::api::SourceInfo;
 use prisme_connectors::columns::{Cell, ColumnTypeInfo};
-use prisme_connectors::mysql::ServerInfo;
 use prisme_connectors::outcome::StatementOutcome;
 use prisme_dialects::verb::StatementVerb;
 use serde::{Deserialize, Serialize};
@@ -132,7 +132,7 @@ pub(crate) enum LimitReport {
 pub(crate) enum ServerMessage {
     /// The connection to the target server is open.
     Ready {
-        server: ServerInfo,
+        server: SourceInfo,
         database: Option<String>,
         /// Is a transaction open on the session's connection? Always false
         /// when it opens; true for a WebSocket that reattaches during one.

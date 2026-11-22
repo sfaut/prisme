@@ -52,7 +52,8 @@ use axum::response::Response;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::routing::{delete, get, post};
 use futures_util::{Stream, stream};
-use prisme_connectors::mysql::{self, MysqlTarget};
+use prisme_connectors::api::{Canceller, Namespace, OpenOptions};
+use prisme_connectors::drivers;
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{StatementKind, classify};
 use prisme_dialects::limit::apply_default_limit;
@@ -271,10 +272,8 @@ pub(crate) struct Running {
     bytes: AtomicU64,
     /// Stop requested by the user.
     cancelled: AtomicBool,
-    /// Settings of the export's connection, to close it on the server.
-    target: MysqlTarget,
-    /// Id (`Conn::id()`) of the export's connection.
-    connection_id: u32,
+    /// Stop of the export's connection, which ends it on the source.
+    canceller: Arc<dyn Canceller>,
     /// Becomes `true` once the export has ended and its outcome is saved.
     ended: watch::Sender<bool>,
 }
@@ -301,8 +300,9 @@ impl Running {
         self.interrupt().await;
     }
 
-    /// Closes the export's connection on the server (`KILL CONNECTION`),
-    /// which stops its query, even when the order arrives before the query.
+    /// Ends the export's connection on the source (`KILL CONNECTION` for
+    /// MySQL), which stops its query, even when the order arrives before the
+    /// query.
     async fn interrupt(&self) {
         let span = console::sql_span(
             self.user_id,
@@ -310,8 +310,8 @@ impl Running {
             self.editor_id,
             Action::Cancel,
         );
-        let killing = mysql::kill_connection(&self.target, self.connection_id).instrument(span);
-        if let Err(error) = killing.await {
+        let terminating = self.canceller.terminate().instrument(span);
+        if let Err(error) = terminating.await {
             tracing::warn!(
                 "cannot close the connection of export {}: {error}",
                 self.info.id
@@ -484,26 +484,19 @@ async fn start_export(
         .await?
         .ok_or(ApiError::NotFound)?;
     // A connection of its own, read-only whatever the settings of the sessions.
-    let mut target = connections::with_read_only(target, true);
-    if let Some(database) = &request.database {
-        target.database_name.clone_from(database);
-    }
+    let options = OpenOptions {
+        read_only: true,
+        namespace: request.database.as_deref().map(Namespace::single),
+        ..OpenOptions::default()
+    };
 
     let editor_id = request.editor_id;
     let span = console::sql_span(user_id, &connection_name, editor_id, Action::Export);
-    let mut connection = mysql::connect(&target).instrument(span.clone()).await?;
-    let server = match mysql::server_info(&mut connection)
-        .instrument(span.clone())
-        .await
-    {
-        Ok(server) => server,
-        Err(error) => {
-            let _ = connection.disconnect().await;
-            return Err(error.into());
-        }
-    };
+    let opening = drivers::of(target.engine).open(&target, options);
+    let connection = opening.instrument(span.clone()).await?;
+    let server = connection.info().clone();
     if let Some(refusal) = query_refusal(&request.sql, dialect_of(server.flavor)) {
-        let _ = connection.disconnect().await;
+        connection.close().await;
         return Err(ApiError::BadRequest(refusal));
     }
 
@@ -529,7 +522,7 @@ async fn start_export(
     let (export, file) = match saved {
         Ok(saved) => saved,
         Err(error) => {
-            let _ = connection.disconnect().await;
+            connection.close().await;
             return Err(error);
         }
     };
@@ -540,8 +533,7 @@ async fn start_export(
         rows: AtomicU64::new(0),
         bytes: AtomicU64::new(0),
         cancelled: AtomicBool::new(false),
-        connection_id: connection.id(),
-        target,
+        canceller: connection.canceller(),
         ended: watch::Sender::new(false),
     });
     state.exports.track(Arc::clone(&running));
@@ -560,7 +552,7 @@ async fn start_export(
     let file = match created.await {
         Ok(file) => file,
         Err(error) => {
-            let _ = connection.disconnect().await;
+            connection.close().await;
             let detail = ErrorDetail::ExportFile {
                 cause: error.to_string(),
             };

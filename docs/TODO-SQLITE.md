@@ -56,7 +56,7 @@ Architecture:
 - ✅ Module `api`: traits, registry, `Capabilities`, `SourceInfo`, errors
 - ✅ Neutral types moved out of `mysql::`, serialization unchanged
 - ⬜ Catalog in namespaces and open kinds of objects
-- ⬜ MySQL connector behind the traits, read-only moved into it
+- ✅ MySQL connector behind the traits, read-only moved into it
 - ✅ Contract suite, on MySQL and MariaDB
 - ⬜ Server on the traits only
 - ⬜ Interface on the capabilities, the registry of the flavors and the general catalog

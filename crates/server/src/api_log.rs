@@ -213,8 +213,9 @@ mod tests {
     use axum::http::StatusCode;
     use axum::middleware;
     use axum::routing::post;
+    use prisme_connectors::api::{DialectOptions, SourceInfo};
     use prisme_connectors::flavor::Flavor;
-    use prisme_connectors::mysql::ServerInfo;
+    use prisme_connectors::mysql::capabilities;
     use tower::ServiceExt;
 
     use super::*;
@@ -260,12 +261,12 @@ mod tests {
     fn sums_up_the_server_messages_with_their_numbers_and_counts() {
         assert_eq!(
             server(ServerMessage::Ready {
-                server: ServerInfo {
+                server: SourceInfo {
                     flavor: Flavor::MariaDb,
                     version: "10.6.28-MariaDB".to_string(),
-                    ansi_quotes: false,
-                    no_backslash_escapes: false,
+                    dialect_options: DialectOptions::default(),
                     oldest_supported: None,
+                    capabilities: capabilities(),
                 },
                 database: Some("shop".to_string()),
                 transaction: false,

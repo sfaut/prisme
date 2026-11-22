@@ -39,8 +39,9 @@ use axum::response::Response;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use axum_extra::extract::Query;
+use prisme_connectors::api::{Namespace, OpenOptions, SourceInfo};
+use prisme_connectors::drivers;
 use prisme_connectors::flavor::Flavor;
-use prisme_connectors::mysql::{self, ServerInfo};
 use prisme_dialects::Dialect;
 use prisme_dialects::analysis::CatalogNames;
 use prisme_dialects::beautify::{BeautifyOptions, DEFAULT_INDENT_SIZE, beautify_with};
@@ -63,7 +64,7 @@ use crate::exports::{self, Exports};
 use crate::master_key::MasterKey;
 use crate::navigator;
 use crate::profile::{self, Profile, ProfileUpdate};
-use crate::query_session;
+use crate::query_session::{self, Source};
 use crate::recorder::Recorder;
 use crate::request_guard;
 use crate::sessions::Sessions;
@@ -297,13 +298,19 @@ async fn query_socket(
             Ok::<_, ApiError>((target, read_only, name))
         })
         .await?;
-    let target = connections::with_read_only(target.ok_or(ApiError::NotFound)?, read_only);
+    let source = Source {
+        target: target.ok_or(ApiError::NotFound)?,
+        options: OpenOptions {
+            read_only,
+            ..OpenOptions::default()
+        },
+    };
     Ok(upgrade.on_upgrade(move |socket| {
         let span = api_log::connection_span(id);
         let history = span.in_scope(|| console::connection_span(user_id, &name));
         async move {
             let on_end = Box::new(|| {});
-            query_session::start(socket, state, user_id, target, None, Duration::ZERO, on_end);
+            query_session::start(socket, state, user_id, source, None, Duration::ZERO, on_end);
         }
         .instrument(history)
         .instrument(span)
@@ -353,10 +360,14 @@ async fn editor_session(
         })
         .await?
         .ok_or(ApiError::NotFound)?;
-    let mut target = connections::with_read_only(target, read_only);
-    if let Some(database) = opening_database(query.database, saved_database) {
-        target.database_name = database;
-    }
+    let source = Source {
+        target,
+        options: OpenOptions {
+            read_only,
+            namespace: opening_database(query.database, saved_database).map(Namespace::single),
+            ..OpenOptions::default()
+        },
+    };
     let keep_alive = Duration::from_secs(u64::from(minutes) * 60);
     Ok(upgrade.on_upgrade(move |socket| {
         let span = api_log::editor_span(id);
@@ -369,7 +380,7 @@ async fn editor_session(
                     socket,
                     state,
                     user_id,
-                    target,
+                    source,
                     Some(recorder),
                     keep_alive,
                     on_end,
@@ -595,7 +606,7 @@ async fn probe_settings(
     State(state): State<AppState>,
     user: CurrentUser,
     Json(request): Json<ProbeRequest>,
-) -> Result<Json<ServerInfo>, ApiError> {
+) -> Result<Json<SourceInfo>, ApiError> {
     let user_id = user.id;
     let name = request.connection.name.clone();
     let target = state
@@ -604,7 +615,8 @@ async fn probe_settings(
         .ok_or(ApiError::NotFound)?;
 
     let span = console::sql_span(user_id, &name, None, Action::Probe);
-    Ok(Json(mysql::probe(&target).instrument(span).await?))
+    let probing = drivers::of(target.engine).probe(&target);
+    Ok(Json(probing.instrument(span).await?))
 }
 
 /// `POST /api/connections/{id}/probe`: connects to the server and returns its identity.
@@ -612,7 +624,7 @@ async fn probe_connection(
     State(state): State<AppState>,
     user: CurrentUser,
     Path(id): Path<i64>,
-) -> Result<Json<ServerInfo>, ApiError> {
+) -> Result<Json<SourceInfo>, ApiError> {
     let user_id = user.id;
     let (target, name) = state
         .with_db(move |db, key| {
@@ -624,7 +636,8 @@ async fn probe_connection(
         .ok_or(ApiError::NotFound)?;
 
     let span = console::sql_span(user_id, &name, None, Action::Probe);
-    let info = mysql::probe(&target).instrument(span).await?;
+    let probing = drivers::of(target.engine).probe(&target);
+    let info = probing.instrument(span).await?;
     let server = info.clone();
     state
         .with_db(move |db, _| connections::remember_server(db, user_id, id, &server))

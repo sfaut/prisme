@@ -10,9 +10,9 @@
 
 use std::fmt;
 
+use prisme_connectors::api::ConnectorError;
 use prisme_connectors::failure::{ConnectFailure, FailureCause};
 use prisme_connectors::flavor::Flavor;
-use prisme_connectors::mysql::MysqlError;
 use prisme_dialects::classify::WriteKind;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -259,23 +259,23 @@ pub enum ErrorDetail {
 }
 
 impl ErrorDetail {
-    /// Detail of a failure of the MySQL / MariaDB connector.
+    /// Detail of a failure of a connector.
     ///
     /// # Arguments
     ///
     /// * `error` - Failure of the connector.
-    /// * `flavor` - Flavor of the server, when the connection told it.
-    pub fn of_mysql(error: &MysqlError, flavor: Option<Flavor>) -> Self {
+    /// * `flavor` - Flavor of the source, when the connection told it.
+    pub fn of_connector(error: &ConnectorError, flavor: Option<Flavor>) -> Self {
         match error {
-            MysqlError::Connect(failure) => Self::Connect {
+            ConnectorError::Connect(failure) => Self::Connect {
                 failure: failure.clone(),
             },
-            MysqlError::MissingVersion => Self::MissingVersion,
-            MysqlError::Init { statement, cause } => Self::InitQueryFailed {
+            ConnectorError::MissingVersion => Self::MissingVersion,
+            ConnectorError::Init { statement, cause } => Self::InitQueryFailed {
                 statement: statement.clone(),
                 cause: cause.clone(),
             },
-            MysqlError::Driver(_) => Self::QueryFailed {
+            ConnectorError::Query(_) | ConnectorError::Unsupported(_) => Self::QueryFailed {
                 flavor,
                 cause: error.cause(),
             },
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn keeps_the_text_of_the_target_server_apart() {
-        let error = MysqlError::Init {
+        let error = ConnectorError::Init {
             statement: "SET NAMES utf8mb4".to_string(),
             cause: FailureCause::Server {
                 number: 1115,
@@ -321,7 +321,7 @@ mod tests {
                 message: "Unknown character set: 'utf8mb4'".to_string(),
             },
         };
-        let detail = ErrorDetail::of_mysql(&error, Some(Flavor::MariaDb));
+        let detail = ErrorDetail::of_connector(&error, Some(Flavor::MariaDb));
         assert_eq!(
             serde_json::to_value(&detail).unwrap(),
             serde_json::json!({

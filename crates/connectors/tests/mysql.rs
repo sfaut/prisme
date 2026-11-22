@@ -8,10 +8,11 @@
 
 use std::time::{Duration, Instant};
 
+use prisme_connectors::api::{Driver, OpenOptions};
 use prisme_connectors::flavor::Flavor;
 use prisme_connectors::mysql::catalog::{self, RoutineKind, TableKind};
 use prisme_connectors::mysql::{
-    Connection, connect, execute, in_transaction, kill_query, probe, read_warnings,
+    Connection, DRIVER, connect, execute, in_transaction, kill_query, probe, read_warnings,
 };
 use prisme_connectors::outcome::{NoticeLevel, OutcomeCounts, StatementOutcome};
 use prisme_connectors::test_servers::SERVERS;
@@ -548,6 +549,43 @@ async fn tells_a_connection_the_server_closed() {
                     .discard()
                     .await;
                 assert!(in_transaction(&mut connection, true).await.is_err());
+            })
+            .await;
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
+async fn read_only_session_refuses_writes() {
+    // Every server, MariaDB before 11.1 included: MariaDB 10.6 knows
+    // `tx_read_only`, not `transaction_read_only`.
+    for server in SERVERS {
+        server
+            .with_database("read_only_session", async |target| {
+                let mut writer = connect(&target).await.unwrap();
+                execute(&mut writer, "CREATE TABLE t (a INT)")
+                    .await
+                    .unwrap()
+                    .discard()
+                    .await;
+
+                let source = server.source(&target.database_name);
+                let read_only = OpenOptions {
+                    read_only: true,
+                    ..OpenOptions::default()
+                };
+                let mut reader = DRIVER.open(&source, read_only).await.unwrap();
+                reader
+                    .execute("SELECT a FROM t")
+                    .await
+                    .unwrap()
+                    .discard()
+                    .await;
+                let Err(error) = reader.execute("INSERT INTO t VALUES (1)").await else {
+                    panic!("the write went through a read-only session");
+                };
+                assert!(error.to_string().contains("READ ONLY"), "{error}");
+                reader.close().await;
             })
             .await;
     }

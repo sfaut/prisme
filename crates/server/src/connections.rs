@@ -15,8 +15,8 @@
 //! (MySQL or MariaDB) and version seen on the last successful connection,
 //! with its date.
 
+use prisme_connectors::api::{Engine, ServerSettings, Settings, SourceInfo, Target};
 use prisme_connectors::flavor::Flavor;
-use prisme_connectors::mysql::{MysqlTarget, ServerInfo};
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{SettingRefusal, session_setting_refusal};
 use rusqlite::{Connection, OptionalExtension, ffi, params};
@@ -48,9 +48,6 @@ const SESSION_TIMEOUT_MAX_MINUTES: u32 = 1440;
 
 /// Keep-alive delay of a detached session, in minutes, when the input gives none.
 const SESSION_TIMEOUT_DEFAULT_MINUTES: u32 = 5;
-
-/// Family of engines of the MySQL and MariaDB connections.
-const ENGINE_MYSQL: &str = "mysql";
 
 /// Connection to save, as typed by the user.
 #[derive(Deserialize, TS)]
@@ -302,7 +299,7 @@ fn insert_row(
         params![
             user_id,
             new.name,
-            ENGINE_MYSQL,
+            Engine::Mysql.key(),
             new.host,
             new.port,
             new.username,
@@ -411,26 +408,7 @@ pub fn delete(db: &Connection, user_id: i64, id: i64) -> Result<bool, Connection
     Ok(deleted == 1)
 }
 
-/// Statement that puts a connection in read-only mode: the database then
-/// refuses the writes of its transactions (`docs/V1.md`, section 2.4).
-///
-/// The standard statement, known by every version of MySQL and MariaDB. The
-/// variable it sets is named `transaction_read_only` in MySQL and from
-/// MariaDB 11.1 only, `tx_read_only` before: `SET SESSION
-/// transaction_read_only = ON` fails on MariaDB 10.x and 11.0 (error 1193).
-const READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
-
-/// Adds the read-only mode to the initialisation of each connection of a query
-/// session, when `read_only` is set. It comes last, after the statements of the
-/// connection itself, so that they cannot switch it off.
-pub fn with_read_only(mut target: MysqlTarget, read_only: bool) -> MysqlTarget {
-    if read_only {
-        target.init_statements.push(READ_ONLY_STATEMENT.to_string());
-    }
-    target
-}
-
-/// Loads the connection settings, password decrypted, of connection `id`.
+/// Loads the settings of the source of connection `id`, password decrypted.
 ///
 /// Returns `None` if the connection does not exist or belongs to another user.
 pub fn load_target(
@@ -438,34 +416,40 @@ pub fn load_target(
     key: &MasterKey,
     user_id: i64,
     id: i64,
-) -> Result<Option<MysqlTarget>, ConnectionsError> {
+) -> Result<Option<Target>, ConnectionsError> {
     let row = db
         .query_row(
-            "SELECT host, port, username, password_secret, database_name, init_sql
+            "SELECT engine, host, port, username, password_secret, database_name, init_sql
              FROM connections WHERE id = ?1 AND user_id = ?2",
             params![id, user_id],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
-                    row.get::<_, u16>(1)?,
-                    row.get::<_, String>(2)?,
-                    row.get::<_, Vec<u8>>(3)?,
-                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, u16>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Vec<u8>>(4)?,
                     row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
                 ))
             },
         )
         .optional()?;
 
-    let Some((host, port, username, password_secret, database_name, init_sql)) = row else {
+    let Some((engine, host, port, username, password_secret, database_name, init_sql)) = row else {
         return Ok(None);
     };
-    Ok(Some(MysqlTarget {
-        host,
-        port,
-        username,
-        password: secrets::decrypt(key, &password_secret)?,
-        database_name,
+    // The CHECK of the column keeps the engines Prisme knows.
+    let engine = Engine::from_key(&engine).unwrap_or(Engine::Mysql);
+    Ok(Some(Target {
+        engine,
+        settings: Settings::Server(ServerSettings {
+            host,
+            port,
+            username,
+            password: secrets::decrypt(key, &password_secret)?,
+            database_name,
+        }),
         init_statements: init_statements(&init_sql),
     }))
 }
@@ -483,13 +467,13 @@ pub fn name_of(db: &Connection, user_id: i64, id: i64) -> Result<String, Connect
     Ok(name.unwrap_or_default())
 }
 
-/// Remembers the flavor and the version of the server of connection `id`,
+/// Remembers the flavor and the version of the source of connection `id`,
 /// seen on a successful connection, and the date of that connection.
 pub fn remember_server(
     db: &Connection,
     user_id: i64,
     id: i64,
-    server: &ServerInfo,
+    server: &SourceInfo,
 ) -> Result<(), ConnectionsError> {
     let flavor = match server.flavor {
         Flavor::MySql => "mysql",
@@ -542,7 +526,7 @@ pub fn probe_target(
     key: &MasterKey,
     user_id: i64,
     request: ProbeRequest,
-) -> Result<Option<MysqlTarget>, ConnectionsError> {
+) -> Result<Option<Target>, ConnectionsError> {
     let ProbeRequest {
         connection,
         saved_id,
@@ -550,28 +534,41 @@ pub fn probe_target(
     let password = match saved_id {
         Some(id) if connection.password.expose_secret().is_empty() => {
             match load_target(db, key, user_id, id)? {
-                Some(saved) => saved.password,
+                Some(Target {
+                    settings: Settings::Server(saved),
+                    ..
+                }) => saved.password,
                 None => return Ok(None),
             }
         }
         _ => connection.password,
     };
-    Ok(Some(MysqlTarget {
-        host: connection.host,
-        port: connection.port,
-        username: connection.username,
-        password,
-        database_name: connection.database_name,
+    Ok(Some(Target {
+        engine: Engine::Mysql,
+        settings: Settings::Server(ServerSettings {
+            host: connection.host,
+            port: connection.port,
+            username: connection.username,
+            password,
+            database_name: connection.database_name,
+        }),
         init_statements: init_statements(&connection.init_sql),
     }))
 }
 
 #[cfg(test)]
 mod tests {
+    use prisme_connectors::api::DialectOptions;
+    use prisme_connectors::mysql::capabilities;
+
     use super::*;
     use crate::store;
-    use prisme_connectors::mysql::{connect, execute};
-    use prisme_connectors::test_servers::SERVERS;
+
+    /// Password of the settings of a server.
+    fn password(target: &Target) -> &str {
+        let Settings::Server(server) = &target.settings;
+        server.password.expose_secret()
+    }
 
     fn new_connection(name: &str) -> NewConnection {
         NewConnection {
@@ -629,7 +626,7 @@ mod tests {
         assert_eq!(summaries[0].engine, "mysql");
 
         let target = load_target(&db, &key, user_id, id).unwrap().unwrap();
-        assert_eq!(target.password.expose_secret(), "secret");
+        assert_eq!(password(&target), "secret");
     }
 
     #[test]
@@ -702,12 +699,12 @@ mod tests {
         assert!(update(&db, &key, alice, id, &changed).unwrap());
         assert_eq!(list(&db, alice).unwrap()[0].name, "staging");
         let target = load_target(&db, &key, alice, id).unwrap().unwrap();
-        assert_eq!(target.password.expose_secret(), "secret");
+        assert_eq!(password(&target), "secret");
 
         changed.password = SecretString::from("new");
         assert!(update(&db, &key, alice, id, &changed).unwrap());
         let target = load_target(&db, &key, alice, id).unwrap().unwrap();
-        assert_eq!(target.password.expose_secret(), "new");
+        assert_eq!(password(&target), "new");
 
         assert!(!update(&db, &key, bob, id, &changed).unwrap());
     }
@@ -726,7 +723,7 @@ mod tests {
             .unwrap()
             .unwrap();
         let target = load_target(&db, &key, alice, id).unwrap().unwrap();
-        assert_eq!(target.password.expose_secret(), "secret");
+        assert_eq!(password(&target), "secret");
 
         copy.name = "prod (autre)".to_string();
         copy.password = SecretString::from("other");
@@ -734,7 +731,7 @@ mod tests {
             .unwrap()
             .unwrap();
         let target = load_target(&db, &key, alice, id).unwrap().unwrap();
-        assert_eq!(target.password.expose_secret(), "other");
+        assert_eq!(password(&target), "other");
 
         // The name stays unique, and another user's connection cannot be copied.
         assert!(matches!(
@@ -780,11 +777,11 @@ mod tests {
         };
 
         let target = probe_target(&db, &key, alice, request("", Some(id)));
-        assert_eq!(target.unwrap().unwrap().password.expose_secret(), "secret");
+        assert_eq!(password(&target.unwrap().unwrap()), "secret");
         let target = probe_target(&db, &key, alice, request("other", Some(id)));
-        assert_eq!(target.unwrap().unwrap().password.expose_secret(), "other");
+        assert_eq!(password(&target.unwrap().unwrap()), "other");
         let target = probe_target(&db, &key, alice, request("", None));
-        assert_eq!(target.unwrap().unwrap().password.expose_secret(), "");
+        assert_eq!(password(&target.unwrap().unwrap()), "");
         assert!(
             probe_target(&db, &key, bob, request("", Some(id)))
                 .unwrap()
@@ -829,12 +826,12 @@ mod tests {
             ),
             (None, &None, &None)
         );
-        let server = ServerInfo {
+        let server = SourceInfo {
             flavor: Flavor::MariaDb,
             version: "10.11.11-MariaDB".to_string(),
-            ansi_quotes: false,
-            no_backslash_escapes: false,
+            dialect_options: DialectOptions::default(),
             oldest_supported: None,
+            capabilities: capabilities(),
         };
         remember_server(&db, user_id, id, &server).unwrap();
         let summary = &list(&db, user_id).unwrap()[0];
@@ -859,56 +856,5 @@ mod tests {
         assert!(list(&db, user_id).unwrap()[0].show_system_schemas);
         assert_eq!(session_timeout(&db, user_id, id).unwrap(), Some(30));
         assert_eq!(session_timeout(&db, user_id + 1, id).unwrap(), None);
-    }
-
-    #[test]
-    fn read_only_comes_last_and_only_when_asked() {
-        let target = MysqlTarget {
-            host: "127.0.0.1".to_string(),
-            port: 3306,
-            username: "root".to_string(),
-            password: SecretString::from("secret"),
-            database_name: String::new(),
-            init_statements: vec!["SET NAMES utf8mb4".to_string()],
-        };
-        let read_only = with_read_only(target.clone(), true);
-        assert_eq!(
-            read_only.init_statements,
-            ["SET NAMES utf8mb4", READ_ONLY_STATEMENT]
-        );
-        assert_eq!(
-            with_read_only(target, false).init_statements,
-            ["SET NAMES utf8mb4"]
-        );
-    }
-
-    #[tokio::test]
-    #[ignore = "requires the development servers (docker compose up --detach --wait)"]
-    async fn read_only_session_refuses_writes() {
-        // Every server, MariaDB before 11.1 included: MariaDB 10.6 knows
-        // `tx_read_only`, not `transaction_read_only`.
-        for server in SERVERS {
-            server
-                .with_database("read_only_session", async |target| {
-                    let mut writer = connect(&target).await.unwrap();
-                    execute(&mut writer, "CREATE TABLE t (a INT)")
-                        .await
-                        .unwrap()
-                        .discard()
-                        .await;
-
-                    let mut reader = connect(&with_read_only(target, true)).await.unwrap();
-                    execute(&mut reader, "SELECT a FROM t")
-                        .await
-                        .unwrap()
-                        .discard()
-                        .await;
-                    let Err(error) = execute(&mut reader, "INSERT INTO t VALUES (1)").await else {
-                        panic!("the write went through a read-only session");
-                    };
-                    assert!(error.to_string().contains("READ ONLY"), "{error}");
-                })
-                .await;
-        }
     }
 }

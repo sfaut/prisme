@@ -319,19 +319,11 @@ fn a_heavy_batch_leaves_at_once() {
 #[tokio::test]
 async fn cancels_one_query_or_the_whole_batch() {
     // No running query: stopping does not contact the target server.
-    let target = super::MysqlTarget {
-        host: "127.0.0.1".to_string(),
-        port: 1,
-        username: "root".to_string(),
-        password: secrecy::SecretString::from("secret"),
-        database_name: String::new(),
-        init_statements: Vec::new(),
-    };
     let cancellation = super::Cancellation::default();
 
     // A stop sent right after its batch, before the batch starts, reaches it.
     let first = cancellation.receive_batch();
-    cancellation.cancel(&target).await;
+    cancellation.cancel().await;
     assert!(cancellation.is_cancelled(first, 0));
 
     // A batch received after the stop is not affected.
@@ -339,7 +331,7 @@ async fn cancels_one_query_or_the_whole_batch() {
     assert!(!cancellation.is_cancelled(second, 0));
 
     // A stop of one query reaches that query of the last batch only.
-    cancellation.cancel_query(&target, 1).await;
+    cancellation.cancel_query(1).await;
     assert!(cancellation.is_cancelled(second, 1));
     assert!(!cancellation.is_cancelled(second, 0));
     let third = cancellation.receive_batch();

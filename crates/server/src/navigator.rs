@@ -28,10 +28,13 @@ use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use futures_util::stream;
+use prisme_connectors::api::{self, ConnectorError, Namespace, OpenOptions, SourceInfo};
+use prisme_connectors::catalog::{ObjectInfo, ObjectKind, TableDetails};
+use prisme_connectors::drivers;
 use prisme_connectors::flavor::Flavor;
-use prisme_connectors::catalog::TableDetails;
-use prisme_connectors::mysql::catalog::{self, SchemaObjects};
-use prisme_connectors::mysql::{self, Connection, ServerInfo};
+use prisme_connectors::mysql::catalog::{
+    EventInfo, RoutineInfo, RoutineKind, SchemaObjects, TableInfo, TableKind,
+};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::Instrument;
@@ -116,20 +119,23 @@ async fn stream_catalog(
         .ok_or(ApiError::NotFound)?;
     // The queries of the catalog go to the history of the queries.
     let span = console::sql_span(user_id, &name, query.editor, Action::Navigator);
-    let mut connection = mysql::connect(&target).instrument(span.clone()).await?;
-    let server = mysql::server_info(&mut connection)
-        .instrument(span.clone())
-        .await?;
+    let opening = drivers::of(target.engine).open(&target, OpenOptions::default());
+    let mut connection = opening.instrument(span.clone()).await?;
+    let server = connection.info().clone();
     let remembered = server.clone();
     state
         .with_db(move |db, _| connections::remember_server(db, user_id, id, &remembered))
         .await?;
 
     let (sender, receiver) = mpsc::channel(BUFFER);
+    let preferred = target
+        .namespace()
+        .map(|namespace| namespace.name().to_string());
     tokio::spawn(
         async move {
-            read_catalog(&mut connection, &target.database_name, server, &sender).await;
-            let _ = connection.disconnect().await;
+            let preferred = preferred.unwrap_or_default();
+            read_catalog(connection.as_mut(), &preferred, server, &sender).await;
+            connection.close().await;
         }
         .instrument(span),
     );
@@ -152,14 +158,17 @@ async fn stream_catalog(
 ///
 /// Stops as soon as the client has closed the response.
 async fn read_catalog(
-    connection: &mut Connection,
+    connection: &mut dyn api::Session,
     preferred: &str,
-    server: ServerInfo,
+    server: SourceInfo,
     sender: &mpsc::Sender<CatalogEvent>,
 ) {
     let flavor = server.flavor;
-    let schemas = match catalog::schemas(connection).await {
-        Ok(schemas) => schemas,
+    let schemas: Vec<String> = match connection.namespaces().await {
+        Ok(namespaces) => namespaces
+            .into_iter()
+            .map(|namespace| namespace.name().to_string())
+            .collect(),
         Err(error) => {
             let _ = sender.send(error_event(None, flavor, &error)).await;
             return;
@@ -179,10 +188,10 @@ async fn read_catalog(
     }
 
     for schema in &order {
-        let event = match catalog::objects(connection, schema).await {
+        let event = match connection.objects(&Namespace::single(schema)).await {
             Ok(objects) => CatalogEvent::Objects {
                 schema: schema.clone(),
-                objects,
+                objects: schema_objects(objects),
             },
             Err(error) => error_event(Some(schema), flavor, &error),
         };
@@ -191,7 +200,7 @@ async fn read_catalog(
         }
     }
     for schema in &order {
-        let event = match catalog::details(connection, schema).await {
+        let event = match connection.details(&Namespace::single(schema)).await {
             Ok(tables) => CatalogEvent::Details {
                 schema: schema.clone(),
                 tables,
@@ -207,7 +216,7 @@ async fn read_catalog(
 
 /// Error message for a failed catalog read: of the list of the databases
 /// (`schema` absent), or of a database.
-fn error_event(schema: Option<&str>, flavor: Flavor, error: &mysql::MysqlError) -> CatalogEvent {
+fn error_event(schema: Option<&str>, flavor: Flavor, error: &ConnectorError) -> CatalogEvent {
     let detail = ErrorDetail::CatalogUnreadable {
         schema: schema.map(str::to_owned),
         flavor,
@@ -217,6 +226,45 @@ fn error_event(schema: Option<&str>, flavor: Flavor, error: &mysql::MysqlError) 
         message: detail.to_string(),
         detail,
     }
+}
+
+/// Objects of a database, in the form of the `objects` message: tables and
+/// views, routines, events.
+fn schema_objects(objects: Vec<ObjectInfo>) -> SchemaObjects {
+    let mut grouped = SchemaObjects {
+        tables: Vec::new(),
+        routines: Vec::new(),
+        events: Vec::new(),
+    };
+    for object in objects {
+        let ObjectInfo {
+            name,
+            kind,
+            rows,
+            enabled,
+        } = object;
+        let table = |kind| TableInfo {
+            name: name.clone(),
+            kind,
+            rows,
+        };
+        let routine = |kind| RoutineInfo {
+            name: name.clone(),
+            kind,
+        };
+        match kind {
+            ObjectKind::Table => grouped.tables.push(table(TableKind::Table)),
+            ObjectKind::View => grouped.tables.push(table(TableKind::View)),
+            ObjectKind::SystemTable => grouped.tables.push(table(TableKind::System)),
+            ObjectKind::Procedure => grouped.routines.push(routine(RoutineKind::Procedure)),
+            ObjectKind::Function => grouped.routines.push(routine(RoutineKind::Function)),
+            ObjectKind::Event => grouped.events.push(EventInfo {
+                name: name.clone(),
+                enabled: enabled.unwrap_or(true),
+            }),
+        }
+    }
+    grouped
 }
 
 /// Reading order of the databases: the preferred database, then the user's
