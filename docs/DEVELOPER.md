@@ -176,7 +176,7 @@ Rules:
 | `WandSparkles` | Rewrite as "beautiful SQL" ("Enjoliver") | editor's buttons |
 | `RefreshCw` / `RefreshCwOff` | Run the result's query again / stop that refresh | bar of the result tabs (`ResultTabActions`) |
 | `Funnel` | Show / hide the filter of a list; in the data explorer, keep only the search results | bar of the result tabs (`ResultTabActions`), console's header, data explorer's search |
-| `Search` | Mark of a search or filter field; open the search | result's filter field (`ResultFilter`); data explorer |
+| `Search` | Mark of a search or filter field; open the search | result's filter field (`ResultFilter`); data explorer; filter of the connections manager |
 | `ChevronUp` / `ChevronDown` | Previous / next search result | data explorer |
 | `Pin` | Pin / unpin a result tab | result tab (`ResultTab`) |
 | `Copy` | Copy the document shown | data explorer |
@@ -188,7 +188,9 @@ Rules:
 
 | Icon | Action | Where |
 |---|---|---|
-| `Plus` | New editor; add a connection | top bar, first of its right group, filled in the primary color (`TopBar`); navigator's menu |
+| `Plus` | New editor; add a connection | top bar, first of its right group, filled in the primary color (`TopBar`); connections manager (`ConnectionManagerList`) |
+| `ChevronDown` | Menu of what "Nouveau" creates | top bar, joined to "Nouveau" (`UiSplitButton`) |
+| `Code`, `Server` | Create an editor, a connection | menu of "Nouveau" |
 | `History` | Reopen a closed editor | editors' bar |
 | `X` | Close a tab, a dialog or a message; empty a field | tabs (`DocumentTab`), `UiDialog`, `UiAlert`, result's filter field (`ResultFilter`) |
 
@@ -214,13 +216,23 @@ Rules:
 | `Zap` | A trigger | tree |
 | `KeyRound` | Column of the primary key, in place of `Columns3` (and of `Link` if it is part of a foreign key too) | tree |
 | `DatabaseZap` | Use this database (`USE`) | line's button |
-| `PlugZap` | Test a connection | source's menu |
+| `PlugZap` | Test a connection | source's menu; connections manager |
 | `Unplug` | Close the session ("Déconnecter") | line's button; source's menu |
 | `PencilRuler` | Write the operations on an index | line's button |
-| `Pencil` | Edit a connection | source's menu |
+| `Pencil` | Edit a connection, in the connections manager | source's menu |
 | `RefreshCw` | Reload the catalog of a connection, of all of them | source's menu; sources' menu |
-| `Trash2` | Delete a connection | source's menu |
+| `Trash2` | Delete a connection | source's menu; connections manager |
 | `EllipsisVertical` | Menu of a line | line's button |
+
+#### Connections manager
+
+| Icon | Meaning or action | Where |
+|---|---|---|
+| `CopyPlus` | Duplicate a connection: a new one with its settings | card of the connection |
+| `ChevronDown` / `ChevronRight` | Unfold / fold a family of sources | list |
+| `Check` | Step of a creation passed | steps of a creation (`ConnectionManagerSteps`) |
+| `ArrowLeft` / `ArrowRight` | Previous / next step of a creation, the arrow after the label of the next one | footer of the creation |
+| `Server`, `ChartNoAxesColumn`, `HardDrive`, `FileSpreadsheet`, `Sheet`, `Braces`, `Layers` | Kinds of sources: database server, ClickHouse, database file (SQLite, DuckDB), CSV, Excel, JSON, Parquet | list, card, choice of the kind (`sourceTypes.ts`) |
 
 #### Types of the grid's columns (`typeIcons.ts`)
 
@@ -248,10 +260,10 @@ Rules:
 | `Database`, `DatabaseArrowDown`, `DatabaseArrowUp`, `DatabaseCheck`, `DatabaseX` | Exchanges with the internal database: none, reading, writing, synced, failed | top bar (`SyncStatus`) |
 | `Info`, `CircleCheckBig`, `CircleAlert`, `CircleX` | Message: information, success, warning, error | `UiAlert` |
 | `CircleCheckBig`, `CircleX` | Transient message: success, error, as in `UiAlert` | `UiToaster` |
-| `Eye` / `EyeOff` | Show / hide the password | connection dialog |
+| `Eye` / `EyeOff` | Show / hide the password | connections manager (`ConnectionForm`) |
 | `ChevronDown`, `Check` | Open a list; chosen item | `UiSelect` |
 | `Sun`, `Monitor`, `Moon` | Color mode: light, system, dark | top bar (`UiChoiceSwitch`) |
-| `User`, `Settings` | Profile, preferences | account menu |
+| `User`, `Server`, `Settings` | Profile, connections, preferences | account menu |
 | `Languages`, `Database`, `Code`, `Grid2x2`, `SquareTerminal` | Sections of the preferences: language, queries, SQL editor, Pivoteur, console | preferences window |
 
 ### Lengths in pixels
@@ -610,6 +622,7 @@ On error (status 4xx or 5xx), PowerShell raises an exception, and the JSON body 
 | `GET /api/version` | Version of the executable: `{"version": "0.2.0"}`. The interface shows it next to the name. | — |
 | `GET /api/connections` | Lists the connections, without passwords. | — |
 | `POST /api/connections` | Saves a connection, returns `{"id": ...}` (201). | 400 invalid input, 409 name already taken |
+| `POST /api/connections/{id}/copies` | Saves a copy of the connection with the settings received, returns `{"id": ...}` (201). An empty password takes that of the copied connection. | 400 invalid input, 404 unknown connection, 409 name already taken |
 | `POST /api/connections/{id}/probe` | Connects, returns `{"flavor": ..., "version": ...}`. | 404 unknown connection, 502 server unreachable or access denied, 504 no answer within 10 s |
 | `GET /api/settings` | Settings: `{"row_limit": 1000, "row_limit_choices": [...], "read_only_session": true, "allowed_writes": [], "history_retention_days": 30, "debug_retention_days": 30, "indent_size": 4, "concat_max_bytes": 1000, "pivot_refresh_ms": 1000}`. `allowed_writes`: the kinds of write allowed (`insert`, `create_table`...), in the order of `WriteKind::ALL`. | — |
 | `PUT /api/settings` | Changes the default limit, the read-only sessions, the allowed writes, the retention of the console (1 to 3,650 days), the indentation of the SQL editor (1 to 8 spaces), the longest text of a `GROUP_CONCAT` of the Pivoteur (100 to 1,048,576 bytes) and the shortest delay between two computations of the Pivoteur during the reception of the rows (200 to 60,000 milliseconds), returns the updated settings. | 400 limit not among the choices, retention, indentation, longest text or delay out of bounds; 422 unknown kind of write |
@@ -771,13 +784,14 @@ web/               Vue interface
   src/api/         API calls and query session
     generated/     TypeScript types generated from Rust (do not edit)
   src/components/  interface components, one folder per area (see "Components")
-    navigator/     object navigator, connection dialog
+    navigator/     object navigator
+    connections/   connections manager: list, settings, creation, deletion
     editor/        editors' tab bar, view of an editor, SQL editor
     result/        result tabs, their content, the grid, CSV and CTE
     pivot/         Pivoteur: panel, sections, table, popovers, client of the engine
     console/       console: history, debug log
     explorer/      data explorer
-    top-bar/       top bar: exports, synchronisation, settings, profile
+    top-bar/       top bar: exports, synchronisation, settings, profile, account menu
     panel/         header of the panels of the screen and activity bar of an editor's tab
     tab/           tab of a document bar, shared by the editors and the results
     split/         splitters of Prisme

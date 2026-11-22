@@ -5,6 +5,7 @@ import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
+import { useConnectionsStore } from '@/stores/connections'
 
 import NavigatorPanel from '../NavigatorPanel.vue'
 
@@ -101,6 +102,7 @@ function connection(id: number, name: string): ConnectionSummary {
     show_system_schemas: true,
     server_flavor: null,
     server_version: null,
+    connected_at: null,
     created_at: '2026-10-13T00:00:00Z',
   }
 }
@@ -197,19 +199,22 @@ describe('NavigatorPanel', () => {
     wrapper.unmount()
   })
 
-  it('offers buttons on the title and a menu on each source', async () => {
+  it('offers a button on the title and a menu on each source', async () => {
     savedConnections = [connection(1, 'Origen 2')]
     const wrapper = mountNavigator({ selectedId: null, currentDatabase: null })
     await vi.waitFor(() => expect(wrapper.findAll('.node-menu')).toHaveLength(1))
     expect(wrapper.find('[aria-label="Rafraîchir"]').exists()).toBe(true)
-    await wrapper.find('[aria-label="Ajouter une connexion"]').trigger('click')
-    await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull())
+    // Connections are added in the connections manager, from the top bar.
+    expect(wrapper.find('[aria-label="Ajouter une connexion"]').exists()).toBe(false)
+    const connections = useConnectionsStore()
     const options = () =>
       [...document.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim())
     await click(wrapper.find('.node-menu'), 1)
     await vi.waitFor(() =>
       expect(options()).toEqual(['Modifier', 'Rafraîchir', 'Tester', 'Déconnecter', 'Supprimer']),
     )
+    document.querySelector<HTMLElement>('[role="menuitem"]')?.click()
+    await vi.waitFor(() => expect(connections.manager).toMatchObject({ open: true, target: 1 }))
     wrapper.unmount()
   })
 

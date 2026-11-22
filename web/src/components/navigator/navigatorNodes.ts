@@ -31,7 +31,6 @@
 import type { ColumnInfo } from '@/api/generated/ColumnInfo'
 import type { EventInfo } from '@/api/generated/EventInfo'
 import type { Flavor } from '@/api/generated/Flavor'
-import { serverName } from '@/api/flavors'
 import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
 import type { IndexInfo } from '@/api/generated/IndexInfo'
 import type { RoutineInfo } from '@/api/generated/RoutineInfo'
@@ -179,11 +178,11 @@ export interface NavigatorNode extends Place {
    * Badge shown after the label of a source: the flavor of its server
    * (`mysql`, `mariadb`).
    */
-  badge?: string
+  badge?: Flavor
   /**
-   * Tooltip of the badge: name and version of the server.
+   * Version of the server of the badge, named in its tooltip; `null` if unknown.
    */
-  badgeTooltip?: string
+  badgeVersion?: string | null
   /**
    * Order of the tables, on a "Tables" folder of two tables or more: by name,
    * or by row count.
@@ -292,7 +291,7 @@ export function sourceNodes(
       chosen: source.chosen,
       receiving: source.receiving,
       badge: source.flavor ?? undefined,
-      badgeTooltip: source.flavor === null ? undefined : serverName(source.flavor, source.version),
+      badgeVersion: source.flavor === null ? undefined : source.version,
       children:
         catalog === undefined || (!catalog.done && catalog.schemas.length === 0)
           ? [loadingNode(key, place)]

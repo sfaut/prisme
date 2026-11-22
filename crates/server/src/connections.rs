@@ -12,7 +12,8 @@
 //!
 //! It also sets the delay during which a query session stays open after its
 //! page is closed (see `sessions.rs`), and remembers the server's flavor
-//! (MySQL or MariaDB) seen on the last connection.
+//! (MySQL or MariaDB) and version seen on the last successful connection,
+//! with its date.
 
 use prisme_connectors::mysql::{Flavor, MysqlTarget, ServerInfo};
 use prisme_dialects::Dialect;
@@ -139,6 +140,9 @@ pub struct ConnectionSummary {
     /// Version of the server seen on the last successful connection (raw
     /// result of `SELECT VERSION()`), `null` if the connection never succeeded.
     pub server_version: Option<String>,
+    /// Date of the last successful connection, in UTC, in ISO 8601 format,
+    /// `null` if the connection never succeeded.
+    pub connected_at: Option<String>,
     /// Date it was saved, in UTC, in ISO 8601 format.
     pub created_at: String,
 }
@@ -248,7 +252,49 @@ pub fn insert(
 ) -> Result<i64, ConnectionsError> {
     new.validate()?;
     let password_secret = secrets::encrypt(key, &new.password)?;
+    insert_row(db, user_id, new, &password_secret)
+}
 
+/// Saves a copy of connection `source_id` of user `user_id`, with the
+/// settings of `new`, and returns its id. An empty password takes that of the
+/// source: the interface does not know it, so it cannot send it. The secret
+/// is copied as stored, without being decrypted.
+///
+/// Returns `None` if the source does not exist or belongs to another user.
+pub fn insert_copy(
+    db: &Connection,
+    key: &MasterKey,
+    user_id: i64,
+    source_id: i64,
+    new: &NewConnection,
+) -> Result<Option<i64>, ConnectionsError> {
+    new.validate()?;
+    let saved_secret: Option<Vec<u8>> = db
+        .query_row(
+            "SELECT password_secret FROM connections WHERE id = ?1 AND user_id = ?2",
+            params![source_id, user_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(saved_secret) = saved_secret else {
+        return Ok(None);
+    };
+    let password_secret = if new.password.expose_secret().is_empty() {
+        saved_secret
+    } else {
+        secrets::encrypt(key, &new.password)?
+    };
+    insert_row(db, user_id, new, &password_secret).map(Some)
+}
+
+/// Inserts the row of a validated connection, its password already
+/// encrypted, and returns its id.
+fn insert_row(
+    db: &Connection,
+    user_id: i64,
+    new: &NewConnection,
+    password_secret: &[u8],
+) -> Result<i64, ConnectionsError> {
     let result = db.execute(
         "INSERT INTO connections (user_id, name, engine, host, port, username, password_secret, database_name, init_sql, session_timeout_minutes, show_system_schemas)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
@@ -329,7 +375,7 @@ pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, Con
     let mut statement = db.prepare(
         "SELECT id, name, engine, host, port, username, database_name, init_sql,
                 session_timeout_minutes, show_system_schemas, server_flavor, server_version,
-                created_at
+                connected_at, created_at
          FROM connections WHERE user_id = ?1 ORDER BY name",
     )?;
     let rows = statement.query_map(params![user_id], |row| {
@@ -346,7 +392,8 @@ pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, Con
             show_system_schemas: row.get(9)?,
             server_flavor: flavor_of(&row.get::<_, String>(10)?),
             server_version: Some(row.get::<_, String>(11)?).filter(|version| !version.is_empty()),
-            created_at: row.get(12)?,
+            connected_at: Some(row.get::<_, String>(12)?).filter(|date| !date.is_empty()),
+            created_at: row.get(13)?,
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -436,7 +483,7 @@ pub fn name_of(db: &Connection, user_id: i64, id: i64) -> Result<String, Connect
 }
 
 /// Remembers the flavor and the version of the server of connection `id`,
-/// seen on a successful connection.
+/// seen on a successful connection, and the date of that connection.
 pub fn remember_server(
     db: &Connection,
     user_id: i64,
@@ -448,7 +495,9 @@ pub fn remember_server(
         Flavor::MariaDb => "mariadb",
     };
     db.execute(
-        "UPDATE connections SET server_flavor = ?3, server_version = ?4
+        "UPDATE connections
+         SET server_flavor = ?3, server_version = ?4,
+             connected_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
          WHERE id = ?1 AND user_id = ?2",
         params![id, user_id, flavor, server.version],
     )?;
@@ -663,6 +712,43 @@ mod tests {
     }
 
     #[test]
+    fn copy_takes_the_source_password_when_left_empty() {
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let alice = store::ensure_user(&db, "alice@example.com").unwrap();
+        let bob = store::ensure_user(&db, "bob@example.com").unwrap();
+        let source = insert(&db, &key, alice, &new_connection("prod")).unwrap();
+
+        let mut copy = new_connection("prod (copie)");
+        copy.password = SecretString::from("");
+        let id = insert_copy(&db, &key, alice, source, &copy)
+            .unwrap()
+            .unwrap();
+        let target = load_target(&db, &key, alice, id).unwrap().unwrap();
+        assert_eq!(target.password.expose_secret(), "secret");
+
+        copy.name = "prod (autre)".to_string();
+        copy.password = SecretString::from("other");
+        let id = insert_copy(&db, &key, alice, source, &copy)
+            .unwrap()
+            .unwrap();
+        let target = load_target(&db, &key, alice, id).unwrap().unwrap();
+        assert_eq!(target.password.expose_secret(), "other");
+
+        // The name stays unique, and another user's connection cannot be copied.
+        assert!(matches!(
+            insert_copy(&db, &key, alice, source, &copy),
+            Err(ConnectionsError::DuplicateName(_))
+        ));
+        copy.name = "bob".to_string();
+        assert!(
+            insert_copy(&db, &key, bob, source, &copy)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
     fn update_rejects_a_name_already_taken() {
         let db = store::open_in_memory();
         let key = MasterKey::generate();
@@ -735,8 +821,12 @@ mod tests {
         let id = insert(&db, &key, user_id, &new_connection("prod")).unwrap();
         let summary = &list(&db, user_id).unwrap()[0];
         assert_eq!(
-            (summary.server_flavor, &summary.server_version),
-            (None, &None)
+            (
+                summary.server_flavor,
+                &summary.server_version,
+                &summary.connected_at
+            ),
+            (None, &None, &None)
         );
         let server = ServerInfo {
             flavor: Flavor::MariaDb,
@@ -749,6 +839,8 @@ mod tests {
         let summary = &list(&db, user_id).unwrap()[0];
         assert_eq!(summary.server_flavor, Some(Flavor::MariaDb));
         assert_eq!(summary.server_version.as_deref(), Some("10.11.11-MariaDB"));
+        let connected_at = summary.connected_at.as_deref().unwrap();
+        assert!(connected_at.ends_with('Z'), "{connected_at}");
     }
 
     #[test]

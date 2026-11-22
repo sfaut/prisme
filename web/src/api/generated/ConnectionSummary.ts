@@ -56,6 +56,11 @@ export type ConnectionSummary = {
    */
   server_version: string | null;
   /**
+   * Date of the last successful connection, in UTC, in ISO 8601 format,
+   * `null` if the connection never succeeded.
+   */
+  connected_at: string | null;
+  /**
    * Date it was saved, in UTC, in ISO 8601 format.
    */
   created_at: string;

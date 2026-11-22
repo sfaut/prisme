@@ -49,12 +49,14 @@
   circle during a load, in place of the source's icon while its catalog
   arrives.
 
-  Two buttons of the title, always shown, read again all the catalogs
-  already read and add a connection; on hovering each source, a "⋮" menu
-  changes or tests the connection, reads its catalog again or deletes the connection
-  (after confirmation, which warns of the transactions it rolls back);
-  "Déconnecter" there closes the session of the editor, like the button of
-  the line.
+  The button of the title, always shown, reads again all the catalogs
+  already read; connections are added in the connections manager (top
+  bar). On hovering each source, a "⋮" menu opens the connection in the connections
+  manager ("Modifier"), tests it, reads its catalog again or deletes it
+  (after confirmation, `ConnectionRemoveDialog`, which warns of the
+  transactions it rolls back); "Déconnecter" there closes the session of
+  the editor, like the button of the line. The active navigator reads again
+  the catalog of a connection changed in the manager.
 
   The tree is Reka UI's (`TreeRoot`, `TreeItem`: keyboard, opening of the
   levels, accessibility), with virtual scrolling (`TreeVirtualizer`); the
@@ -74,7 +76,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { Pencil, PlugZap, Plus, RefreshCw, Trash2, Unplug } from '@lucide/vue'
+import { Pencil, PlugZap, RefreshCw, Trash2, Unplug } from '@lucide/vue'
 import {
   TreeItem,
   type TreeItemSelectEvent,
@@ -90,18 +92,15 @@ import type { SessionStatus } from '@/api/querySession'
 import { cssPixels } from '@/utils/cssLength'
 import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
-import { useEditorsStore } from '@/stores/editors'
 import { useNavigatorStore } from '@/stores/navigator'
 
-import ConnectionDialog from './ConnectionDialog.vue'
 import NavigatorLine from './NavigatorLine.vue'
+import ConnectionRemoveDialog from '@/components/connections/ConnectionRemoveDialog.vue'
 import PanelHeader from '@/components/panel/PanelHeader.vue'
 import { type NavigatorNode, sourceKey, sourceNodes } from './navigatorNodes'
 import { pinnedRows, visibleRows } from './stickyRows'
-import { openTransactionsNotice } from './transactionNotice'
 import UiAlert from '@/components/ui/UiAlert.vue'
 import UiButton from '@/components/ui/UiButton.vue'
-import UiDialog from '@/components/ui/UiDialog.vue'
 import { vTooltip } from '@/components/ui/tooltip'
 import type { MenuItem } from '@/components/ui/menuItem'
 
@@ -155,7 +154,6 @@ const emit = defineEmits<{
 
 const catalog = useCatalogStore()
 const connections = useConnectionsStore()
-const editors = useEditorsStore()
 const navigatorStore = useNavigatorStore()
 
 /**
@@ -195,31 +193,18 @@ const probed = ref<ReturnType<typeof probeMessage> | null>(null)
 const failures = ref<Record<number, string>>({})
 
 /**
- * Is the creation or change window open?
- */
-const dialogOpen = ref(false)
-
-/**
- * Connection changed by the window, `null` to create one.
- */
-const editing = ref<ConnectionSummary | null>(null)
-
-/**
  * Connection whose deletion waits for confirmation, `null` if none.
  */
 const removing = ref<ConnectionSummary | null>(null)
 
 /**
- * Is the deletion confirmation window open?
+ * Forgets the reading error of a deleted connection.
+ *
+ * @param connectionId Id of the deleted connection.
  */
-const removeOpen = computed({
-  get: () => removing.value !== null,
-  set: (open) => {
-    if (!open) {
-      removing.value = null
-    }
-  },
-})
+function forgetFailure(connectionId: number): void {
+  delete failures.value[connectionId]
+}
 
 /**
  * Tree of the editor's navigator: open nodes and scroll.
@@ -373,7 +358,11 @@ function menuItems(node: NavigatorNode): MenuItem[] | null {
         return null
       }
       return [
-        { label: 'Modifier', icon: Pencil, onSelect: () => openDialog(connection) },
+        {
+          label: 'Modifier',
+          icon: Pencil,
+          onSelect: () => connections.openManager(connection.id),
+        },
         {
           label: 'Rafraîchir',
           icon: RefreshCw,
@@ -405,16 +394,6 @@ function menuItems(node: NavigatorNode): MenuItem[] | null {
 }
 
 /**
- * Opens the connection window.
- *
- * @param connection Connection to change, `null` to create one.
- */
-function openDialog(connection: ConnectionSummary | null): void {
-  editing.value = connection
-  dialogOpen.value = true
-}
-
-/**
  * Connects to the server of a source and shows its flavor and version.
  * A failure shows as a reading error of the source.
  *
@@ -432,43 +411,23 @@ async function probe(connectionId: number): Promise<void> {
   }
 }
 
-/**
- * Reads again the catalog of a changed connection, if it was already read:
- * the connection may now target another server.
- *
- * @param connectionId Id of the changed connection.
- */
-function onUpdated(connectionId: number): void {
-  if (catalog.catalogs[connectionId] !== undefined) {
-    void load(connectionId, true)
-  }
-}
-
-/**
- * Editors of the connection waiting for deletion with a transaction open,
- * which the deletion rolls back.
- */
-const removedTransactions = computed(() =>
-  removing.value === null ? 0 : editors.inTransaction(removing.value.id).length,
+// A changed connection may now target another server: the active navigator
+// reads its catalog again, if it was already read (the catalogs are common to
+// all the navigators).
+watch(
+  () => ({ ...connections.versions }),
+  (versions, before) => {
+    if (!props.active) {
+      return
+    }
+    for (const [id, version] of Object.entries(versions)) {
+      const connectionId = Number(id)
+      if (version !== before[connectionId] && catalog.catalogs[connectionId] !== undefined) {
+        void load(connectionId, true)
+      }
+    }
+  },
 )
-
-/**
- * Deletes the connection that was waiting for confirmation.
- */
-async function confirmRemove(): Promise<void> {
-  const connection = removing.value
-  removing.value = null
-  if (connection === null) {
-    return
-  }
-  try {
-    await connections.remove(connection.id)
-    navigatorStore.forgetSource(connection.id)
-    delete failures.value[connection.id]
-  } catch (failure) {
-    failures.value[connection.id] = errorMessage(failure)
-  }
-}
 
 /**
  * Does an event ask to act on a line, without opening or closing it? A click
@@ -714,14 +673,6 @@ watch(() => visible.value.rows.length, retryScroll)
           v-tooltip="{ title: 'Rafraîchir', description: 'Relit les catalogues déjà lus' }"
           @click="refreshAll"
         />
-        <ui-button
-          :icon="Plus"
-          variant="ghost"
-          small
-          aria-label="Ajouter une connexion"
-          v-tooltip="{ title: 'Ajouter', description: 'Nouvelle connexion' }"
-          @click="openDialog(null)"
-        />
       </template>
     </panel-header>
     <ui-alert v-if="probed" :tone="probed.tone" :title="probed.title" @close="probed = null" />
@@ -805,35 +756,11 @@ watch(() => visible.value.rows.length, retryScroll)
       </div>
     </div>
 
-    <connection-dialog v-model:open="dialogOpen" :connection="editing" @updated="onUpdated" />
-
-    <ui-dialog
-      v-model:open="removeOpen"
-      title="Supprimer la connexion"
-      :description="`Supprimer la connexion « ${removing?.name} » ?`"
-    >
-      <p class="text-fg-secondary">
-        Aucune donnée n'est perdue : seuls les paramètres de connexion enregistrés dans Prisme sont
-        retirés, le serveur et ses bases ne sont pas touchés. La connexion pourra être recréée
-        ultérieurement.
-      </p>
-      <ui-alert
-        v-if="removedTransactions > 0"
-        tone="warning"
-        :title="openTransactionsNotice(removedTransactions, 'supprimer la connexion')"
-      />
-      <template #footer>
-        <div class="flex w-full justify-end gap-3">
-          <ui-button label="Annuler" @click="removing = null" />
-          <ui-button
-            :label="removedTransactions > 0 ? 'Supprimer et annuler' : 'Supprimer'"
-            variant="solid"
-            tone="error"
-            @click="confirmRemove"
-          />
-        </div>
-      </template>
-    </ui-dialog>
+    <connection-remove-dialog
+      v-model:connection="removing"
+      @removed="forgetFailure"
+      @failed="(id, message) => (failures[id] = message)"
+    />
   </div>
 </template>
 

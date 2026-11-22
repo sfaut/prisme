@@ -216,8 +216,10 @@ describe('App', () => {
     const tabs = () => wrapper.findAll('[aria-label="Éditeurs"] [role="tab"]')
     await vi.waitFor(() => expect(tabs()).toHaveLength(1))
     const button = wrapper.findAll('header button').find((item) => item.text() === 'Nouveau')
-    // At the right of the bar, before the exports.
-    expect(button!.element.parentElement).toBe(wrapper.find('header').element.lastElementChild)
+    // At the right of the bar, before the exports, its menu's chevron joined to it.
+    expect(button!.element.parentElement?.parentElement).toBe(
+      wrapper.find('header').element.lastElementChild,
+    )
     expect(button!.classes()).toContain('bg-primary')
     await button!.trigger('click')
     await vi.waitFor(() => expect(tabs()).toHaveLength(2))

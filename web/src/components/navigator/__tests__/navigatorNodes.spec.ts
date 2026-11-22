@@ -144,9 +144,9 @@ describe('sourceNodes', () => {
     // Badge of the server's flavor, absent as long as it is unknown.
     expect([first?.badge, second?.badge, never?.badge]).toEqual(['mariadb', 'mysql', undefined])
     // Its tooltip names the server, with its version once known.
-    expect([first?.badgeTooltip, second?.badgeTooltip, never?.badgeTooltip]).toEqual([
-      'MariaDB 10.11.11-MariaDB',
-      'MySQL',
+    expect([first?.badgeVersion, second?.badgeVersion, never?.badgeVersion]).toEqual([
+      '10.11.11-MariaDB',
+      null,
       undefined,
     ])
     // Same databases in two sources: distinct keys, and each node knows its connection.

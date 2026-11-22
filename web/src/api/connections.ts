@@ -1,5 +1,5 @@
 /**
- * Saved connections: list, creation, change, deletion and test.
+ * Saved connections: list, creation, copy, change, deletion and test.
  */
 
 import { request } from './http'
@@ -34,6 +34,18 @@ export function createConnection(connection: NewConnection): Promise<Created> {
  */
 export function updateConnection(id: number, connection: NewConnection): Promise<void> {
   return request('PUT', `/api/connections/${id}`, connection)
+}
+
+/**
+ * Saves a copy of a connection, with the settings typed for the copy. An
+ * empty password takes that of the copied connection.
+ *
+ * @param id Id of the copied connection.
+ * @param connection Settings of the copy.
+ * @returns The id of the copy.
+ */
+export function copyConnection(id: number, connection: NewConnection): Promise<Created> {
+  return request('POST', `/api/connections/${id}/copies`, connection)
 }
 
 /**

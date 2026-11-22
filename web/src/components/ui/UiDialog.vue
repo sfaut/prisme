@@ -8,7 +8,9 @@
   footer, buttons at the end, are set apart by a line, and its content goes
   from edge to edge (a list of sections on the full height). On opening, the focus goes
   to the first input field, or failing that to the first button of the
-  footer ("Annuler" of a confirmation).
+  footer ("Annuler" of a confirmation); with `focusWindow`, to the window
+  itself, for a window whose first field is not where the user starts (the
+  filter of a list).
 -->
 <script setup lang="ts">
 import { X } from '@lucide/vue'
@@ -24,7 +26,7 @@ import {
 
 import UiButton from './UiButton.vue'
 
-defineProps<{
+const props = defineProps<{
   /**
    * Title of the window.
    */
@@ -38,6 +40,11 @@ defineProps<{
    * size stays the same from one section to the next.
    */
   wide?: boolean
+  /**
+   * On opening, the focus goes to the window itself, not to its first field:
+   * Tab then reaches the fields in order.
+   */
+  focusWindow?: boolean
 }>()
 
 /**
@@ -54,6 +61,11 @@ const open = defineModel<boolean>('open', { required: true })
  */
 function focusFirst(event: Event): void {
   const content = event.target as HTMLElement
+  if (props.focusWindow) {
+    event.preventDefault()
+    content.focus()
+    return
+  }
   const target = content.querySelector<HTMLElement>(
     'input:not([disabled]), select, textarea, footer button:not([disabled])',
   )

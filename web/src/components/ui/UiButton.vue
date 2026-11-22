@@ -5,7 +5,8 @@
   default) or discreet (`ghost`, without background: on hover, only its icon
   or its text darkens); three tones (`tone`): neutral (the default),
   action (`primary`) or danger (`error`). A Lucide icon goes on the left of the
-  label; without a label, the button is square. During `loading`, a spinner
+  label, or after it (`trailingIcon`, the arrow of a "Suivant"); without a
+  label, the button is square. During `loading`, a spinner
   replaces the icon and the button is inactive.
 
   Colors, height, padding and radius come from the theme's variables
@@ -25,6 +26,11 @@ const props = withDefaults(
      * Lucide icon, on the left of the label.
      */
     icon?: Component
+    /**
+     * Lucide icon after the label, for an icon that points where the action
+     * goes (the arrow of "Suivant").
+     */
+    trailingIcon?: Component
     /**
      * Look.
      */
@@ -112,5 +118,6 @@ const classes = computed(() => [
     <LoaderCircle v-if="loading" class="size-5 shrink-0 animate-spin" />
     <component :is="icon" v-else-if="icon" class="size-5 shrink-0" />
     <span v-if="label" class="text-trim">{{ label }}</span>
+    <component :is="trailingIcon" v-if="trailingIcon" class="size-5 shrink-0" />
   </button>
 </template>

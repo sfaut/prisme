@@ -3,20 +3,25 @@
   the application with its version next to it (that of the executable, read
   from the server), on the left; on the right, the "Nouveau" button, the
   main action, filled in the primary color, which opens an editor on the
-  connection of the active one (later, a menu: editor or notebook), exports
+  connection of the active one, its chevron a menu of what it creates: an
+  editor, or a connection in the connections manager (later, a notebook), exports
   manager (`ExportManager`), synchronisation state
   (`SyncStatus`), theme choice, and the account menu, headed by the user
-  (initials, name, email address), which opens the user's profile (`ProfileDialog`) and the preferences, the settings
-  (`PreferencesDialog`).
+  (initials, name, email address), which opens the user's profile
+  (`ProfileDialog`), the connections manager (`ConnectionManager`) and the
+  preferences, the settings (`PreferencesDialog`).
 
   The windows it opens are its own: the menu only chooses which one shows.
+  The connections manager opens through its store, as the navigator opens
+  it too.
 -->
 <script setup lang="ts">
-import { Monitor, Moon, Plus, Settings, Sun, User } from '@lucide/vue'
+import { Code, Monitor, Moon, Plus, Server, Settings, Sun, User } from '@lucide/vue'
 import { onMounted, ref } from 'vue'
 
 import { getVersion } from '@/api/version'
 import { type ColorMode, colorMode } from '@/utils/colorMode'
+import { useConnectionsStore } from '@/stores/connections'
 import { useEditorsStore } from '@/stores/editors'
 import { useProfileStore } from '@/stores/profile'
 
@@ -24,9 +29,10 @@ import ExportManager from './ExportManager.vue'
 import PreferencesDialog from './PreferencesDialog.vue'
 import ProfileDialog from './ProfileDialog.vue'
 import SyncStatus from './SyncStatus.vue'
+import ConnectionManager from '@/components/connections/ConnectionManager.vue'
 import UiDropdownMenu from '@/components/ui/UiDropdownMenu.vue'
-import UiButton from '@/components/ui/UiButton.vue'
 import UiChoiceSwitch from '@/components/ui/UiChoiceSwitch.vue'
+import UiSplitButton from '@/components/ui/UiSplitButton.vue'
 import type { MenuItem } from '@/components/ui/menuItem'
 
 /**
@@ -37,6 +43,7 @@ const version = ref<string | null>(null)
 
 const profile = useProfileStore()
 const editors = useEditorsStore()
+const connections = useConnectionsStore()
 
 onMounted(async () => {
   try {
@@ -74,10 +81,26 @@ const profileOpen = ref(false)
 const preferencesOpen = ref(false)
 
 /**
+ * Opens a new editor, on the connection of the active one.
+ */
+function newEditor(): void {
+  void editors.create(editors.active?.connectionId ?? null)
+}
+
+/**
+ * Choices of the menu of the "Nouveau" button: what it creates.
+ */
+const newItems: MenuItem[] = [
+  { label: 'Éditeur', icon: Code, onSelect: newEditor },
+  { label: 'Connexion', icon: Server, onSelect: () => connections.openManager('new') },
+]
+
+/**
  * Choices of the account menu, opened from the avatar.
  */
 const menuItems: MenuItem[] = [
   { label: 'Profil', icon: User, onSelect: () => (profileOpen.value = true) },
+  { label: 'Connexions', icon: Server, onSelect: () => connections.openManager() },
   { label: 'Préférences', icon: Settings, onSelect: () => (preferencesOpen.value = true) },
 ]
 </script>
@@ -90,13 +113,12 @@ const menuItems: MenuItem[] = [
       <span v-if="version" class="text-xs leading-none text-fg-faint">{{ version }}</span>
     </div>
     <div class="flex items-center gap-3">
-      <ui-button
+      <ui-split-button
         :icon="Plus"
         label="Nouveau"
-        variant="solid"
-        tone="primary"
-        wide
-        @click="editors.create(editors.active?.connectionId ?? null)"
+        :items="newItems"
+        menu-label="Choisir quoi créer"
+        @click="newEditor"
       />
       <export-manager />
       <sync-status />
@@ -134,6 +156,7 @@ const menuItems: MenuItem[] = [
       </ui-dropdown-menu>
     </div>
     <profile-dialog v-model:open="profileOpen" />
+    <connection-manager />
     <preferences-dialog v-model:open="preferencesOpen" />
   </header>
 </template>

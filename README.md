@@ -44,7 +44,7 @@ Prisme is at the start of its first version (v1). Today it queries **MySQL and M
 2. **Run it** from a terminal. On Linux and macOS, first make it executable (see [Installation](#installation)).
 3. **Answer the two setup questions**: listening port and your email address. Press Enter to keep the defaults (`10000`, `me@local`).
 4. **Open** <http://prisme.localhost:10000> in your browser (or <http://127.0.0.1:10000>).
-5. **Add a connection**: in the left panel, click the **+** button of **Navigateur d’objets** (Object navigator), **Ajouter** (Add), fill in host, port, user and password, click **Tester** (Test), then save.
+5. **Add a connection**: in the top bar, open the menu of **Nouveau** (New) by its chevron, choose **Connexion** (Connection), keep **MySQL / MariaDB**, click **Suivant** (Next), fill in name, host, port, user and password, click **Tester** (Test), then **Enregistrer** (Save).
 6. **Query**: **Ctrl+click** the new source (**Cmd+click** on macOS), type a query in the editor, press **Ctrl+Enter**.
 
 ## Installation
@@ -137,10 +137,13 @@ The version of Prisme shows next to its name, at the top left.
 
 ### Connections
 
-Connections are managed from the navigator:
+Connections are managed in the **Connexions** (Connections) window, opened from the account menu of the [top bar](#top-bar), from **Nouveau** › **Connexion** (New › Connection) on a new connection, and from **Modifier** (Edit) in the **⋮** menu of a source, on that connection:
 
-- **Add**: **+** button of **Navigateur d’objets** (Object navigator), **Ajouter** (Add). **Tester** (Test) tries the settings before saving.
-- **Edit, refresh, test, delete**: **⋮** menu of each source. A blank password when editing keeps the current one. Deleting asks for confirmation.
+- **List**: your connections on the left, grouped by kind of source (database servers; files are coming), with a filter on their names and addresses. A green dot marks a connection that has connected at least once.
+- **Edit**: the connection shown has its card at the top, with its server, its version and its last connection, and the buttons **Tester** (Test), **Dupliquer** (Duplicate) and **Supprimer** (Delete, after confirmation); then all its settings, on one page. A blank password keeps the current one. A connection changed and not saved keeps its changes while you look at another one: the list marks it in amber, **modifiée, non enregistrée** (changed, not saved). **Enregistrer** (Save) saves the connection shown, **Annuler les modifications** (Discard the changes) goes back to its saved settings. Closing the window drops the changes not saved.
+- **Create**: **Nouvelle connexion** (New connection) goes in three steps: the kind of source (MySQL / MariaDB for now; the kinds to come show greyed out), the settings, then the result of their test, before saving; a failed test does not prevent saving, for a server not reachable yet. The creation in progress waits under the button while you look at other connections.
+- **Duplicate**: starts a creation from the settings of the connection shown, at its settings step, under the name followed by `-copie`; left blank, its password is that of the copied connection.
+- **Refresh, test, delete**: also in the **⋮** menu of each source.
 - **Session settings**: the **À la connexion** (On connect) field runs queries each time a connection opens, separated by `;`, for example `SET NAMES utf8mb4; SET SESSION sql_mode = ...`. Only session settings are allowed.
 - **System databases** (`information_schema`, `mysql`, `performance_schema`, `sys`) can be hidden per source.
 - **Supported versions**: MySQL from 8.0.11, MariaDB from 10.6.3. An older server still works, without guarantee: the connection test and the editor connected to it show a warning.
@@ -457,12 +460,13 @@ Both tabs are kept in the internal database, 30 days by default: the **Historiqu
 
 ### Top bar
 
-- **Nouveau** (New): opens a new SQL editor, on the connection of the active editor (see [Editors](#editors)).
+- **Nouveau** (New): opens a new SQL editor, on the connection of the active editor (see [Editors](#editors)). Its chevron opens a menu of what it creates: **Éditeur** (Editor), the same, or **Connexion** (Connection), a new connection in the window of the [connections](#connections).
 - **Exports**: the file icon opens the exports manager, the list of your [full exports](#result-grid), the most recent first; a blue dot pulses beside the icon while an export runs. Each export shows its file name (the query in its tooltip), its state in a colored badge (**en cours**, **prêt**, **échoué**, **arrêté**, **interrompu**: running, ready, failed, stopped, interrupted), a **fichier manquant** (missing file) badge when its file was deleted outside Prisme, its connection, the rows written, the size of its file, its duration and its throughput; while it runs, the completed share too, when the total is known in advance: that of a displayed result that Prisme's limit did not cut. Its buttons stop a running export (its partial file stays), download the file of an ended export, partial for a stopped, failed or interrupted one, and **Retirer** (Remove) an export with its file. The folder is never cleaned automatically: the head of the manager shows the room the files take. Warnings tell of more rows than Excel opens, or of the cause of a failure. Files of the folder that no export lists (copied there, internal database replaced) are counted apart, with a **Retirer** button that deletes them. An export running when Prisme stops shows as **interrompu** (interrupted) at the next start, its partial file kept, with the rows it holds.
 - **Synchronisation**: Prisme saves every change as you go in its local database, and reads it back from there. A database icon shows the state, explained by its tooltip: a check mark when everything is saved, a down arrow while reading, an up arrow while saving, a cross when the last save was refused (plain database icon: nothing exchanged yet).
 - **Theme**: the switch of the top bar, **Clair / Système / Sombre** (Light / System / Dark), sets the theme of the whole interface. **Système** follows your computer's setting.
 - **Account** menu, the round avatar with your initials (those of your first and last names, or the first letter of your email address). The menu opens on your name and your email address, above its choices:
   - **Profil** (Profile): your first and last names, and your email address (read-only);
+  - **Connexions** (Connections): the window of your [connections](#connections);
   - **Préférences** (Preferences): one window for the settings, in sections listed on its left; each setting says under its name what it changes, and **Enregistrer** (Save) saves them all:
     - **Langue** (Language): the language of the interface, French only for now;
     - **Requêtes** (Queries): the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; **Écritures autorisées** (Writes allowed), the switches of the writes, one row per object and one column per verb, greyed out while the sessions are read-only;

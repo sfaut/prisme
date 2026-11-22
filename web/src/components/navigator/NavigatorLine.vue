@@ -45,6 +45,7 @@ import type { SessionStatus } from '@/api/querySession'
 
 import type { EntryKind, NavigatorNode } from './navigatorNodes'
 import type { TableSort } from '@/stores/navigator'
+import ConnectionFlavorBadge from '@/components/connections/ConnectionFlavorBadge.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiDropdownMenu from '@/components/ui/UiDropdownMenu.vue'
 import type { MenuItem } from '@/components/ui/menuItem'
@@ -281,14 +282,11 @@ function iconLabel(node: NavigatorNode): string | undefined {
         {{ node.note }}
       </span>
     </span>
-    <span
+    <connection-flavor-badge
       v-if="node.badge"
-      v-tooltip="node.badgeTooltip"
-      class="flavor-badge inline-flex shrink-0 items-center rounded-full px-1 text-xs font-medium"
-      :data-flavor="node.badge"
-    >
-      <span class="text-trim">{{ node.badge }}</span>
-    </span>
+      :flavor="node.badge"
+      :version="node.badgeVersion ?? null"
+    />
   </span>
 
   <!--
@@ -348,18 +346,3 @@ function iconLabel(node: NavigatorNode): string | undefined {
     />
   </ui-dropdown-menu>
 </template>
-
-<style scoped>
-/* Badge of the server's flavor: pill tinted in the engine's colors. */
-.flavor-badge {
-  &[data-flavor='mysql'] {
-    background: var(--badge-mysql-bg);
-    color: var(--badge-mysql);
-  }
-
-  &[data-flavor='mariadb'] {
-    background: var(--badge-mariadb-bg);
-    color: var(--badge-mariadb);
-  }
-}
-</style>
