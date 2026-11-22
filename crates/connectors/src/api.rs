@@ -5,8 +5,11 @@
 //! (`drivers::of`): the driver tests a source (`probe`) and opens sessions on
 //! it (`open`). A `Session` holds one connection to the source: it runs
 //! statements, whose rows are read from a `Rows`, follows the transaction and
-//! the current namespace, and reads the catalog. A `Canceller`, taken from the
-//! session, stops its running statement from another task. What an engine can
+//! the current namespace, and gives a `CatalogReader`, which reads the
+//! namespaces, the objects and the details of the tables of the source. A
+//! `Canceller`, taken from the session, stops its running statement from
+//! another task. Every engine implements these five traits, and the server
+//! uses nothing else of it. What an engine can
 //! do is told by its `Capabilities`, sent to the interface, which shows only
 //! what the engine offers; an operation it cannot do fails with
 //! `ConnectorError::Unsupported`.
@@ -334,6 +337,19 @@ pub trait Session: Send {
     /// Stops the running statement of the session, from another task.
     fn canceller(&self) -> Arc<dyn Canceller>;
 
+    /// Reader of the catalog of the source, through the connection of the
+    /// session, which it borrows until it is dropped.
+    fn catalog(&mut self) -> Box<dyn CatalogReader + '_>;
+
+    /// Closes the session.
+    fn close(self: Box<Self>) -> BoxFuture<'static, ()>;
+}
+
+/// Catalog of a source, read part by part for the navigator: the namespaces,
+/// then the objects of each one, then the details of its tables. Each engine
+/// reads it from its own tables (`information_schema` for MySQL), and gives
+/// it in the neutral form of `crate::catalog`.
+pub trait CatalogReader: Send {
     /// Namespaces of the source, by path.
     fn namespaces(&mut self) -> BoxFuture<'_, Result<Vec<NamespaceInfo>, ConnectorError>>;
 
@@ -349,9 +365,6 @@ pub trait Session: Send {
         &'a mut self,
         namespace: &'a Namespace,
     ) -> BoxFuture<'a, Result<Vec<TableDetails>, ConnectorError>>;
-
-    /// Closes the session.
-    fn close(self: Box<Self>) -> BoxFuture<'static, ()>;
 }
 
 /// Result of a statement being read, row by row. Borrows its session until

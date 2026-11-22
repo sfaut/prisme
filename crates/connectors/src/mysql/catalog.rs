@@ -1,7 +1,8 @@
 //! Catalog of a MySQL or MariaDB server: databases, objects and table details.
 //!
-//! Serves the object navigator, which shows the elements as soon as they
-//! arrive, in three steps:
+//! Serves the object navigator through `MysqlCatalog`, the reader of the
+//! contract (`crate::api::CatalogReader`), which shows the elements as soon
+//! as they arrive, in three steps:
 //!
 //! 1. `schemas`: database names;
 //! 2. `objects`: tables, views, procedures, functions and events of a database,
@@ -19,11 +20,14 @@
 
 use std::collections::BTreeMap;
 
+use futures_util::future::BoxFuture;
 use mysql_async::prelude::{FromRow, Queryable};
 
 use super::{Connection, MysqlError};
+use crate::api::{CatalogReader, ConnectorError, Namespace};
 use crate::catalog::{
-    ColumnInfo, ForeignKeyInfo, IndexInfo, ObjectInfo, ObjectKind, TableDetails, TriggerInfo,
+    ColumnInfo, ForeignKeyInfo, IndexInfo, NamespaceInfo, ObjectInfo, ObjectKind, TableDetails,
+    TriggerInfo,
 };
 use crate::sql_log;
 
@@ -42,7 +46,50 @@ type ForeignKeyRow = (String, String, String, String, String, String);
 type TriggerRow = (String, String, String, String);
 
 /// Databases provided by the server itself.
-pub const SYSTEM_SCHEMAS: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
+const SYSTEM_SCHEMAS: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
+
+/// Reader of the catalog of a MySQL or MariaDB server, on the connection of
+/// a session. A namespace is a database.
+pub struct MysqlCatalog<'a> {
+    /// Connection of the session.
+    connection: &'a mut Connection,
+}
+
+impl<'a> MysqlCatalog<'a> {
+    /// Reader on the connection of a session, which it borrows.
+    pub fn new(connection: &'a mut Connection) -> Self {
+        Self { connection }
+    }
+}
+
+impl CatalogReader for MysqlCatalog<'_> {
+    fn namespaces(&mut self) -> BoxFuture<'_, Result<Vec<NamespaceInfo>, ConnectorError>> {
+        Box::pin(async move {
+            let schemas = schemas(self.connection).await?;
+            Ok(schemas
+                .into_iter()
+                .map(|schema| NamespaceInfo {
+                    system: SYSTEM_SCHEMAS.contains(&schema.as_str()),
+                    namespace: Namespace::single(schema),
+                })
+                .collect())
+        })
+    }
+
+    fn objects<'a>(
+        &'a mut self,
+        namespace: &'a Namespace,
+    ) -> BoxFuture<'a, Result<Vec<ObjectInfo>, ConnectorError>> {
+        Box::pin(async move { Ok(objects(self.connection, namespace.name()).await?) })
+    }
+
+    fn details<'a>(
+        &'a mut self,
+        namespace: &'a Namespace,
+    ) -> BoxFuture<'a, Result<Vec<TableDetails>, ConnectorError>> {
+        Box::pin(async move { Ok(details(self.connection, namespace.name()).await?) })
+    }
+}
 
 /// Lists the server's databases, by name.
 pub async fn schemas(connection: &mut Connection) -> Result<Vec<String>, MysqlError> {

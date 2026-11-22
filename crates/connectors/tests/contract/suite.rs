@@ -278,7 +278,9 @@ pub async fn reads_the_catalog(fixture: &impl Fixture) {
             let mut session = open(&target, OpenOptions::default()).await;
             fill(session.as_mut()).await;
             let namespace = target.namespace().expect("the source opens on a namespace");
-            let namespaces = session.namespaces().await.unwrap();
+            let kinds = session.info().capabilities.object_kinds.clone();
+            let mut catalog = session.catalog();
+            let namespaces = catalog.namespaces().await.unwrap();
             let listed = namespaces.iter().find(|info| info.namespace == namespace);
             assert!(
                 listed.is_some_and(|info| !info.system),
@@ -286,21 +288,15 @@ pub async fn reads_the_catalog(fixture: &impl Fixture) {
                 fixture.name()
             );
 
-            let objects = session.objects(&namespace).await.unwrap();
+            let objects = catalog.objects(&namespace).await.unwrap();
             let table = objects
                 .iter()
                 .find(|object| object.name == "t")
                 .unwrap_or_else(|| panic!("{}: no table t", fixture.name()));
             assert_eq!(table.kind, ObjectKind::Table);
-            assert!(
-                session
-                    .info()
-                    .capabilities
-                    .object_kinds
-                    .contains(&ObjectKind::Table)
-            );
+            assert!(kinds.contains(&ObjectKind::Table), "{}", fixture.name());
 
-            let details = session.details(&namespace).await.unwrap();
+            let details = catalog.details(&namespace).await.unwrap();
             let columns: Vec<&str> = details
                 .iter()
                 .find(|details| details.table == "t")
@@ -313,6 +309,7 @@ pub async fn reads_the_catalog(fixture: &impl Fixture) {
                 })
                 .unwrap_or_default();
             assert_eq!(columns, ["id", "label"], "{}", fixture.name());
+            drop(catalog);
             session.close().await;
         })
         .await;

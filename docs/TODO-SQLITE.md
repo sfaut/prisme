@@ -29,7 +29,7 @@ Architecture:
 
 ## Contracts
 
-- **Connector** (`crates/connectors`, module `api`): `Engine` (family of a driver) and `Flavor` (product detected); `Driver` (`probe`, `open`), `Session` (`execute`, transaction state, namespace, attach / detach, notices, catalog, canceller), `Rows` (columns, rows read one at a time, outcome: the server gathers them into batches by their arrival, and a read is never cut in the middle of a message of the protocol), `Canceller`, behind boxed futures; `OpenOptions { read_only, namespace, session_key }`, read-only applied by the connector; `Capabilities` sent to the interface; `SourceInfo` with `DialectOptions`; `ConnectorError` with `Unsupported`; `TypeFamily` only gains variants.
+- **Connector** (`crates/connectors`, module `api`): `Engine` (family of a driver) and `Flavor` (product detected); `Driver` (`probe`, `open`), `Session` (`execute`, transaction state, namespace, attach / detach, notices, catalog, canceller), `CatalogReader` (`namespaces`, `objects`, `details`, through the connection of the session), `Rows` (columns, rows read one at a time, outcome: the server gathers them into batches by their arrival, and a read is never cut in the middle of a message of the protocol), `Canceller`, behind boxed futures; `OpenOptions { read_only, namespace, session_key }`, read-only applied by the connector; `Capabilities` sent to the interface; `SourceInfo` with `DialectOptions`; `ConnectorError` with `Unsupported`; `TypeFamily` only gains variants.
 - **Catalog**: `Namespace` (path of names), `NamespaceInfo { namespace, system }`; events `namespaces { source, namespaces }`, `objects { namespace, objects }`, `details { namespace, tables }`; `ObjectInfo { name, kind, rows, enabled }`, `ObjectKind` open, each kind in a folder of the navigator.
 - **Synchronous engines**: module `blocking`, one thread per connection, bounded channel of batches, interrupt handle (SQLite now, DuckDB later).
 - **Locations** (module `location`): `Location { scheme, address }`, `LocationProvider` (capabilities, `probe`, `create`, `materialize`) in a registry; `FileProvider`, `HttpProvider` (`reqwest`, `rustls`); cache of the remote copies in the data folder, revalidated by `ETag` / `Last-Modified`; an engine declares the protocols it reads natively.
@@ -81,7 +81,7 @@ Architecture:
 ## 4. SQLite connector
 
 - ⬜ Module `blocking`
-- ⬜ `Driver`, `Session`, `Rows`, `Canceller`
+- ⬜ `Driver`, `Session`, `CatalogReader`, `Rows`, `Canceller`
 - ⬜ Attachments, remote copies read-only, databases in `memdb`
 - ⬜ Backup of a database in memory
 - ⬜ Catalog

@@ -29,7 +29,7 @@ use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use futures_util::stream;
-use prisme_connectors::api::{self, ConnectorError, Namespace, OpenOptions, SourceInfo};
+use prisme_connectors::api::{CatalogReader, ConnectorError, Namespace, OpenOptions, SourceInfo};
 use prisme_connectors::catalog::{NamespaceInfo, ObjectInfo, TableDetails};
 use prisme_connectors::drivers;
 use prisme_connectors::flavor::Flavor;
@@ -126,7 +126,13 @@ async fn stream_catalog(
     let preferred = target.namespace();
     tokio::spawn(
         async move {
-            read_catalog(connection.as_mut(), preferred.as_ref(), server, &sender).await;
+            read_catalog(
+                connection.catalog().as_mut(),
+                preferred.as_ref(),
+                server,
+                &sender,
+            )
+            .await;
             connection.close().await;
         }
         .instrument(span),
@@ -151,13 +157,13 @@ async fn stream_catalog(
 ///
 /// Stops as soon as the client has closed the response.
 async fn read_catalog(
-    connection: &mut dyn api::Session,
+    catalog: &mut dyn CatalogReader,
     preferred: Option<&Namespace>,
     source: SourceInfo,
     sender: &mpsc::Sender<CatalogEvent>,
 ) {
     let flavor = source.flavor;
-    let namespaces = match connection.namespaces().await {
+    let namespaces = match catalog.namespaces().await {
         Ok(namespaces) => namespaces,
         Err(error) => {
             let _ = sender.send(error_event(None, flavor, &error)).await;
@@ -174,7 +180,7 @@ async fn read_catalog(
     }
 
     for namespace in &order {
-        let event = match connection.objects(namespace).await {
+        let event = match catalog.objects(namespace).await {
             Ok(objects) => CatalogEvent::Objects {
                 namespace: namespace.clone(),
                 objects,
@@ -186,7 +192,7 @@ async fn read_catalog(
         }
     }
     for namespace in &order {
-        let event = match connection.details(namespace).await {
+        let event = match catalog.details(namespace).await {
             Ok(tables) => CatalogEvent::Details {
                 namespace: namespace.clone(),
                 tables,

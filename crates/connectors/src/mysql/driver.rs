@@ -11,16 +11,16 @@ use mysql_async::Conn;
 use prisme_dialects::classify::WriteKind;
 use prisme_dialects::verb::StatementVerb;
 
-use super::catalog;
+use super::catalog::MysqlCatalog;
 use super::{
     MysqlError, MysqlTarget, ResultStream, ServerInfo, connect, current_database, execute,
     in_transaction, kill_connection, kill_query, read_warnings, server_info, use_database,
 };
 use crate::api::{
-    Canceller, Capabilities, ColumnMeta, ConnectorError, DialectOptions, Driver, Engine, Namespace,
-    NamespaceLevel, OpenOptions, Rows, Session, Settings, SourceInfo, Target,
+    Canceller, Capabilities, CatalogReader, ColumnMeta, ConnectorError, DialectOptions, Driver,
+    Engine, Namespace, NamespaceLevel, OpenOptions, Rows, Session, Settings, SourceInfo, Target,
 };
-use crate::catalog::{NamespaceInfo, ObjectInfo, ObjectKind, TableDetails};
+use crate::catalog::ObjectKind;
 use crate::columns::Cell;
 use crate::failure::FailureCause;
 use crate::outcome::{Notice, StatementOutcome};
@@ -215,31 +215,8 @@ impl Session for MysqlSession {
         })
     }
 
-    fn namespaces(&mut self) -> BoxFuture<'_, Result<Vec<NamespaceInfo>, ConnectorError>> {
-        Box::pin(async move {
-            let schemas = catalog::schemas(&mut self.connection).await?;
-            Ok(schemas
-                .into_iter()
-                .map(|schema| NamespaceInfo {
-                    system: catalog::SYSTEM_SCHEMAS.contains(&schema.as_str()),
-                    namespace: Namespace::single(schema),
-                })
-                .collect())
-        })
-    }
-
-    fn objects<'a>(
-        &'a mut self,
-        namespace: &'a Namespace,
-    ) -> BoxFuture<'a, Result<Vec<ObjectInfo>, ConnectorError>> {
-        Box::pin(async move { Ok(catalog::objects(&mut self.connection, namespace.name()).await?) })
-    }
-
-    fn details<'a>(
-        &'a mut self,
-        namespace: &'a Namespace,
-    ) -> BoxFuture<'a, Result<Vec<TableDetails>, ConnectorError>> {
-        Box::pin(async move { Ok(catalog::details(&mut self.connection, namespace.name()).await?) })
+    fn catalog(&mut self) -> Box<dyn CatalogReader + '_> {
+        Box::new(MysqlCatalog::new(&mut self.connection))
     }
 
     fn close(self: Box<Self>) -> BoxFuture<'static, ()> {
