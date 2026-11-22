@@ -99,6 +99,38 @@ async fn outcome_of(connection: &mut Connection, sql: &str) -> StatementOutcome 
 
 #[tokio::test]
 #[ignore = "requires the development servers (docker compose up --detach --wait)"]
+async fn writes_floating_point_numbers_in_plain_decimal() {
+    for server in SERVERS {
+        let mut connection = connect(&server.target("")).await.unwrap();
+        let mut stream = execute(
+            &mut connection,
+            "SELECT 1e20, 1.5e-7, 123456789012345678e0, PI() + 0e0, 100e0,              CAST(1e20 AS DECIMAL(30, 2)), CAST(1e20 AS CHAR)",
+        )
+        .await
+        .unwrap();
+        let row = stream.next_row().await.unwrap().unwrap();
+        assert_eq!(
+            row,
+            [
+                "100000000000000000000",
+                "0.00000015",
+                "123456789012345680",
+                "3.141592653589793",
+                "100",
+                // A DECIMAL keeps its scale, a text its writing.
+                "100000000000000000000.00",
+                "1e20",
+            ]
+            .map(|text| Some(text.to_string())),
+            "{}",
+            server.name
+        );
+        stream.discard().await;
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
 async fn reports_the_outcome_of_writes() {
     for server in SERVERS {
         server

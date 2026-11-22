@@ -21,6 +21,7 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::number_text;
 use crate::outcome::{Notice, StatementOutcome};
 
 /// Open connection to a MySQL or MariaDB server.
@@ -406,10 +407,19 @@ impl ResultStream<'_> {
         let Some(row) = self.result.next().await? else {
             return Ok(None);
         };
+        let columns = row.columns();
         let cells = row
             .unwrap_raw()
             .into_iter()
-            .map(|value| value.and_then(cell))
+            .zip(columns.iter())
+            .map(|(value, column)| {
+                let text = value.and_then(cell);
+                if is_floating(column.column_type()) {
+                    text.map(|text| number_text::plain_decimal(&text).into_owned())
+                } else {
+                    text
+                }
+            })
             .collect();
         Ok(Some(cells))
     }
@@ -457,6 +467,15 @@ fn is_right_aligned(column_type: ColumnType) -> bool {
                 | ColumnType::MYSQL_TYPE_TIME
                 | ColumnType::MYSQL_TYPE_TIME2
         )
+}
+
+/// A floating-point type, whose values the server may write in scientific
+/// notation (`1e20`): Prisme shows them in plain decimal (`number_text`).
+fn is_floating(column_type: ColumnType) -> bool {
+    matches!(
+        column_type,
+        ColumnType::MYSQL_TYPE_FLOAT | ColumnType::MYSQL_TYPE_DOUBLE
+    )
 }
 
 /// Converts a driver value to text, or `None` for NULL.
