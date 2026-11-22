@@ -855,6 +855,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
         <ui-input
           v-model="search"
           :icon="Search"
+          small
           placeholder="Rechercher une colonne"
           aria-label="Rechercher une colonne"
         />
@@ -955,7 +956,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
                   ref="nameInput"
                   v-model="draft"
                   :aria-label="`Nom de ${element.expression}`"
-                  class="h-7 min-w-0 flex-1 rounded-lg border border-line bg-surface px-1 text-base text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary/60"
+                  class="h-7 min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 text-base text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary"
                   @blur="commitName"
                   @keydown.stop
                   @keydown.enter.prevent="commitName"

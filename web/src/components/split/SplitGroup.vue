@@ -111,7 +111,12 @@ provide(SPLIT_GROUP, {
 .split-group {
   position: relative;
   display: flex;
-  overflow: hidden;
+  /* Clipped without being a scroll container, and with room for the
+     focus ring of a field at its edge (the width of the ring, which
+     goes beyond its field by less: Chromium ignores a margin given
+     by a `calc()` holding a product). */
+  overflow: clip;
+  overflow-clip-margin: var(--focus-width);
 
   &.horizontal {
     flex-direction: row;
