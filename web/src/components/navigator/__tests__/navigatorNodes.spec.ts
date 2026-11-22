@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { MYSQL_SOURCE } from '@/api/__tests__/capabilities'
+import { MYSQL_CAPABILITIES, MYSQL_SOURCE } from '@/api/__tests__/capabilities'
 import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
 import { event, routine, schema, table, view } from '@/stores/__tests__/catalogFixtures'
 import {
@@ -202,6 +202,17 @@ describe('catalogNodes', () => {
     expect(labels(shop?.children?.[2])).toEqual(['purge'])
     expect(labels(shop?.children?.[4])).toEqual(['nettoyage', 'archive · désactivé'])
     expect(labels(pending)).toEqual(['chargement…'])
+  })
+
+  it('follows the capabilities of the source: folders of its kinds, USE if it has one', () => {
+    const [shop] = catalogNodes(1, catalog, null, new Set(), {
+      ...MYSQL_CAPABILITIES,
+      switch_namespace: false,
+      object_kinds: ['table', 'view'],
+    })
+    expect(labels(shop)).toEqual(['Tables (2)', 'Vues (1)'])
+    expect(shop?.usable).toBe(false)
+    expect(catalogNodes(1, catalog, null, new Set(), MYSQL_CAPABILITIES)[0]?.usable).toBe(true)
   })
 
   it('notes the estimated row count of a table, not of a view', () => {

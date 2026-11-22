@@ -59,7 +59,7 @@ Architecture:
 - ✅ MySQL connector behind the traits, read-only moved into it
 - ✅ Contract suite, on MySQL and MariaDB
 - ✅ Server on the traits only
-- ⬜ Interface on the capabilities, the registry of the flavors and the general catalog
+- ✅ Interface on the capabilities, the registry of the flavors and the general catalog
 - ⬜ Nothing visible changed: checks and MySQL / MariaDB walk-through on screen
 
 ## 2. Storage and locations
@@ -103,7 +103,7 @@ Architecture:
 - ⬜ Saved connection: removal struck through and restorable
 - ⬜ List and card: location of `main`, number of attached databases, protocol
 - ⬜ Badge SQLite, light and dark
-- ⬜ Navigator: schemas, protocol, menus, window **Attacher une base**
+- ⬜ Navigator: schemas, protocol, menus, window **Attacher une base**; labels of the namespace levels (`NamespaceLevel`) in the navigator and the completion
 - ⬜ Editor dialect, CTE and `IN` clause in SQLite
 - ⬜ Switches of the engine in the settings
 

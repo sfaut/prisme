@@ -26,10 +26,23 @@ describe('NavigatorLine', () => {
       label: 'shop',
       isLeaf: false,
       role: 'database',
+      usable: true,
       ...place,
     })
     await wrapper.find('[aria-label="Utiliser cette base"]').trigger('click')
     expect(wrapper.emitted('act')).toHaveLength(1)
+  })
+
+  it('gives no such button to a database of a source that does not change it', () => {
+    const wrapper = mountLine({
+      key: 'db',
+      label: 'main',
+      isLeaf: false,
+      role: 'database',
+      usable: false,
+      ...place,
+    })
+    expect(wrapper.find('[aria-label="Utiliser cette base"]').exists()).toBe(false)
   })
 
   it('gives a table a button that shows its content', async () => {

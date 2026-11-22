@@ -1,18 +1,20 @@
 import { describe, expect, it } from 'vitest'
 
+import { MYSQL_CAPABILITIES } from '@/api/__tests__/capabilities'
 import { probeMessage, versionWarning } from '../connections'
-import type { ServerInfo } from '../generated/ServerInfo'
+import type { SourceInfo } from '../generated/SourceInfo'
 
 /**
  * Identity of a server, supported unless `oldest_supported` is given.
  */
-function server(overrides: Partial<ServerInfo>): ServerInfo {
+function server(overrides: Partial<SourceInfo>): SourceInfo {
   return {
     flavor: 'mysql',
     version: '8.4.11',
     ansi_quotes: false,
     no_backslash_escapes: false,
     oldest_supported: null,
+    capabilities: MYSQL_CAPABILITIES,
     ...overrides,
   }
 }

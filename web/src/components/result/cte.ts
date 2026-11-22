@@ -40,6 +40,7 @@
  * when needed (`quoteIfNeeded`).
  */
 
+import { FLAVORS } from '@/api/flavors'
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { TypeFamily } from '@/api/generated/TypeFamily'
@@ -53,11 +54,6 @@ import { type GridFrame, frameCell } from './resultGrid'
  * Media type of the file.
  */
 export const SQL_TYPE = 'application/sql;charset=utf-8'
-
-/**
- * First MySQL version that reads `VALUES ROW (…)`.
- */
-export const MYSQL_VALUES_SINCE: [number, number, number] = [8, 0, 19]
 
 /**
  * Name of the CTE.
@@ -166,7 +162,9 @@ function bitLiteral(cell: string): string {
  */
 function dateLiteral(keyword: string, cell: string, options: LiteralOptions): string {
   const string = cteString(cell, options.backslashEscapes)
-  return options.flavor === 'mysql' && ZERO_IN_DATE.test(cell) ? string : `${keyword}${string}`
+  return FLAVORS[options.flavor].cte.zeroDatesAsStrings && ZERO_IN_DATE.test(cell)
+    ? string
+    : `${keyword}${string}`
 }
 
 /**
@@ -202,7 +200,7 @@ export function cteLiteral(
     case 'time':
       return `TIME${string}`
     case 'json':
-      return options.flavor === 'mysql' ? `CAST(${string} AS JSON)` : string
+      return FLAVORS[options.flavor].cte.castsJson ? `CAST(${string} AS JSON)` : string
     case 'binary':
     case 'geometry': {
       const hex = HEX_BYTES.exec(cell)?.[1]
@@ -240,7 +238,7 @@ export async function cteText(
     .map((field) => quoteIfNeeded(columns[field] ?? '', options.ansiQuotes, options.reserved))
     .join(', ')
   const families = frame.fields.map((field) => types[field]?.family)
-  const row = options.flavor === 'mysql' ? 'ROW ' : ''
+  const row = FLAVORS[options.flavor].cte.rowConstructor ? 'ROW ' : ''
   const last = frame.rows.length - 1
   const lines = await writeByChunks(frame.rows.length, (index) => {
     const values = families.map((family, column) =>

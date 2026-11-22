@@ -135,7 +135,7 @@ const action = computed(() => {
       event: 'disconnect' as const,
     }
   }
-  if (props.node.role === 'database') {
+  if (props.node.role === 'database' && props.node.usable === true) {
     return {
       icon: DatabaseZap,
       label: 'Utiliser cette base',

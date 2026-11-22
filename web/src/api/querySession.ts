@@ -56,7 +56,7 @@ import type { ClientMessage } from './generated/ClientMessage'
 import type { ResultTab } from './generated/ResultTab'
 import type { ResumedQuery } from './generated/ResumedQuery'
 import type { SelectionRange } from './generated/SelectionRange'
-import type { ServerInfo } from './generated/ServerInfo'
+import type { SourceInfo } from './generated/SourceInfo'
 import type { ServerMessage } from './generated/ServerMessage'
 import type { NoticeLevel } from './generated/NoticeLevel'
 import type { OutcomeCounts } from './generated/OutcomeCounts'
@@ -387,7 +387,7 @@ export interface SessionState {
   /**
    * Identity of the target server, known once the session is ready.
    */
-  server: ServerInfo | null
+  server: SourceInfo | null
   /**
    * Current database on the target server (it changes with `USE`), `null` if none.
    */

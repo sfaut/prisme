@@ -18,8 +18,6 @@ use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, OptsBuilder, QueryResult, TextProtocol, Value};
 use prisme_dialects::verb::StatementVerb;
 use secrecy::{ExposeSecret, SecretString};
-use serde::Serialize;
-use ts_rs::TS;
 
 use crate::columns::{Cell, ColumnTypeInfo};
 use crate::failure::{ConnectFailure, FailureCause};
@@ -60,9 +58,9 @@ pub struct MysqlTarget {
     pub init_statements: Vec<String>,
 }
 
-/// Identity of a server, obtained on connection.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
+/// Identity of a server, obtained on connection; the server and the
+/// interface see it as a `SourceInfo` (`driver::source_info`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerInfo {
     /// MySQL or MariaDB.
     pub flavor: Flavor,

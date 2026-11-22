@@ -81,10 +81,10 @@ import {
 import { computed, ref, useTemplateRef, watch } from 'vue'
 
 import { errorMessage } from '@/api/errorMessage'
-import { FLAVOR_NAMES } from '@/api/flavors'
+import { ALL_FLAVORS, FLAVORS } from '@/api/flavors'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { NoticeLevel } from '@/api/generated/NoticeLevel'
-import type { ServerInfo } from '@/api/generated/ServerInfo'
+import type { SourceInfo } from '@/api/generated/SourceInfo'
 import { fetchKeywords } from '@/api/keywords'
 import {
   type QueryTab,
@@ -108,7 +108,7 @@ import { useExportsStore } from '@/stores/exports'
 
 import { useClock } from '@/utils/clock'
 import { csvBlob, duplicateNames } from './csv'
-import { MYSQL_VALUES_SINCE, SQL_TYPE, cteStatement, cteText } from './cte'
+import { SQL_TYPE, cteStatement, cteText } from './cte'
 import { inClause } from './inClause'
 import { downloadName, saveBlob } from '@/utils/download'
 import { versionAtLeast } from '@/components/navigator/indexOperations'
@@ -149,7 +149,7 @@ const props = defineProps<{
    * Server of the editor, `null` until its session is ready: its flavor,
    * its version and its modes write the CTE.
    */
-  server: ServerInfo | null
+  server: SourceInfo | null
   /**
    * Width of an indentation level of the editor, in spaces.
    */
@@ -360,11 +360,13 @@ const CTE_HINTS: Record<Flavor, Tooltip> = {
  * Does the server of the editor read the CTE of its own dialect? MySQL reads
  * `VALUES ROW (…)` from 8.0.19.
  */
-const readsCte = computed(
-  () =>
-    props.server !== null &&
-    (props.server.flavor === 'mariadb' || versionAtLeast(props.server.version, MYSQL_VALUES_SINCE)),
-)
+const readsCte = computed(() => {
+  if (props.server === null) {
+    return false
+  }
+  const since = FLAVORS[props.server.flavor].cte.readSince
+  return since === null || versionAtLeast(props.server.version, since)
+})
 
 /**
  * Choices of the export menu, drawn by the editor view right of the result tabs,
@@ -386,11 +388,12 @@ const exportGroups = computed<MenuGroup[]>(() => {
       : `Sélection en CSV (${formatRowCount(size.rows, null)} × ${size.columns} ${size.columns > 1 ? 'colonnes' : 'colonne'})`
   const scope = size === null ? 'Résultat affiché' : 'Sélection'
   const cteOff = !props.tab.done || props.server === null || (size?.rows ?? kept) === 0
+  const own = props.server?.flavor
   const flavors: Flavor[] =
-    props.server?.flavor === 'mariadb' ? ['mariadb', 'mysql'] : ['mysql', 'mariadb']
+    own === undefined ? ALL_FLAVORS : [own, ...ALL_FLAVORS.filter((flavor) => flavor !== own)]
   const dialects = (action: (flavor: Flavor) => Promise<void>): MenuItem[] =>
     flavors.map((flavor) => ({
-      label: FLAVOR_NAMES[flavor],
+      label: FLAVORS[flavor].name,
       icon: Database,
       hint: CTE_HINTS[flavor],
       onSelect: () => void action(flavor),
@@ -576,7 +579,7 @@ async function downloadCte(flavor: Flavor): Promise<void> {
     }
     const blob = new Blob([`${cteStatement(cte.query, ';')}\n`], { type: SQL_TYPE })
     saveBlob(blob, downloadName(fileLabel.value, 'sql'))
-    notify(`CTE ${FLAVOR_NAMES[flavor]} téléchargée : ${formatRowCount(cte.rows, null)}.`)
+    notify(`CTE ${FLAVORS[flavor].name} téléchargée : ${formatRowCount(cte.rows, null)}.`)
   } catch (failure) {
     notify(errorMessage(failure), 'error')
   }
@@ -595,7 +598,7 @@ async function copyCte(flavor: Flavor): Promise<void> {
       return
     }
     await navigator.clipboard.writeText(`${cteStatement(cte.query, ';')}\n`)
-    notify(`CTE ${FLAVOR_NAMES[flavor]} copiée : ${formatRowCount(cte.rows, null)}.`)
+    notify(`CTE ${FLAVORS[flavor].name} copiée : ${formatRowCount(cte.rows, null)}.`)
   } catch (failure) {
     notify(errorMessage(failure), 'error')
   }

@@ -28,6 +28,7 @@
  * depend on the display.
  */
 
+import type { Capabilities } from '@/api/generated/Capabilities'
 import type { ColumnInfo } from '@/api/generated/ColumnInfo'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
@@ -157,6 +158,11 @@ export interface NavigatorNode extends Place {
    * Current database of the query session (shown in bold).
    */
   current?: boolean
+  /**
+   * Can the session make this database its current one (`USE`)? Only on a
+   * database node, of a source that changes its namespace.
+   */
+  usable?: boolean
   /**
    * Source of the editor, its chosen connection (shown in bold).
    */
@@ -294,6 +300,7 @@ export function sourceNodes(
                 : catalog.schemas.filter((schema) => !schema.system),
               source.currentDatabase,
               tablesByRows,
+              catalog.source?.capabilities ?? null,
             ),
     }
   })
@@ -306,12 +313,16 @@ export function sourceNodes(
  * @param schemas Catalog of the server, possibly incomplete.
  * @param currentDatabase Current database of the query session, `null` if none.
  * @param tablesByRows Keys of the "Tables" folders sorted by row count.
+ * @param capabilities
+ *     Capabilities of the source, which set the folders and the actions;
+ *     `null` while unknown, everything offered.
  */
 export function catalogNodes(
   connectionId: number,
   schemas: CatalogSchema[],
   currentDatabase: string | null = null,
   tablesByRows: ReadonlySet<string> = new Set(),
+  capabilities: Capabilities | null = null,
 ): NavigatorNode[] {
   const references = referencesByTable(schemas)
   return schemas.map((schema) => {
@@ -324,6 +335,7 @@ export function catalogNodes(
       ...place,
       role: 'database' as const,
       current: schema.name === currentDatabase,
+      usable: capabilities?.switch_namespace ?? true,
       children:
         schema.objects === null
           ? [loadingNode(key, place)]
@@ -332,6 +344,7 @@ export function catalogNodes(
               schema.objects,
               references.get(schema.name) ?? new Map(),
               tablesByRows,
+              capabilities?.object_kinds ?? null,
             ),
     }
   })
@@ -403,10 +416,15 @@ function placeKey(place: Place): string {
 }
 
 /**
+ * Folder of a namespace.
+ */
+type Folder = 'tables' | 'views' | 'procedures' | 'functions' | 'events'
+
+/**
  * Folder of a namespace that receives each kind of object: a new kind of an
  * engine gets its folder here, which the compiler asks for.
  */
-const FOLDER_OF: Record<ObjectKind, 'tables' | 'views' | 'procedures' | 'functions' | 'events'> = {
+const FOLDER_OF: Record<ObjectKind, Folder> = {
   table: 'tables',
   view: 'views',
   system_table: 'views',
@@ -416,22 +434,25 @@ const FOLDER_OF: Record<ObjectKind, 'tables' | 'views' | 'procedures' | 'functio
 }
 
 /**
- * Folders of a namespace: tables, views, procedures, functions, events.
+ * Folders of a namespace: tables, views, procedures, functions, events, those
+ * of the kinds of objects of the source only.
  *
  * @param place Connection and namespace.
  * @param objects Objects of the namespace.
  * @param references Foreign keys that reference the tables of the namespace, by table.
  * @param tablesByRows Keys of the "Tables" folders sorted by row count.
+ * @param kinds Kinds of objects of the source, `null` while unknown: every folder.
  */
 function schemaFolders(
   place: Place,
   objects: CatalogObject[],
   references: Map<string, Reference[]>,
   tablesByRows: ReadonlySet<string>,
+  kinds: readonly ObjectKind[] | null,
 ): NavigatorNode[] {
   const base = placeKey(place)
-  const inFolder = (name: (typeof FOLDER_OF)[ObjectKind]) =>
-    objects.filter((object) => FOLDER_OF[object.kind] === name)
+  const inFolder = (name: Folder) => objects.filter((object) => FOLDER_OF[object.kind] === name)
+  const offered = (name: Folder) => kinds === null || kinds.some((kind) => FOLDER_OF[kind] === name)
   const routineNode = (routine: CatalogObject): NavigatorNode => ({
     key: `routine:${base}.${routine.name}:${routine.kind}`,
     label: routine.name,
@@ -446,18 +467,28 @@ function schemaFolders(
     entry: 'event',
     ...place,
   })
-  return [
-    tablesFolder(place, inFolder('tables'), references, tablesByRows),
-    folder(
-      `views:${base}`,
-      'Vues',
-      place,
-      inFolder('views').map((view) => tableNode(place, view, [])),
-    ),
-    folder(`procedures:${base}`, 'Procédures', place, inFolder('procedures').map(routineNode)),
-    folder(`functions:${base}`, 'Fonctions', place, inFolder('functions').map(routineNode)),
-    folder(`events:${base}`, 'Événements', place, inFolder('events').map(eventNode)),
+  const folders: [Folder, NavigatorNode][] = [
+    ['tables', tablesFolder(place, inFolder('tables'), references, tablesByRows)],
+    [
+      'views',
+      folder(
+        `views:${base}`,
+        'Vues',
+        place,
+        inFolder('views').map((view) => tableNode(place, view, [])),
+      ),
+    ],
+    [
+      'procedures',
+      folder(`procedures:${base}`, 'Procédures', place, inFolder('procedures').map(routineNode)),
+    ],
+    [
+      'functions',
+      folder(`functions:${base}`, 'Fonctions', place, inFolder('functions').map(routineNode)),
+    ],
+    ['events', folder(`events:${base}`, 'Événements', place, inFolder('events').map(eventNode))],
   ]
+  return folders.filter(([name]) => offered(name)).map(([, node]) => node)
 }
 
 /**

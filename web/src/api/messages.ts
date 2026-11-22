@@ -20,7 +20,7 @@ import type { ErrorDetail } from './generated/ErrorDetail'
 import type { FailureCause } from './generated/FailureCause'
 import type { Field } from './generated/Field'
 import type { Flavor } from './generated/Flavor'
-import { FLAVOR_NAMES } from './flavors'
+import { FLAVORS } from './flavors'
 import { WRITE_KIND_STATEMENTS } from './writeKinds'
 
 /**
@@ -84,7 +84,7 @@ export function quoted(intro: string, text: string): string {
 function causeText(cause: FailureCause, flavor: Flavor | null = null): string {
   switch (cause.source) {
     case 'server': {
-      const server = flavor === null ? 'Le serveur' : `Le serveur ${FLAVOR_NAMES[flavor]}`
+      const server = flavor === null ? 'Le serveur' : `Le serveur ${FLAVORS[flavor].name}`
       const reference = `erreur ${cause.number}, SQLSTATE ${cause.sqlstate}`
       return quoted(`${server} a répondu (${reference})`, cause.message)
     }

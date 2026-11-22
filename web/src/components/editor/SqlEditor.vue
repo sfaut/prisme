@@ -32,7 +32,7 @@
 import { autocompletion } from '@codemirror/autocomplete'
 import { LanguageSupport, codeFolding, foldedRanges } from '@codemirror/language'
 import { type Diagnostic, setDiagnostics } from '@codemirror/lint'
-import { MariaSQL, MySQL, schemaCompletionSource } from '@codemirror/lang-sql'
+import { MariaSQL, MySQL, type SQLDialect, schemaCompletionSource } from '@codemirror/lang-sql'
 import { type ChangeSpec, Compartment, EditorSelection } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
 import { EditorView } from 'codemirror'
@@ -229,11 +229,17 @@ async function loadKeywords(): Promise<void> {
 }
 
 /**
+ * Dialect of CodeMirror of each flavor, used as long as the keywords of the
+ * server are not received.
+ */
+const FALLBACK_DIALECTS: Record<Flavor, SQLDialect> = { mysql: MySQL, mariadb: MariaSQL }
+
+/**
  * CodeMirror language of the editor: dialect and completion, from the
  * properties and the keywords received.
  */
 function currentLanguage(): LanguageSupport {
-  const fallback = props.flavor === 'mariadb' ? MariaSQL : MySQL
+  const fallback = FALLBACK_DIALECTS[props.flavor]
   const dialect = keywords === null ? fallback : editorDialect(keywords, props.ansiQuotes)
   // Workaround: language assembled by hand, because `sql()` always adds the
   // completion of keywords; only the names of the catalog are offered

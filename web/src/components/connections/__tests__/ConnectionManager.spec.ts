@@ -1,11 +1,12 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { MYSQL_CAPABILITIES } from '@/api/__tests__/capabilities'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { NewConnection } from '@/api/generated/NewConnection'
 import type { ProbeRequest } from '@/api/generated/ProbeRequest'
-import type { ServerInfo } from '@/api/generated/ServerInfo'
+import type { SourceInfo } from '@/api/generated/SourceInfo'
 import { useConnectionsStore } from '@/stores/connections'
 
 import ConnectionManager from '../ConnectionManager.vue'
@@ -13,12 +14,13 @@ import ConnectionManager from '../ConnectionManager.vue'
 /**
  * Server answering the tests.
  */
-const SERVER: ServerInfo = {
+const SERVER: SourceInfo = {
   flavor: 'mariadb',
   version: '11.4.4-MariaDB',
   ansi_quotes: false,
   no_backslash_escapes: false,
   oldest_supported: null,
+  capabilities: MYSQL_CAPABILITIES,
 }
 
 /**
@@ -32,8 +34,8 @@ const api = vi.hoisted(() => ({
   copyConnection: vi.fn<(id: number, connection: NewConnection) => Promise<{ id: number }>>(),
   updateConnection: vi.fn<(id: number, connection: NewConnection) => Promise<void>>(),
   deleteConnection: vi.fn<(id: number) => Promise<void>>(),
-  probeConnection: vi.fn<(id: number) => Promise<ServerInfo>>(),
-  probeSettings: vi.fn<(probe: ProbeRequest) => Promise<ServerInfo>>(),
+  probeConnection: vi.fn<(id: number) => Promise<SourceInfo>>(),
+  probeSettings: vi.fn<(probe: ProbeRequest) => Promise<SourceInfo>>(),
 }))
 vi.mock('@/api/connections', async (original) => ({
   ...(await original<typeof import('@/api/connections')>()),

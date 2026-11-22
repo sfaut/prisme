@@ -2,12 +2,13 @@
  * Saved connections: list, creation, copy, change, deletion and test.
  */
 
+import { serverName } from './flavors'
 import { request } from './http'
 import type { ConnectionSummary } from './generated/ConnectionSummary'
 import type { Created } from './generated/Created'
 import type { NewConnection } from './generated/NewConnection'
 import type { ProbeRequest } from './generated/ProbeRequest'
-import type { ServerInfo } from './generated/ServerInfo'
+import type { SourceInfo } from './generated/SourceInfo'
 
 /**
  * Lists the user's connections, without passwords.
@@ -62,7 +63,7 @@ export function deleteConnection(id: number): Promise<void> {
  *
  * @param id Id of the connection.
  */
-export function probeConnection(id: number): Promise<ServerInfo> {
+export function probeConnection(id: number): Promise<SourceInfo> {
   return request('POST', `/api/connections/${id}/probe`, undefined, { sync: false })
 }
 
@@ -74,7 +75,7 @@ export function probeConnection(id: number): Promise<ServerInfo> {
  *     Typed settings, and the saved connection being edited whose password
  *     is taken if the field is empty.
  */
-export function probeSettings(probe: ProbeRequest): Promise<ServerInfo> {
+export function probeSettings(probe: ProbeRequest): Promise<SourceInfo> {
   return request('POST', '/api/connections/probe', probe, { sync: false })
 }
 
@@ -83,17 +84,8 @@ export function probeSettings(probe: ProbeRequest): Promise<ServerInfo> {
  *
  * @param info Identity of the server.
  */
-export function serverLabel(info: ServerInfo): string {
-  return `${flavorName(info)} ${info.version}`
-}
-
-/**
- * Name of the flavor of a server, as displayed.
- *
- * @param info Identity of the server.
- */
-function flavorName(info: ServerInfo): string {
-  return info.flavor === 'mariadb' ? 'MariaDB' : 'MySQL'
+export function serverLabel(info: SourceInfo): string {
+  return serverName(info.flavor, info.version)
 }
 
 /**
@@ -102,11 +94,11 @@ function flavorName(info: ServerInfo): string {
  *
  * @param info Identity of the server.
  */
-export function versionWarning(info: ServerInfo): string | null {
+export function versionWarning(info: SourceInfo): string | null {
   if (info.oldest_supported === null) {
     return null
   }
-  return `Version antérieure à ${flavorName(info)} ${info.oldest_supported}, la plus ancienne prise en charge par Prisme : les requêtes s’exécutent, sans garantie.`
+  return `Version antérieure à ${serverName(info.flavor, info.oldest_supported)}, la plus ancienne prise en charge par Prisme : les requêtes s’exécutent, sans garantie.`
 }
 
 /**
@@ -116,7 +108,7 @@ export function versionWarning(info: ServerInfo): string | null {
  *
  * @param info Identity of the server.
  */
-export function probeMessage(info: ServerInfo): { tone: 'success' | 'warning'; title: string } {
+export function probeMessage(info: SourceInfo): { tone: 'success' | 'warning'; title: string } {
   const warning = versionWarning(info)
   return warning === null
     ? { tone: 'success', title: serverLabel(info) }

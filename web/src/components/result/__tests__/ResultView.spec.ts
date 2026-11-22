@@ -1,4 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
+import { MYSQL_CAPABILITIES } from '@/api/__tests__/capabilities'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
@@ -6,7 +7,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import type { ExportInfo } from '@/api/generated/ExportInfo'
 import type { ExportRequest } from '@/api/generated/ExportRequest'
-import type { ServerInfo } from '@/api/generated/ServerInfo'
+import type { SourceInfo } from '@/api/generated/SourceInfo'
 import { type QueryTab, formatInstant } from '@/api/querySession'
 
 import ResultView from '../ResultView.vue'
@@ -36,12 +37,13 @@ beforeEach(() => {
 /**
  * MariaDB server of the editor, in its default modes.
  */
-const MARIADB: ServerInfo = {
+const MARIADB: SourceInfo = {
   flavor: 'mariadb',
   version: '11.4.13-MariaDB',
   ansi_quotes: false,
   no_backslash_escapes: false,
   oldest_supported: null,
+  capabilities: MYSQL_CAPABILITIES,
 }
 
 /**
@@ -51,7 +53,7 @@ const MARIADB: ServerInfo = {
  * @param tab Tab of the query.
  * @param server Server of the editor.
  */
-function mountTab(tab: QueryTab, server: ServerInfo | null = MARIADB) {
+function mountTab(tab: QueryTab, server: SourceInfo | null = MARIADB) {
   return mount(ResultView, {
     props: {
       tab,

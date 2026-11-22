@@ -480,7 +480,9 @@ function activate(node: NavigatorNode): void {
   if (node.role === 'source') {
     emit('select', node.connectionId)
   } else if (node.role === 'database') {
-    emit('use-database', node.connectionId, node.schema)
+    if (node.usable === true) {
+      emit('use-database', node.connectionId, node.schema)
+    }
   } else if (node.table !== undefined) {
     emit('open-table', node.connectionId, node.schema, node.table)
   } else if (node.index !== undefined) {
