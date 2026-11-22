@@ -17,8 +17,8 @@ use std::sync::{Arc, Mutex};
 
 use prisme_connectors::api::{self, Namespace};
 use prisme_connectors::drivers;
+use prisme_connectors::flavor::Flavor;
 use prisme_connectors::outcome::StatementOutcome;
-use prisme_dialects::Dialect;
 use prisme_dialects::classify::ends_transaction;
 use prisme_dialects::temporary::{TableName, temporary_changes};
 use prisme_dialects::verb::StatementVerb;
@@ -33,7 +33,7 @@ use super::limits::run_limits;
 use super::outbox::{Outbox, SessionStopped};
 use super::protocol::{BatchQuery, QueryRequest, ServerMessage, SessionRequest};
 use super::temporary_tables::TemporaryTables;
-use crate::analyze::flavor_of;
+use crate::analyze::dialect_of;
 use crate::api::AppState;
 use crate::console::{self, Action};
 use crate::error_detail::ErrorDetail;
@@ -67,7 +67,7 @@ pub(super) async fn serve(
     let Some(mut connection) = session.open().instrument(opening.clone()).await else {
         return;
     };
-    if let Ok(dialect) = session.ready(connection.as_mut()).instrument(opening).await {
+    if let Ok(flavor) = session.ready(connection.as_mut()).instrument(opening).await {
         loop {
             let request = tokio::select! {
                 _ = stop.changed() => break,
@@ -82,13 +82,13 @@ pub(super) async fn serve(
                     let session = Session { batch, ..session };
                     let span = console::action_span(action_of(&request));
                     session
-                        .handle(connection.as_mut(), dialect, request)
+                        .handle(connection.as_mut(), flavor, request)
                         .instrument(span)
                         .await
                 }
                 SessionRequest::Use(database) => {
                     session
-                        .use_database(connection.as_mut(), dialect, &database)
+                        .use_database(connection.as_mut(), flavor, &database)
                         .instrument(console::action_span(Action::Use))
                         .await
                 }
@@ -177,11 +177,11 @@ impl Session<'_> {
     pub(super) fn follow_temporary(
         &self,
         sql: &str,
-        dialect: Dialect,
+        flavor: Flavor,
         database: Option<&str>,
         succeeded: bool,
     ) {
-        let changes = temporary_changes(sql, dialect);
+        let changes = temporary_changes(sql, dialect_of(flavor));
         if changes.is_empty() {
             return;
         }
@@ -205,8 +205,8 @@ impl Session<'_> {
     }
 
     /// Announces the session to the client: identity of the source and current
-    /// database. Returns the source's dialect.
-    async fn ready(&self, connection: &mut dyn api::Session) -> Result<Dialect, SessionStopped> {
+    /// database. Returns the source's flavor.
+    async fn ready(&self, connection: &mut dyn api::Session) -> Result<Flavor, SessionStopped> {
         let info = connection.info().clone();
         let database = match connection.current_namespace().await {
             Ok(namespace) => database_of(namespace),
@@ -217,7 +217,7 @@ impl Session<'_> {
             }
         };
         self.remember_database(&database);
-        let dialect = crate::analyze::dialect_of(info.flavor);
+        let flavor = info.flavor;
         self.outbox
             .send(ServerMessage::Ready {
                 server: info,
@@ -225,7 +225,7 @@ impl Session<'_> {
                 transaction: false,
             })
             .await?;
-        Ok(dialect)
+        Ok(flavor)
     }
 
     /// Tells the client when a transaction opened or ended on the session's
@@ -255,7 +255,7 @@ impl Session<'_> {
     async fn use_database(
         &self,
         connection: &mut dyn api::Session,
-        dialect: Dialect,
+        flavor: Flavor,
         database: &str,
     ) -> Result<(), SessionStopped> {
         let namespace = Namespace::single(database);
@@ -270,7 +270,7 @@ impl Session<'_> {
                 self.outbox.send(ServerMessage::Database { database }).await
             }
             Err(error) => {
-                let detail = ErrorDetail::of_connector(&error, Some(flavor_of(dialect)));
+                let detail = ErrorDetail::of_connector(&error, Some(flavor));
                 self.outbox.error(None, detail).await
             }
         }
@@ -285,7 +285,7 @@ impl Session<'_> {
     async fn handle(
         &self,
         connection: &mut dyn api::Session,
-        dialect: Dialect,
+        flavor: Flavor,
         request: QueryRequest,
     ) -> Result<(), SessionStopped> {
         let limits = match run_limits(self.state, self.user_id, request.row_limit).await {
@@ -325,19 +325,19 @@ impl Session<'_> {
         self.outbox.send(ServerMessage::Batch { queries }).await?;
 
         if cursor.is_some() {
-            self.run_on_session(connection, dialect, 0, &chosen[0].sql, &limits)
+            self.run_on_session(connection, flavor, 0, &chosen[0].sql, &limits)
                 .await?;
-        } else if self.parallel(connection) && reads_only(&chosen, dialect) {
+        } else if self.parallel(connection) && reads_only(&chosen, flavor) {
             let database = self.current_database();
-            self.run_in_parallel(&chosen, dialect, &limits, &database)
+            self.run_in_parallel(&chosen, flavor, &limits, &database)
                 .await?;
         } else {
-            self.run_in_sequence(connection, &chosen, dialect, &limits)
+            self.run_in_sequence(connection, &chosen, flavor, &limits)
                 .await?;
         }
         let ends = chosen
             .iter()
-            .any(|statement| ends_transaction(&statement.sql, dialect));
+            .any(|statement| ends_transaction(&statement.sql, dialect_of(flavor)));
         self.follow_transaction(connection, ends).await?;
         self.outbox.send(ServerMessage::BatchDone).await
     }
