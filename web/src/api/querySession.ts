@@ -1769,6 +1769,21 @@ export function useQuerySession(
   }
 
   /**
+   * Attaches a database to the session (`attach`), and with `save` to the
+   * connection too; the server answers with the databases of the session,
+   * or a session error.
+   *
+   * @param schema Schema of the database.
+   * @param location Location of the database, as typed, or `:memory:`.
+   * @param save Is it also added to the connection?
+   */
+  function attachDatabase(schema: string, location: string, save: boolean): void {
+    if (state.status === 'ready') {
+      send({ type: 'attach', schema, location, save })
+    }
+  }
+
+  /**
    * Detaches a database from the session (`detach`); the server answers
    * with the databases left, or a session error.
    *
@@ -1919,6 +1934,7 @@ export function useQuerySession(
     reopen,
     changeDatabase,
     backupDatabase,
+    attachDatabase,
     detachDatabase,
     cancel,
     refresh,

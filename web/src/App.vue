@@ -555,6 +555,10 @@ function selectSource(editorId: number, connectionId: number): void {
                       (connectionId, schema) => useDatabase(editor.id, connectionId, schema)
                     "
                     @disconnect="disconnect(editor.id)"
+                    @attach="
+                      (schema, location, save) =>
+                        views.get(editor.id)?.attachDatabase(schema, location, save)
+                    "
                     @detach="(schema) => views.get(editor.id)?.detachDatabase(schema)"
                     @backup="
                       (schema, location) => views.get(editor.id)?.backupDatabase(schema, location)

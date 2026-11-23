@@ -95,6 +95,7 @@ import {
 } from '@/api/querySession'
 import { innerLevel } from '@/api/namespaceLevels'
 import { useCatalogStore } from '@/stores/catalog'
+import { useConnectionsStore } from '@/stores/connections'
 import { useSettingsStore } from '@/stores/settings'
 
 import EditorTransactionBadge from '@/components/editor/EditorTransactionBadge.vue'
@@ -204,6 +205,7 @@ const session = useQuerySession(
   props.openingDatabase,
 )
 const catalog = useCatalogStore()
+const connections = useConnectionsStore()
 const state = session.state
 
 /**
@@ -797,15 +799,33 @@ watch(
   },
 )
 
+/**
+ * Was a database just attached "Dans la connexion"? The list of the
+ * connections is then read again once the session tells its databases.
+ */
+let savedAttachment = false
+
 // The session attached or detached a database: the navigator shows its
-// schemas again. The first list, told as the session opens, changes
-// nothing.
+// schemas again, and the list of the connections a database saved in the
+// connection. The first list, told as the session opens, changes nothing.
 watch(
   () => state.databases,
   (_, before) => {
     if (before !== null) {
       catalog.load(props.connection.id, true, props.editorId).catch(() => {})
     }
+    if (savedAttachment) {
+      savedAttachment = false
+      connections.load().catch(() => {})
+    }
+  },
+)
+
+// A request refused: no database was saved.
+watch(
+  () => state.error,
+  () => {
+    savedAttachment = false
   },
 )
 
@@ -844,6 +864,19 @@ function backupDatabase(schema: string, location: string): void {
 }
 
 /**
+ * Attaches a database to the session ("Attacher une base…" of the
+ * navigator), and with `save` to the connection too.
+ *
+ * @param schema Schema of the database.
+ * @param location Location of the database, as typed, or `:memory:`.
+ * @param save Is it also added to the connection?
+ */
+function attachDatabase(schema: string, location: string, save: boolean): void {
+  savedAttachment = save
+  session.attachDatabase(schema, location, save)
+}
+
+/**
  * Detaches a database from the session ("Détacher pour la session" of the
  * navigator); it comes back with the next session.
  *
@@ -860,6 +893,7 @@ defineExpose({
   writeIndexOperationsWhenReady,
   changeDatabaseWhenReady,
   backupDatabase,
+  attachDatabase,
   detachDatabase,
   disconnect,
 })

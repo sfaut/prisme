@@ -62,6 +62,11 @@
   the editor, like the button of the line. The active navigator reads again
   the catalog of a connection changed in the manager.
 
+  The "⋮" menu of a source that attaches databases (SQLite) offers
+  "Attacher une base…" (`NavigatorAttachDialog`), to the editor's session
+  once it is ready on that source, and to its connection if asked (emits
+  `attach`).
+
   On hovering a database of a source that attaches databases (SQLite), a
   "⋮" menu acts on the editor's session on that source, once it is ready:
   "Enregistrer dans un fichier…" copies a database in memory into a new
@@ -88,7 +93,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { Pencil, PlugZap, RefreshCw, Save, Trash2, Unlink, Unplug } from '@lucide/vue'
+import { Pencil, PlugZap, Plus, RefreshCw, Save, Trash2, Unlink, Unplug } from '@lucide/vue'
 import {
   TreeItem,
   type TreeItemSelectEvent,
@@ -107,6 +112,7 @@ import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
 import { useNavigatorStore } from '@/stores/navigator'
 
+import NavigatorAttachDialog from './NavigatorAttachDialog.vue'
 import NavigatorBackupDialog from './NavigatorBackupDialog.vue'
 import NavigatorLine from './NavigatorLine.vue'
 import ConnectionRemoveDialog from '@/components/connections/ConnectionRemoveDialog.vue'
@@ -176,6 +182,11 @@ const emit = defineEmits<{
    */
   disconnect: []
   /**
+   * The user attaches a database to the session of the editor, and with
+   * `save` to its connection too.
+   */
+  attach: [schema: string, location: string, save: boolean]
+  /**
    * The user detaches a database from the session of the editor.
    */
   detach: [schema: string]
@@ -230,6 +241,12 @@ const failures = ref<Record<number, string>>({})
  * Connection whose deletion waits for confirmation, `null` if none.
  */
 const removing = ref<ConnectionSummary | null>(null)
+
+/**
+ * Name of the source that waits for a database to attach ("Attacher une
+ * base…"), `null` if none.
+ */
+const attaching = ref<string | null>(null)
 
 /**
  * Database in memory whose copy into a file waits for its location
@@ -431,6 +448,18 @@ function menuItems(node: NavigatorNode): MenuItem[] | null {
           icon: PlugZap,
           onSelect: () => void probe(node.connectionId),
         },
+        ...(catalog.catalogOf(node.connectionId)?.source?.capabilities.attachments === true
+          ? [
+              {
+                label: 'Attacher une base…',
+                icon: Plus,
+                disabled: sessionOf(node.connectionId) !== 'ready',
+                onSelect: () => {
+                  attaching.value = connection.name
+                },
+              },
+            ]
+          : []),
         {
           label: 'Déconnecter',
           icon: Unplug,
@@ -868,6 +897,10 @@ watch(() => visible.value.rows.length, retryScroll)
       </div>
     </div>
 
+    <navigator-attach-dialog
+      v-model:source="attaching"
+      @attach="(schema, location, save) => emit('attach', schema, location, save)"
+    />
     <navigator-backup-dialog
       v-model:schema="backingUp"
       @save="(schema, location) => emit('backup', schema, location)"
