@@ -9,7 +9,8 @@
 //! pragmas (forms, unknown names, functions, read-only files), what
 //! `changes()` and `last_insert_rowid()` report after each write, how the
 //! connector opens its databases (flags of a database in memory, `ATTACH` with
-//! parameters, `database_list`). The results go to
+//! parameters, `database_list`), the rows the update hook reports for each
+//! write and its cost. The results go to
 //! `docs/SQL-COMPARISON.md`, section "SQLite embedded in Prisme".
 //!
 //! From the root of the repository:
@@ -21,6 +22,9 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use std::sync::{Arc, Mutex};
+
+use rusqlite::hooks::Action;
 use rusqlite::types::ValueRef;
 use rusqlite::{Connection, OpenFlags};
 
@@ -59,6 +63,7 @@ fn main() {
     pragmas(&folder);
     write_outcomes();
     connector_opening(&folder);
+    update_hook();
 
     std::fs::remove_dir_all(&folder).ok();
 }
@@ -940,4 +945,94 @@ fn connector_opening(folder: &Path) {
             .prepare("-- nothing")
             .map(|statement| statement.column_count()),
     );
+}
+
+/// The rows the update hook (`sqlite3_update_hook`) reports for each kind of
+/// write, beside `changes()`, and its cost on the insertion of a million
+/// rows: a way, not taken, to tell the rows inserted from the rows updated.
+fn update_hook() {
+    println!(
+        "
+15. Update hook"
+    );
+    let mut connection = Connection::open_in_memory().expect("connection");
+    connection
+        .execute_batch(
+            "CREATE TABLE t (id INTEGER PRIMARY KEY, k TEXT UNIQUE, v INTEGER);
+             CREATE TABLE log (x);
+             CREATE TRIGGER tr AFTER DELETE ON t BEGIN INSERT INTO log VALUES (old.id); END;
+             CREATE TABLE w (k TEXT PRIMARY KEY, v INTEGER) WITHOUT ROWID;
+             INSERT INTO t (k, v) VALUES ('a', 1), ('b', 2), ('c', 3);
+             INSERT INTO w VALUES ('a', 1);",
+        )
+        .expect("tables");
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let hooked = seen.clone();
+    connection
+        .update_hook(Some(move |action: Action, _: &str, table: &str, _: i64| {
+            let action = match action {
+                Action::SQLITE_INSERT => "insert",
+                Action::SQLITE_UPDATE => "update",
+                Action::SQLITE_DELETE => "delete",
+                _ => "other",
+            };
+            hooked
+                .lock()
+                .expect("rows")
+                .push(format!("{action} {table}"));
+        }))
+        .expect("hook");
+    for sql in [
+        "INSERT INTO t (k, v) VALUES ('a', 1), ('d', 4) ON CONFLICT (k) DO UPDATE SET v = excluded.v",
+        "INSERT OR REPLACE INTO t (k, v) VALUES ('c', 30), ('f', 6)",
+        "INSERT OR IGNORE INTO t (k, v) VALUES ('a', 9), ('g', 7)",
+        "UPDATE t SET v = v",
+        "DELETE FROM t WHERE k = 'd'",
+        "INSERT INTO w VALUES ('a', 1) ON CONFLICT (k) DO UPDATE SET v = 2",
+        "INSERT OR REPLACE INTO w VALUES ('a', 3)",
+        "DELETE FROM log",
+    ] {
+        match connection.execute(sql, []) {
+            Ok(_) => println!(
+                "  {sql}: changes {}, hook {:?}",
+                connection.changes(),
+                seen.lock().expect("rows")
+            ),
+            Err(error) => println!("  {sql}: error \"{error}\""),
+        }
+        seen.lock().expect("rows").clear();
+    }
+
+    for hooked in [false, true] {
+        let mut connection = Connection::open_in_memory().expect("connection");
+        connection
+            .execute_batch("CREATE TABLE big (id INTEGER PRIMARY KEY, a INTEGER, b TEXT)")
+            .expect("table");
+        if hooked {
+            let count = Arc::new(Mutex::new(0_u64));
+            connection
+                .update_hook(Some(move |_: Action, _: &str, _: &str, _: i64| {
+                    *count.lock().expect("count") += 1;
+                }))
+                .expect("hook");
+        }
+        let mut best = Duration::MAX;
+        for _ in 0..5 {
+            connection.execute("DELETE FROM big", []).expect("delete");
+            let started = Instant::now();
+            connection
+                .execute(
+                    "WITH RECURSIVE s(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM s WHERE x < 1000000)
+                     INSERT INTO big (a, b) SELECT x, 'row ' || x FROM s",
+                    [],
+                )
+                .expect("insert");
+            best = best.min(started.elapsed());
+        }
+        println!(
+            "  1,000,000 rows inserted, hook {}: best of 5 {} ms",
+            if hooked { "set" } else { "absent" },
+            best.as_millis()
+        );
+    }
 }

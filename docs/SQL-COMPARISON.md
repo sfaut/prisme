@@ -345,7 +345,7 @@ The expression names no column: an error on the column shows that the engine rea
 
 ### 3.15 Origin of the columns of a result
 
-What the metadata of a result tell of the column a result column reads, measured on 2026-11-01 by the test `tells_the_origin_of_the_columns_of_a_result` of `crates/connectors/tests/mysql.rs`, on the six servers of `compose.yaml`, and by `mysql --column-type-info`. This is the protocol of MySQL and MariaDB, without a case in `bench/sql/cases.mjs`, which compares expressions; the other engines have no connector yet, and are not measured.
+What the metadata of a result tell of the column a result column reads, measured on 2026-11-01 by the test `tells_the_origin_of_the_columns_of_a_result` of `crates/connectors/tests/mysql.rs`, on the six servers of `compose.yaml`, and by `mysql --column-type-info`. This is the protocol of MySQL and MariaDB, without a case in `bench/sql/cases.mjs`, which compares expressions; SQLite counts otherwise (section 6), and the other engines have no connector yet, and are not measured.
 
 | Column of the result | `org_table`, `org_name` | `PRI_KEY_FLAG` |
 |---|---|---|
@@ -557,6 +557,23 @@ Outcome of a write, as `changes()`, `total_changes()` and `last_insert_rowid()` 
 | `CREATE TABLE`, `CREATE TABLE ... AS SELECT`, `SELECT` | that of the statement before (1) | 0 | unchanged |
 
 `changes()` counts the rows the statement wrote itself: an `UPDATE` counts the rows found, changed or not, an upsert its rows inserted and updated together, a replacement its rows written without the rows it deleted; the rows written by triggers are left out. After a statement that writes no row, it still gives the count of the last write: only a growth of `total_changes()` tells that the statement wrote.
+
+Compared with MySQL and MariaDB (section 3.16), SQLite does not tell the rows of an `UPDATE` changed from those found with the same values, the rows inserted by an upsert from those it updated, the rows a replacement deleted, the rows an `INSERT OR IGNORE` skipped, nor any warning. The connector reports what `changes()` tells, and leaves the other counts absent.
+
+The update hook (`sqlite3_update_hook`, feature `hooks` of `rusqlite`), called for each row written, measured on 2026-11-23 by `bench/sqlite` (section 15), on the same table `t` and a table `w (k TEXT PRIMARY KEY, v INTEGER) WITHOUT ROWID`:
+
+| Statement | `changes()` | Rows the hook reports |
+|---|---|---|
+| Upsert of a duplicate and a new row | 2 | 1 update, 1 insert |
+| `INSERT OR REPLACE` of a duplicate and a new row | 2 | 2 inserts, without the row deleted |
+| `INSERT OR IGNORE` of a duplicate and a new row | 1 | 1 insert |
+| `UPDATE t SET v = v` on 6 rows | 6 | 6 updates, changed or not |
+| `DELETE` of one row, its trigger inserting one | 1 | 1 delete of `t`, 1 insert of `log` |
+| Upsert, then `INSERT OR REPLACE`, into the `WITHOUT ROWID` table | 1 each | none |
+| `DELETE FROM log`, without `WHERE` | 1 | none |
+
+The hook tells the rows inserted from the rows updated of an upsert, but it reports nothing for a `WITHOUT ROWID` table nor for a `DELETE` without `WHERE` (truncate optimization), nothing of the rows a replacement deletes, and it mixes the rows of the triggers with those of the statement: its counts would be false without telling it, so the connector does not use it. The pre-update hook (`sqlite3_preupdate_hook`), which would give the depth of a trigger and the old and new values, needs a SQLite built with `SQLITE_ENABLE_PREUPDATE_HOOK`: the feature `preupdate_hook` of `rusqlite` 0.41.1 then generates its bindings with `bindgen`, whose build stops without libclang ("Unable to find libclang"); it is not measured. Cost of the update hook: `docs/PERFORMANCES.md`, chapter 18.
+
 
 Opening of the databases of a connection, measured on 2026-11-23:
 
