@@ -22,18 +22,18 @@ use super::catalog;
 use super::failure::opening;
 use super::open::{self, Planned, connect, file_name, plan, plan_one, prepare, private_key};
 use super::statement::{self, Ending, Message, ROWS_AHEAD};
+use crate::api::{AttachedDatabase, DatabaseState, DatabaseStatus, FileDatabase};
 use crate::api::{
     Canceller, Capabilities, CatalogReader, ColumnMeta, ConnectorError, DialectOptions, Driver,
     Engine, MAIN_SCHEMA, Namespace, NamespaceLevel, OpenOptions, Rows, Session, Settings,
     SourceInfo, Target,
 };
-use crate::api::{DatabaseState, FileDatabase};
 use crate::blocking::{Stopped, Worker};
 use crate::catalog::{NamespaceInfo, ObjectInfo, ObjectKind, TableDetails};
 use crate::columns::Cell;
 use crate::failure::FailureCause;
 use crate::flavor::Flavor;
-use crate::location::{Location, LocationError, Remote, locations};
+use crate::location::{Location, LocationError, Remote, Scheme, locations};
 use crate::outcome::{Notice, StatementOutcome};
 
 /// Driver of SQLite.
@@ -152,6 +152,8 @@ async fn open(target: &Target, options: OpenOptions) -> Result<SqliteSession, Co
             )
         })
         .await??;
+    let listed = worker.run(|connection| open::listed(connection)).await??;
+    let known = known_of(&prepared.databases, &listed);
     let info = SourceInfo {
         flavor: Flavor::Sqlite,
         version: rusqlite::version().to_string(),
@@ -163,6 +165,7 @@ async fn open(target: &Target, options: OpenOptions) -> Result<SqliteSession, Co
     Ok(SqliteSession {
         worker,
         info,
+        known,
         key,
         remote: files.remote.clone(),
         canceller: Arc::new(SqliteCanceller {
@@ -170,6 +173,51 @@ async fn open(target: &Target, options: OpenOptions) -> Result<SqliteSession, Co
             ended: Arc::new(AtomicBool::new(false)),
         }),
     })
+}
+
+/// Databases of `states` that opened, each with the file of `listed`, the
+/// databases attached to the connection.
+fn known_of(states: &[DatabaseState], listed: &[(String, String)]) -> Vec<Known> {
+    states
+        .iter()
+        .filter(|state| matches!(state.status, DatabaseStatus::Open { .. }))
+        .filter_map(|state| {
+            let (_, file) = listed
+                .iter()
+                .find(|(schema, _)| schema.eq_ignore_ascii_case(&state.schema))?;
+            Some(Known {
+                database: FileDatabase {
+                    schema: state.schema.clone(),
+                    location: state.location.clone(),
+                },
+                file: file.clone(),
+            })
+        })
+        .collect()
+}
+
+/// Databases of `listed`, attached to a connection, with their location:
+/// that of the database the session attached itself under the schema and
+/// to the file listed (`known`), else the file listed, else none: a
+/// database in memory attached in SQL, private to its connection.
+fn attached_of(listed: Vec<(String, String)>, known: &[Known]) -> Vec<AttachedDatabase> {
+    listed
+        .into_iter()
+        .map(|(schema, file)| {
+            let own = known.iter().find(|known| {
+                known.database.schema.eq_ignore_ascii_case(&schema) && known.file == file
+            });
+            let location = match own {
+                Some(known) => Some(known.database.location.clone()),
+                None if file.is_empty() => None,
+                None => Some(Location {
+                    scheme: Scheme::File,
+                    address: file,
+                }),
+            };
+            AttachedDatabase { schema, location }
+        })
+        .collect()
 }
 
 /// Error of an order that arrives once the session was ended.
@@ -186,12 +234,25 @@ pub struct SqliteSession {
     /// Identity of the source and state of its databases, read at the
     /// opening.
     info: SourceInfo,
+    /// Databases the session attached itself, at its opening and by
+    /// `attach`, still attached.
+    known: Vec<Known>,
     /// Name of its databases in memory (`OpenOptions::session_key`).
     key: String,
     /// Where its remote databases are copied, and the limits of a download.
     remote: Remote,
     /// Interruption of the running statement.
     canceller: Arc<SqliteCanceller>,
+}
+
+/// Database a session attached itself, with the file SQLite lists for it:
+/// a database attached again in SQL under its schema, on another file, is
+/// no longer it.
+struct Known {
+    /// The database, as the session attached it.
+    database: FileDatabase,
+    /// Its file in `pragma_database_list`.
+    file: String,
 }
 
 impl SqliteSession {
@@ -280,6 +341,15 @@ impl Session for SqliteSession {
             let status = self
                 .run(move |connection| Ok(open::attach(connection, &planned, &key)))
                 .await?;
+            if matches!(status, DatabaseStatus::Open { .. }) {
+                let listed = self.run(|connection| Ok(open::listed(connection)?)).await?;
+                let state = DatabaseState {
+                    schema: database.schema.clone(),
+                    location: database.location.clone(),
+                    status: status.clone(),
+                };
+                self.known.extend(known_of(&[state], &listed));
+            }
             Ok(DatabaseState {
                 schema: database.schema.clone(),
                 location: database.location.clone(),
@@ -289,8 +359,21 @@ impl Session for SqliteSession {
     }
 
     fn detach<'a>(&'a mut self, schema: &'a str) -> BoxFuture<'a, Result<(), ConnectorError>> {
-        let schema = schema.to_string();
-        Box::pin(self.run(move |connection| Ok(open::detach(connection, &schema)?)))
+        Box::pin(async move {
+            let detached = schema.to_string();
+            self.run(move |connection| Ok(open::detach(connection, &detached)?))
+                .await?;
+            self.known
+                .retain(|known| !known.database.schema.eq_ignore_ascii_case(schema));
+            Ok(())
+        })
+    }
+
+    fn databases(&mut self) -> BoxFuture<'_, Result<Vec<AttachedDatabase>, ConnectorError>> {
+        Box::pin(async move {
+            let listed = self.run(|connection| Ok(open::listed(connection)?)).await?;
+            Ok(attached_of(listed, &self.known))
+        })
     }
 
     fn backup<'a>(
@@ -828,5 +911,63 @@ mod tests {
             DRIVER.open(&target, on("other")).await.err(),
             Some(ConnectorError::Unsupported(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn lists_the_databases_attached_to_its_connection() {
+        let folder = tempfile::tempdir().unwrap();
+        let [main, other, extra] = ["main", "other", "extra"].map(|name| {
+            let path = folder.path().join(format!("{name}.db"));
+            create(&path);
+            path
+        });
+        let target = target(
+            vec![
+                file("main", &main),
+                file("other", &other),
+                memory("scratch"),
+            ],
+            &[],
+        );
+        let mut session = DRIVER.open(&target, OpenOptions::default()).await.unwrap();
+        rows_of(session.as_mut(), "ATTACH ':memory:' AS private")
+            .await
+            .unwrap();
+        let sql = format!("ATTACH '{}' AS extra", extra.display());
+        rows_of(session.as_mut(), &sql).await.unwrap();
+        let listed = |databases: Vec<AttachedDatabase>| -> Vec<(String, Option<Location>)> {
+            databases
+                .into_iter()
+                .map(|database| (database.schema, database.location))
+                .collect()
+        };
+        let at = |database: FileDatabase| (database.schema, Some(database.location));
+        assert_eq!(
+            listed(session.databases().await.unwrap()),
+            [
+                at(file("main", &main)),
+                at(file("other", &other)),
+                at(memory("scratch")),
+                ("private".to_string(), None),
+                at(file("extra", &extra)),
+            ]
+        );
+
+        // Detached by the session, then attached again in SQL on another file:
+        // the location is that of the new file.
+        session.detach("other").await.unwrap();
+        rows_of(session.as_mut(), "DETACH extra").await.unwrap();
+        let sql = format!("ATTACH '{}' AS other", extra.display());
+        rows_of(session.as_mut(), &sql).await.unwrap();
+        assert_eq!(
+            listed(session.databases().await.unwrap()),
+            [
+                at(file("main", &main)),
+                at(memory("scratch")),
+                ("private".to_string(), None),
+                at(file("other", &extra)),
+            ]
+        );
+        session.close().await;
     }
 }

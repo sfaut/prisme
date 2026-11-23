@@ -281,6 +281,19 @@ pub struct SourceInfo {
     pub databases: Vec<DatabaseState>,
 }
 
+/// Database attached to the connection of a session, as the engine lists it
+/// (`Session::databases`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct AttachedDatabase {
+    /// Name of its schema.
+    pub schema: String,
+    /// Where it is, for another connection to attach it too; `None` for a
+    /// database private to this connection (an `ATTACH ':memory:'` written
+    /// in SQL).
+    pub location: Option<Location>,
+}
+
 /// State of a database of a source held in files, when a session opens or
 /// the source is tested.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -463,6 +476,18 @@ pub trait Session: Send {
     /// for an engine with `Capabilities::attachments`.
     fn detach<'a>(&'a mut self, _schema: &'a str) -> BoxFuture<'a, Result<(), ConnectorError>> {
         Box::pin(async { Err(ConnectorError::Unsupported("detaching a database")) })
+    }
+
+    /// Databases attached to the connection of the session now, the main
+    /// one first, in the order of their attachment, `temp` left out: those
+    /// of its opening and of `attach`, and those of the `ATTACH` written in
+    /// SQL. Only for an engine with `Capabilities::attachments`.
+    fn databases(&mut self) -> BoxFuture<'_, Result<Vec<AttachedDatabase>, ConnectorError>> {
+        Box::pin(async {
+            Err(ConnectorError::Unsupported(
+                "listing the attached databases",
+            ))
+        })
     }
 
     /// Copies the database of the schema `schema` into a new file at

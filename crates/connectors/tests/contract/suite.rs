@@ -4,7 +4,9 @@
 
 use std::time::{Duration, Instant};
 
-use prisme_connectors::api::{ConnectorError, Namespace, OpenOptions, Session, Target};
+use prisme_connectors::api::{
+    AttachedDatabase, ConnectorError, Namespace, OpenOptions, Session, Settings, Target,
+};
 use prisme_connectors::catalog::ObjectKind;
 use prisme_connectors::drivers;
 use prisme_connectors::flavor::Flavor;
@@ -259,6 +261,37 @@ pub async fn opens_on_a_namespace(fixture: &impl Fixture) {
                     fixture.name()
                 );
             }
+        })
+        .await;
+}
+
+/// An engine with attachments lists the databases attached to a session,
+/// those of its settings, each at its location; another refuses it with
+/// `Unsupported`.
+pub async fn lists_the_attached_databases(fixture: &impl Fixture) {
+    fixture
+        .with_source("attached", async |target, _| {
+            let mut session = open(&target, OpenOptions::default()).await;
+            let listed = session.databases().await;
+            match &target.settings {
+                Settings::Files(files) if drivers::of(target.engine).capabilities().attachments => {
+                    let expected: Vec<AttachedDatabase> = files
+                        .databases
+                        .iter()
+                        .map(|database| AttachedDatabase {
+                            schema: database.schema.clone(),
+                            location: Some(database.location.clone()),
+                        })
+                        .collect();
+                    assert_eq!(listed.unwrap(), expected, "{}", fixture.name());
+                }
+                _ => assert!(
+                    matches!(listed, Err(ConnectorError::Unsupported(_))),
+                    "{}",
+                    fixture.name()
+                ),
+            }
+            session.close().await;
         })
         .await;
 }

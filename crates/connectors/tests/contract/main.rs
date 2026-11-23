@@ -28,6 +28,7 @@ macro_rules! contract_tests {
                 refuses_writes_when_read_only,
                 opens_on_a_namespace,
                 switches_the_namespace,
+                lists_the_attached_databases,
                 reads_the_catalog,
             );
         }

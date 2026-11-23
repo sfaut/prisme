@@ -244,6 +244,20 @@ pub(super) fn attach(connection: &Connection, database: &Planned, key: &str) -> 
     }
 }
 
+/// Databases attached to `connection`, the main one first, in the order of
+/// their attachment, `temp` left out, each with the file SQLite lists for
+/// it: empty for a database in memory, and for any database of a connection
+/// whose main database is in `memdb`, unless its `ATTACH` named a file
+/// system (`docs/SQL-COMPARISON.md`, section 6).
+pub(super) fn listed(connection: &Connection) -> rusqlite::Result<Vec<(String, String)>> {
+    let sql = "SELECT name, file FROM pragma_database_list WHERE name <> 'temp' ORDER BY seq";
+    traced(sql, || {
+        let mut statement = connection.prepare(sql)?;
+        let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.collect()
+    })
+}
+
 /// Detaches the database of the schema `schema`.
 pub(super) fn detach(connection: &Connection, schema: &str) -> rusqlite::Result<()> {
     let sql = "DETACH ?1";
