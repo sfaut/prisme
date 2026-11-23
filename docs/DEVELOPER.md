@@ -591,6 +591,52 @@ cargo run --release --manifest-path bench/sqlite/Cargo.toml --target-dir target/
 
 The program works in a temporary folder of its own, deleted at the end, and prints each measure with what SQLite answered.
 
+## SQLite databases in memory
+
+Decided on 2026-11-23. The measures behind each point are in `docs/SQL-COMPARISON.md`, section 6.
+
+### Why the main database in memory is a `memdb` database
+
+A SQLite connection whose main database is **En mémoire** (or a `:memory:` database of its settings, or one attached from the navigator) holds a scratch database that lives with its session. A session opens several connections on the same source: the editor's, one per query run in parallel (Ctrl+Shift+Enter), the navigator's, the exports'. A database opened as `:memory:` belongs to its connection alone: a table created in the editor would be missing from the navigator, the parallel queries and the exports. The connector therefore opens these databases in the file system (VFS) `memdb` of SQLite, under a name of the session (`file:/prisme/<session key>/<schema>?vfs=memdb`, `crates/connectors/src/sqlite/open.rs`): every connection of the session sees the same database, freed once the last one closes.
+
+Two kinds of databases in memory follow, which the navigator tells apart by their badge (`docs/TODO-SQLITE.md`, step 6):
+
+| Badge | Database | Seen by |
+|---|---|---|
+| `memdb` | Main database **En mémoire**, `:memory:` database of the settings or attached from the navigator | Every connection of the session |
+| `memory` | `ATTACH ':memory:'` written in SQL | Its connection alone: the batches of the session then run in sequence on it |
+
+### Why `ATTACH` written in SQL has restrictions
+
+SQLite opens an attached database in the file system of the main database, unless the `ATTACH` names another one. On a main database in `memdb`, `ATTACH 'D:\data\sales.db' AS sales` thus attaches an empty database in memory named after the path, and never reads the file: `SELECT * FROM sales.orders` answers "no such table", and a `CREATE TABLE sales.t` writes into memory, lost with the session. On a main database held in a file, the same `ATTACH` reads the file. The behaviour comes from the choice of `memdb`, which the user does not see; the same text works in SQLite alone (`sqlite3 :memory:`). Prisme answers for it.
+
+The file of an `ATTACH` written in SQL is therefore (`crates/dialects/src/sqlite_files.rs`):
+
+- a literal absolute path (`D:\data\sales.db`, `D:/data/sales.db`, `/srv/sales.db`), refused on a main database in memory;
+- `':memory:'`;
+- the URI of a file in the file system of the disk, its only parameter `vfs`, which names it: `vfs=win32` on Windows, `vfs=unix` on Linux and macOS (`file:///D:/data/sales.db?vfs=win32`, `file:/D:/data/sales.db?vfs=win32`, `file:D:/data/sales.db?vfs=win32`, `file://localhost/D:/data/sales.db?vfs=win32`). Naming the file system opens the file on the disk whatever the main database.
+
+Refused, before anything runs:
+
+- a computed name (`'/srv/' || 'sales.db'`) and a relative path, read from the folder where Prisme runs: the classification of the statement (`crates/dialects/src/classify.rs`), a write that no switch allows (`write_forbidden`);
+- any other URI: `vfs=memdb` would name a database in memory of another session, of the same user or of another, and the parameters `mode` and `cache` would change the opening that the connector chose (read-only, no creation of a file). Same refusal;
+- a path alone on a connection whose main database is in memory: the connector (`check_attached_paths`, `crates/connectors/src/sqlite/driver.rs`) gives `attach_path_in_memory`, whose message gives the URI to write for the system Prisme runs on (`file:///D:/data/sales.db?vfs=win32` on Windows, `file:///srv/sales.db?vfs=unix` elsewhere).
+
+The attachments of the navigator and of the settings go through that URI already (`sqlite_files::file_uri`): only the `ATTACH` written in SQL meets these restrictions.
+
+### Solutions considered
+
+| Solution | Decision | Reason |
+|---|---|---|
+| One connection shared by the editor, the parallel queries, the navigator and the exports | Dropped | A SQLite connection runs one statement at a time: the parallel queries would run in sequence, the navigator and the exports would wait for a long query, and an interruption stops every statement of its connection. |
+| `:memory:` on each connection | Dropped | Each connection would get a database of its own: a table created in the editor would be missing elsewhere. |
+| Shared cache (`file::memory:?cache=shared`) instead of `memdb` | Dropped | SQLite discourages the shared cache, and its locks between the connections of a session were never measured; `memdb` gives the same sharing. |
+| Prisme rewrites the path of the `ATTACH` into its URI, the editor unchanged | Dropped | The user types one text and Prisme runs another. |
+| Prisme rewrites the text of the editor before running it | Dropped | The editor would hold a form tied to one system (`vfs=win32` fails on Linux), and its text would change under the user's eyes. |
+| Let the path alone through, the limit documented | Dropped | It attaches an empty database without a word, against rule 2 of `CLAUDE.md` (never a silent approximation). |
+| A badge on the main database alone, without a refusal | Dropped | It warns the user beforehand, but does not prevent the empty database. Kept alongside the refusal. |
+| Refuse the path alone, the message giving the URI for the system, and a badge `memdb` / `memory` in the navigator | **Kept** | The user writes what runs, the refusal explains the cause and the fix, the badge shows the file system beforehand. |
+
 ## Testing the API by hand
 
 Start Prisme on a throwaway data folder, to delete to start from scratch:
@@ -709,7 +755,7 @@ Prisme first announces the queries of the batch (`batch`, each one numbered), th
 
 On failure or cancellation, an `error` message replaces the rest of that query, and the session goes on. `batch_done` ends the batch. In parallel, messages of different queries interleave.
 
-A batch that attached or detached a database of a source held in files (`ATTACH`, `DETACH` of SQLite) and changed them is followed by `databases`, before `batch_done`: the databases of the session's connection, the main one first, each with its `schema` and its `location` (`null` for a database private to the connection, as an `ATTACH ':memory:'`). The page then reads the catalog of the navigator again. The parallel queries, the navigator and the exports of the editor open their connections on these databases; a database private to the connection runs the batches in sequence on it.
+An `ATTACH` written in SQL names its file within the restrictions of "SQLite databases in memory"; a path alone on a main database in memory gets `attach_path_in_memory`, with the URI to write. A batch that attached or detached a database of a source held in files (`ATTACH`, `DETACH` of SQLite) and changed them is followed by `databases`, before `batch_done`: the databases of the session's connection, the main one first, each with its `schema` and its `location` (`null` for a database private to the connection, as an `ATTACH ':memory:'`). The page then reads the catalog of the navigator again. The parallel queries, the navigator and the exports of the editor open their connections on these databases; a database private to the connection runs the batches in sequence on it.
 
 The session of an editor (`ws://127.0.0.1:10000/api/editors/{id}/session`) outlives its WebSocket, and saves its results in chunks of rows. A WebSocket that reattaches to it receives `ready`, `databases` once a batch changed them, then `resume`: the last batch where it stands, each query with the number of rows it received so far (`resumed_rows`). These rows follow in `resumed_rows` messages, a saved chunk each, then the next messages of the batch.
 

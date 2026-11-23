@@ -8,7 +8,8 @@
 //! makes the file open on the disk whatever the file system of the main
 //! database. Any other URI is refused: it could name a database in memory
 //! of another session (`vfs=memdb`) or change the mode of the opening
-//! (`mode=rwc`, `cache=shared`).
+//! (`mode=rwc`, `cache=shared`). The reasons and the solutions considered:
+//! `docs/DEVELOPER.md`, section "SQLite databases in memory".
 
 use std::path::Path;
 

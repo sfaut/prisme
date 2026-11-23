@@ -58,6 +58,8 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
 | Type inference in CSVs (booleans, empty = NULL, quotes = text) | Dropped | No consensus across tools, quotes carry no reliable meaning, risk of false positives. |
 | "Quotes = empty string, bare empty = NULL" mode | Postponed | Feasible if the reader keeps the quote information. |
 | Writes to several destinations in a query | Dropped | No use case, complexity and non-atomicity. |
+| SQLite: one connection per session, shared by the editor, the parallel queries, the navigator and the exports | Dropped | One statement at a time per connection: no parallel queries, the navigator and the exports wait, an interruption stops everything. The databases in memory go through `memdb` (`docs/DEVELOPER.md`, section "SQLite databases in memory"). |
+| SQLite: rewrite an `ATTACH` of a path alone on a main database in memory into its URI, silently or in the editor | Dropped | Silently, the user types one text and Prisme runs another; in the editor, the text would hold a form tied to one system (`vfs=win32`). The path alone is refused, the message giving the URI to write (`docs/DEVELOPER.md`, section "SQLite databases in memory"). |
 | Mixing languages in a single query | Dropped | One language per query is enough. |
 | Automatic reuse of a materialised result (query matching) | Dropped in v1 | Hard problem. Explicit saving under a name. |
 | Parquet for the workspace | Dropped | Heavy to write. SQLite with indexes is the best trade-off. |

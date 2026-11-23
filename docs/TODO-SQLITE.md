@@ -15,7 +15,7 @@ Functional:
 7. Step 3 of a creation, **Vérification**, database by database: correct (size, journal, read-only), to create, in memory, not found ("create it" / "remove"). A database not found does not prevent saving; the session opens without it and says so.
 8. Detaching: in the navigator, **Détacher pour la session** (`DETACH`, back at the next session) and **Retirer de la connexion…** (opens the connections manager); in the manager, removal for good, the line struck through and restorable until saved, with the warning of the sessions closed and transactions rolled back; the file stays on the disk.
 9. Attaching from the navigator: "⋮" menu of the source, window **Attacher une base** (origin, schema, location), for this session only or in the connection (attached at once, without closing the session).
-10. `ATTACH` / `DETACH` written in SQL: allowed for the session under an `ATTACH / DETACH` switch, read-only sessions included (the database attached is read-only too). The file of an `ATTACH` is a literal absolute path, `':memory:'`, or the URI of a file in the default file system of SQLite (`file:///D:/data/v.db?vfs=win32`, `vfs=unix` on Linux and macOS), its only parameter: a computed name, a relative path or any other URI is refused.
+10. `ATTACH` / `DETACH` written in SQL: allowed for the session under an `ATTACH / DETACH` switch, read-only sessions included (the database attached is read-only too). The file of an `ATTACH` is a literal absolute path, `':memory:'`, or the URI of a file in the default file system of SQLite (`file:///D:/data/v.db?vfs=win32`, `vfs=unix` on Linux and macOS), its only parameter: a computed name, a relative path or any other URI is refused. On a main database in memory (`memdb`), a path alone is refused too, the message giving the URI to write (`docs/DEVELOPER.md`, section "SQLite databases in memory").
 11. `VACUUM`, `REINDEX`, `ANALYZE` under a **Maintenance** switch, with the pragmas that write in the file (decision 4); `VACUUM INTO` always refused. `CREATE VIRTUAL TABLE` needs `CREATE TABLE`, a table of the schema `temp` is a temporary table, triggers are refused.
 12. A database in memory has **Enregistrer dans un fichier…** (SQLite's backup API), an existing file refused.
 13. The interface is coded with the `frontend-design` skill, in Prisme's theme and rules.
@@ -103,6 +103,7 @@ Architecture:
 - ✅ Navigator and exports of an editor: their connection opens on the databases of the session of that editor, those in memory and those it attached
 - ✅ Parallel queries of a session: their connections attach the databases of the session's connection, listed when it opens and after each `ATTACH` / `DETACH`; a database private to it (`ATTACH ':memory:'` in SQL) runs the batches in sequence on it
 - ✅ API of the attachments of the navigator, for the session: `attach` and `detach` requests, without a switch
+- ✅ `ATTACH` written in SQL on a main database in memory: a path alone refused (`attach_path_in_memory`), the message giving the URI of the file for the system; the URI naming the file system of the disk accepted (`docs/DEVELOPER.md`, section "SQLite databases in memory")
 - ✅ API of the attachments of the navigator, in the connection: `attach` with `save`, the database also saved in `connection_files`, without closing the session
 - ✅ Saving a database in memory to a file: `backup` request of the session, without a switch, allowed in a read-only session; `databases` action of the console
 - ✅ Schemas read again after `ATTACH` / `DETACH` written in SQL: `databases` message, the page reads the catalog again
@@ -116,7 +117,7 @@ Architecture:
 - ⬜ Saved connection: removal struck through and restorable
 - ⬜ List and card: location of `main`, number of attached databases, protocol
 - ⬜ Badge SQLite, light and dark
-- ⬜ Navigator: schemas, protocol, menus, window **Attacher une base**; labels of the namespace levels (`NamespaceLevel`) in the navigator and the completion
+- ⬜ Navigator: schemas, protocol, badge `memdb` (database in memory shared by the session) or `memory` (`ATTACH ':memory:'`, private to its connection), menus, window **Attacher une base**; labels of the namespace levels (`NamespaceLevel`) in the navigator and the completion
 - ⬜ Editor dialect, CTE and `IN` clause in SQLite (literals of the dates, times and bytes)
 - ⬜ Operations on the indexes in the navigator, in SQLite (`CREATE INDEX`, `DROP INDEX`)
 - ⬜ Messages of the states of the databases (`DatabaseState`) in the interface
