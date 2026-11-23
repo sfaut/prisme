@@ -17,7 +17,8 @@
 //! The interface therefore shows the namespaces almost at once, then the
 //! objects and their details as they arrive. `?editor=` names the editor
 //! whose navigator reads the catalog: its queries go to the console of that
-//! editor. The namespace chosen in the connection is read first, those the
+//! editor, and its connection sees the databases in memory of the session
+//! of that editor (`OpenOptions::session_key`). The namespace chosen in the connection is read first, those the
 //! source provides itself (`information_schema`, `mysql`...) last.
 
 use std::convert::Infallible;
@@ -115,7 +116,13 @@ async fn stream_catalog(
         .ok_or(ApiError::NotFound)?;
     // The queries of the catalog go to the history of the queries.
     let span = console::sql_span(user_id, &name, query.editor, Action::Navigator);
-    let opening = drivers::of(target.engine).open(&target, OpenOptions::default());
+    let options = OpenOptions {
+        session_key: query
+            .editor
+            .and_then(|editor_id| state.sessions.key_of(editor_id, id)),
+        ..OpenOptions::default()
+    };
+    let opening = drivers::of(target.engine).open(&target, options);
     let mut connection = opening.instrument(span.clone()).await?;
     let server = connection.info().clone();
     let remembered = server.clone();
@@ -251,13 +258,17 @@ mod tests {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
     use prisme_connectors::api::Engine;
+    use prisme_dialects::classify::WriteKind;
     use secrecy::SecretString;
+    use serde_json::json;
     use tower::ServiceExt;
 
     use crate::api::{AppState, Folders, router};
     use crate::connections::{self, NewConnection, NewServerSettings, NewSettings};
+    use crate::editors::{self, NewEditor};
     use crate::master_key::MasterKey;
     use crate::store;
+    use crate::test_support::{allow_writes, memory_connection, run_on_session, serve};
 
     /// Sends `GET uri` to an application whose connection 1 targets a closed port.
     async fn status_of(uri: &str) -> StatusCode {
@@ -320,6 +331,46 @@ mod tests {
             status_of("/api/connections/42/catalog").await,
             StatusCode::NOT_FOUND
         );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn reads_the_databases_in_memory_of_the_session_of_its_editor() {
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let user_id = store::ensure_user(&db, "test@example.com").unwrap();
+        let id = connections::insert(&db, &key, user_id, &memory_connection()).unwrap();
+        allow_writes(&db, user_id, &[WriteKind::CreateTable]);
+        let editor = NewEditor {
+            connection_id: Some(id),
+        };
+        let editor_id = editors::create(&db, user_id, &editor).unwrap().id;
+        let app = router(AppState::new(db, key, user_id, Folders::unused()));
+        let address = serve(app.clone()).await;
+        let url = format!("ws://{address}/api/editors/{editor_id}/session");
+        let (mut socket, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+        run_on_session(&mut socket, "CREATE TABLE t (x INTEGER)").await;
+
+        let request = Request::get(format!("/api/connections/{id}/catalog?editor={editor_id}"))
+            .header("host", "localhost:8484")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let objects: Vec<String> = String::from_utf8(bytes.to_vec())
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .filter(|event| event["type"] == "objects" && event["namespace"] == json!(["main"]))
+            .flat_map(|event| {
+                let objects = event["objects"].as_array().unwrap().clone();
+                objects.into_iter().map(|object| object["name"].to_string())
+            })
+            .collect();
+        // The table of the session, beside `sqlite_schema`.
+        assert!(objects.contains(&"\"t\"".to_string()), "{objects:?}");
     }
 
     #[tokio::test]
