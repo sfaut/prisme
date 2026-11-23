@@ -17,6 +17,7 @@
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use prisme_dialects::sqlite_files::file_uri;
 use rusqlite::{Connection, InterruptHandle, OpenFlags};
 
 use super::failure::{cause, opening};
@@ -96,51 +97,19 @@ pub(super) fn private_key() -> String {
     format!("connection-{}", NEXT.fetch_add(1, Ordering::Relaxed))
 }
 
-/// Default file system of SQLite on this platform, named by the URI of
-/// every file.
-const FILE_VFS: &str = if cfg!(windows) { "win32" } else { "unix" };
-
 /// URI the library opens for the database `schema` in the local form
 /// `local`: a file in the default file system, read-only for a copy; a
 /// database of the `memdb` file system for a database in memory, named by
 /// `key` (the key of the session) and by its schema, whatever its case.
 pub(super) fn file_name(local: &Local, schema: &str, key: &str) -> String {
     match local {
-        Local::File { path, read_only } => file_uri(path, *read_only),
+        Local::File { path, read_only } => file_uri(&path.to_string_lossy(), *read_only),
         Local::Memory => format!(
             "file:/prisme/{}/{}?vfs=memdb",
             encoded(key),
             encoded(&schema.to_lowercase())
         ),
     }
-}
-
-/// URI of the file at the absolute path `path`: `file:///D:/data/v.db`,
-/// `file:///srv/v.db`, `file:////server/share/v.db` for a path of a server
-/// of Windows (an empty authority, which SQLite requires). `%`, `?`, `#` and
-/// the spaces are encoded, the separators of Windows written `/`.
-fn file_uri(path: &Path, read_only: bool) -> String {
-    let path = path.to_string_lossy().replace('\\', "/");
-    let mut uri = String::from(if path.starts_with('/') {
-        "file://"
-    } else {
-        "file:///"
-    });
-    for character in path.chars() {
-        match character {
-            '%' => uri.push_str("%25"),
-            '?' => uri.push_str("%3F"),
-            '#' => uri.push_str("%23"),
-            ' ' => uri.push_str("%20"),
-            other => uri.push(other),
-        }
-    }
-    uri.push_str("?vfs=");
-    uri.push_str(FILE_VFS);
-    if read_only {
-        uri.push_str("&mode=ro");
-    }
-    uri
 }
 
 /// Text written into a path of a URI, every reserved character encoded.
