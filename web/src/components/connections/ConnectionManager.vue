@@ -54,8 +54,10 @@ import {
   type ConnectionForm as Form,
   connectedText,
   copyForm,
+  attachedText,
   connectionOf,
   ENGINE_FAMILIES,
+  filesOf,
   emptyForm,
   formOf,
   isChanged,
@@ -71,6 +73,7 @@ import ConnectionCheckFiles from './ConnectionCheckFiles.vue'
 import ConnectionFlavorBadge from './ConnectionFlavorBadge.vue'
 import ConnectionFormFiles from './ConnectionFormFiles.vue'
 import ConnectionFormServer from './ConnectionFormServer.vue'
+import ConnectionSchemeBadge from './ConnectionSchemeBadge.vue'
 import ConnectionManagerList from './ConnectionManagerList.vue'
 import ConnectionManagerSteps from './ConnectionManagerSteps.vue'
 import ConnectionManagerTypes from './ConnectionManagerTypes.vue'
@@ -196,6 +199,12 @@ const form = computed<Form | null>(() =>
 const shownCreation = computed(() => (selected.value === 'new' ? creation.value : null))
 
 /**
+ * Protocol of the main database and number of the databases attached, of
+ * the saved connection shown if it is held in files.
+ */
+const savedFiles = computed(() => (saved.value === null ? null : filesOf(saved.value.settings)))
+
+/**
  * Is the input of a saved connection changed?
  *
  * @param connection Saved connection.
@@ -221,6 +230,7 @@ const entries = computed<ListEntry[]>(() =>
       engine: connection.engine,
       name: isChangedNow ? forms.value[connection.id]!.name : connection.name,
       place: placeOf(connection.settings),
+      files: filesOf(connection.settings),
       changed: isChangedNow,
       connected: connection.probe !== null,
     }
@@ -661,6 +671,16 @@ function onRemoved(id: number): void {
                 />
                 {{ shownChanged ? 'Modifiée, non enregistrée' : connectedText(saved) }}
               </span>
+            </div>
+            <div
+              v-if="savedFiles"
+              class="flex min-w-0 items-center gap-2 text-sm text-fg-secondary"
+            >
+              <connection-scheme-badge :scheme="savedFiles.scheme" />
+              <span v-if="savedFiles.scheme !== 'memory'" class="truncate font-mono">
+                {{ placeOf(saved.settings) }}
+              </span>
+              <span class="shrink-0">{{ attachedText(savedFiles.attached) }}</span>
             </div>
           </div>
           <div class="flex shrink-0 items-center gap-3">

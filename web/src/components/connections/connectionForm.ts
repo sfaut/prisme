@@ -22,6 +22,7 @@ import type { NewFileDatabase } from '@/api/generated/NewFileDatabase'
 import type { NewServerSettings } from '@/api/generated/NewServerSettings'
 import type { NewSettings } from '@/api/generated/NewSettings'
 import type { SavedSettings } from '@/api/generated/SavedSettings'
+import type { Scheme } from '@/api/generated/Scheme'
 
 /**
  * Family of the settings of each engine: a new engine is forgotten nowhere.
@@ -291,6 +292,36 @@ export function placeOf(settings: SavedSettings): string {
     return main?.scheme === 'memory' ? ':memory:' : (main?.address ?? '')
   }
   return `${settings.host}:${settings.port}`
+}
+
+/**
+ * What the list and the card show of a source held in files, beside where
+ * it points: the protocol of its main database, and the number of the
+ * databases attached to it; `null` for a server.
+ *
+ * @param settings Settings of a saved connection.
+ */
+export function filesOf(settings: SavedSettings): { scheme: Scheme; attached: number } | null {
+  if (settings.family !== 'files') {
+    return null
+  }
+  return {
+    scheme: settings.databases[0]?.location.scheme ?? 'memory',
+    attached: Math.max(settings.databases.length - 1, 0),
+  }
+}
+
+/**
+ * Number of the databases attached, in words.
+ *
+ * @param count Number of the databases attached.
+ */
+export function attachedText(count: number): string {
+  return count === 0
+    ? 'aucune base attachée'
+    : count === 1
+      ? '1 base attachée'
+      : `${count} bases attachées`
 }
 
 /**

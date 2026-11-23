@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 
 import {
+  attachedText,
   connectedText,
   connectionOf,
   copyForm,
+  filesOf,
   formOf,
   isChanged,
   placeOf,
@@ -179,6 +181,16 @@ describe('connectionForm', () => {
     expect(placeOfForm(form)).toBe('D:\\data\\ventes.db')
     form.databases[0]!.origin = 'memory'
     expect(placeOfForm(form)).toBe(':memory:')
+  })
+
+  it('tells the protocol of the main database and counts the attached ones', () => {
+    expect(filesOf(saved().settings)).toBeNull()
+    expect(filesOf(savedFiles().settings)).toEqual({ scheme: 'file', attached: 2 })
+    expect([0, 1, 2].map(attachedText)).toEqual([
+      'aucune base attachée',
+      '1 base attachée',
+      '2 bases attachées',
+    ])
   })
 
   it('reads the protocol of a location as typed', () => {

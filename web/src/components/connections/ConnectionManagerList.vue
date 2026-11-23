@@ -8,7 +8,9 @@
   alone.
 
   Each connection shows the icon of its kind, its name and where it points
-  (`host:port`, or the location of its main database), and a dot:
+  (`host:port`, or the protocol and the location of its main database, the
+  protocol alone in memory, then the number of the databases attached to
+  it), and a dot:
   green once connected, grey never. A connection changed and not saved shows
   its name as typed, "modifiée, non enregistrée" in place of its place, and
   an amber dot; so does the creation in progress, with its step. The filter
@@ -18,9 +20,11 @@
 import { ChevronDown, ChevronRight, Plus, Search } from '@lucide/vue'
 import { computed, ref } from 'vue'
 
+import { attachedText } from './connectionForm'
 import type { Creation, ListEntry, ManagerSelection } from './connectionManager'
 import { ENGINE_TYPES, SOURCE_FAMILIES, type SourceFamily } from './sourceTypes'
 
+import ConnectionSchemeBadge from './ConnectionSchemeBadge.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiInput from '@/components/ui/UiInput.vue'
 
@@ -198,6 +202,22 @@ function lineClasses(active: boolean): string {
             <span class="truncate font-medium">{{ entry.name || '(sans nom)' }}</span>
             <span v-if="entry.changed" class="truncate text-xs text-warning">
               modifiée, non enregistrée
+            </span>
+            <span v-else-if="entry.files" class="flex min-w-0 items-center gap-1">
+              <connection-scheme-badge :scheme="entry.files.scheme" />
+              <span
+                v-if="entry.files.scheme !== 'memory'"
+                class="truncate font-mono text-xs text-fg-secondary"
+              >
+                {{ entry.place }}
+              </span>
+              <span
+                v-if="entry.files.attached > 0"
+                class="shrink-0 text-xs text-fg-faint"
+                :aria-label="attachedText(entry.files.attached)"
+              >
+                +{{ entry.files.attached }}
+              </span>
             </span>
             <span v-else class="truncate font-mono text-xs text-fg-secondary">
               {{ entry.place }}
