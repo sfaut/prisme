@@ -704,7 +704,7 @@ Prisme first announces the queries of the batch (`batch`, each one numbered), th
 
 On failure or cancellation, an `error` message replaces the rest of that query, and the session goes on. `batch_done` ends the batch. In parallel, messages of different queries interleave.
 
-A batch that attached or detached a database of a source held in files (`ATTACH`, `DETACH` of SQLite) and changed them is followed by `databases`, before `batch_done`: the databases of the session's connection, the main one first, each with its `schema` and its `location` (`null` for a database private to the connection, as an `ATTACH ':memory:'`). The page then reads the catalog of the navigator again.
+A batch that attached or detached a database of a source held in files (`ATTACH`, `DETACH` of SQLite) and changed them is followed by `databases`, before `batch_done`: the databases of the session's connection, the main one first, each with its `schema` and its `location` (`null` for a database private to the connection, as an `ATTACH ':memory:'`). The page then reads the catalog of the navigator again. The parallel queries, the navigator and the exports of the editor open their connections on these databases; a database private to the connection runs the batches in sequence on it.
 
 The session of an editor (`ws://127.0.0.1:10000/api/editors/{id}/session`) outlives its WebSocket, and saves its results in chunks of rows. A WebSocket that reattaches to it receives `ready`, `databases` once a batch changed them, then `resume`: the last batch where it stands, each query with the number of rows it received so far (`resumed_rows`). These rows follow in `resumed_rows` messages, a saved chunk each, then the next messages of the batch.
 
