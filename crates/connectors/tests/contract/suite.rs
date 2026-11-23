@@ -228,7 +228,8 @@ pub async fn refuses_writes_when_read_only(fixture: &impl Fixture) {
 }
 
 /// A session opens on the namespace of its options, else on that of its
-/// settings.
+/// settings; an engine that does not change namespaces refuses another one
+/// with `Unsupported`.
 pub async fn opens_on_a_namespace(fixture: &impl Fixture) {
     fixture
         .with_source("namespace", async |target, other| {
@@ -245,9 +246,19 @@ pub async fn opens_on_a_namespace(fixture: &impl Fixture) {
                 namespace: Some(other.clone()),
                 ..OpenOptions::default()
             };
-            let mut session = open(&target, elsewhere).await;
-            assert_eq!(session.current_namespace().await.unwrap(), Some(other));
-            session.close().await;
+            let driver = drivers::of(target.engine);
+            if driver.capabilities().switch_namespace {
+                let mut session = open(&target, elsewhere).await;
+                assert_eq!(session.current_namespace().await.unwrap(), Some(other));
+                session.close().await;
+            } else {
+                let refused = driver.open(&target, elsewhere).await;
+                assert!(
+                    matches!(refused, Err(ConnectorError::Unsupported(_))),
+                    "{}",
+                    fixture.name()
+                );
+            }
         })
         .await;
 }

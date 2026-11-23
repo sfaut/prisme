@@ -91,7 +91,7 @@ Architecture:
 - ✅ Backup of a database in memory (and attaching, detaching for the session: `Session::attach`, `detach`, `backup`)
 - ✅ Catalog
 - ✅ Check database by database
-- ⬜ `Fixture` SQLite in the contract suite
+- ✅ `Fixture` SQLite in the contract suite
 
 ## 5. Server, SQLite part
 

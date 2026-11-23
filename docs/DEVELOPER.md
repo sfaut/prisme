@@ -442,7 +442,7 @@ cargo fmt                            # formatting
 
 - **Unit tests** sit at the bottom of each `.rs` file, in a `#[cfg(test)] mod tests` block. They also cover the API: HTTP requests go to the application in memory, on an in-memory internal database, without opening a port.
 - **Integration tests** sit in the `tests/` folder of each crate.
-- **Contract suite** (`crates/connectors/tests/contract/`): the tests of the contracts of the connectors (`crates/connectors/src/api.rs`), written once against the traits and run on every engine, through the `Fixture` of each one (`mysql.rs`: the six development servers, ignored by default as the tests on real servers). An engine joins it with its fixture and a line of `contract_tests!` (`main.rs`).
+- **Contract suite** (`crates/connectors/tests/contract/`): the tests of the contracts of the connectors (`crates/connectors/src/api.rs`), written once against the traits and run on every engine, through the `Fixture` of each one (`mysql.rs`: the six development servers, ignored by default as the tests on real servers; `sqlite.rs`: a main database and one attached, empty files of a temporary folder). An engine joins it with its fixture and a line of `contract_tests!` (`main.rs`).
 - **Tests on real servers** (connector, query sessions, exports) connect to the development servers (see "Development servers", and `crates/connectors/src/test_servers.rs`): each one runs on every server of the engines it concerns, in a database of its own, created for it, then dropped. They are ignored by default: start the servers (`docker compose up --detach --wait`), then add `-- --include-ignored`. A server that does not answer fails its tests, with that command.
 
 `cargo test` also regenerates the TypeScript types of `web/src/api/generated/` from the Rust structures (`ts-rs`). After changing a structure exchanged with the interface, run `cargo test`, then `npm run type-check`, and commit the generated types with the Rust change.
@@ -786,7 +786,7 @@ The APIs that only take pixels are workarounds too, listed apart, with their the
 
 ```
 crates/
-  connectors/      access to target databases (MySQL / MariaDB for now): contracts (api.rs), registry of the drivers, one module per engine
+  connectors/      access to target databases (MySQL / MariaDB and SQLite for now): contracts (api.rs), registry of the drivers, one module per engine
     tests/         integration tests on the development servers; contract/: contract suite of the engines
   dialects/        query analysis: default limit, read / write, beautifier, keywords
   splitter/        splitting a text into queries, per dialect

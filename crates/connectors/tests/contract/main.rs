@@ -6,9 +6,11 @@
 //!
 //! The MySQL and MariaDB tests need the development servers, so they are
 //! ignored by default: `cargo test -p prisme-connectors -- --include-ignored`
-//! after `docker compose up --detach --wait`.
+//! after `docker compose up --detach --wait`. The SQLite tests run on files
+//! of a temporary folder.
 
 mod mysql;
+mod sqlite;
 mod suite;
 
 /// Declares, in the module `$module`, one test per test of the suite, run on
@@ -49,3 +51,5 @@ contract_tests!(
     super::mysql::fixtures(),
     [#[ignore = "requires the development servers (docker compose up --detach --wait)"]]
 );
+
+contract_tests!(on_sqlite, super::sqlite::fixtures(), []);
