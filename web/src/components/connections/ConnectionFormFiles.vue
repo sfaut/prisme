@@ -231,18 +231,20 @@ function restore(index: number): void {
       :for="`${id}-main`"
       stacked
     >
-      <ui-input
-        :id="`${id}-main`"
-        v-model="main.location"
-        :maxlength="LENGTHS.location"
-        placeholder="D:\data\ventes.db"
-        spellcheck="false"
-        class="w-full"
-      >
-        <template v-if="schemeOf(main.location)" #trailing>
-          <connection-scheme-badge :scheme="schemeOf(main.location)!" />
-        </template>
-      </ui-input>
+      <div class="flex w-full items-center gap-2">
+        <ui-input
+          :id="`${id}-main`"
+          v-model="main.location"
+          :maxlength="LENGTHS.location"
+          placeholder="D:\data\ventes.db"
+          spellcheck="false"
+          class="min-w-0 flex-1"
+        />
+        <connection-scheme-badge
+          v-if="schemeOf(main.location)"
+          :scheme="schemeOf(main.location)!"
+        />
+      </div>
     </ui-setting-row>
   </ui-setting-list>
 
@@ -301,15 +303,15 @@ function restore(index: number): void {
             spellcheck="false"
             :aria-label="`Emplacement de la base attachée ${index + 1}`"
             class="min-w-0 flex-1"
-          >
-            <template v-if="schemeOf(database.location)" #trailing>
-              <connection-scheme-badge :scheme="schemeOf(database.location)!" />
-            </template>
-          </ui-input>
+          />
           <span v-else class="flex min-w-0 flex-1 items-center gap-2 text-sm text-fg-secondary">
             <connection-scheme-badge scheme="memory" />
             vide à chaque session
           </span>
+          <connection-scheme-badge
+            v-if="database.origin !== 'memory' && schemeOf(database.location)"
+            :scheme="schemeOf(database.location)!"
+          />
           <ui-button
             :icon="Trash2"
             variant="ghost"
