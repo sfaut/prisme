@@ -34,12 +34,12 @@ export type SourceInfo = {
   databases?: Array<DatabaseState>;
   /**
    * Do double quotes delimit identifiers, no longer strings (MySQL's
-   * `ANSI_QUOTES` mode, directly or through `ANSI`)?
+   * `ANSI_QUOTES` mode, directly or through `ANSI`; always for SQLite)?
    */
   ansi_quotes: boolean;
   /**
    * Is the backslash an ordinary character in strings, no longer an
-   * escape (MySQL's `NO_BACKSLASH_ESCAPES` mode)?
+   * escape (MySQL's `NO_BACKSLASH_ESCAPES` mode; always for SQLite)?
    */
   no_backslash_escapes: boolean;
 };
