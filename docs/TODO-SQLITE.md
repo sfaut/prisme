@@ -113,7 +113,7 @@ Architecture:
 ## 6. SQLite interface
 
 - ✅ Family of the files ready, form of the files (main database, attached databases, location field with its protocol)
-- ⬜ Step **Vérification** database by database
+- ✅ Step **Vérification** database by database: the test of a source held in files gives the state of each database even without its main one, attached then to a main database in memory in its place; the fixes "Le créer", "L’ouvrir tel quel" and "Retirer" change the input without a new test; the banner of the test warns while a database is to look at again
 - ⬜ Saved connection: removal struck through and restorable
 - ⬜ List and card: location of `main`, number of attached databases, protocol
 - ⬜ Badge SQLite, light and dark

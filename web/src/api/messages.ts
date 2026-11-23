@@ -127,7 +127,7 @@ function withCause(sentence: string, cause: FailureCause, flavor: Flavor | null 
  *
  * @param failure Why the connection could not open.
  */
-function connectMessage(failure: ConnectFailure): string {
+export function connectMessage(failure: ConnectFailure): string {
   switch (failure.reason) {
     case 'refused':
       return `${failure.address} refuse la connexion : aucun serveur n’écoute sur ce port, ou il n’accepte que les connexions locales (bind-address).`

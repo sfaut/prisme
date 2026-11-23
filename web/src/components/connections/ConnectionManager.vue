@@ -27,7 +27,9 @@
   A creation goes in three steps (`ConnectionManagerSteps`): the kind of
   source (`ConnectionManagerTypes`, MySQL / MariaDB or SQLite for now), the
   settings of its family, then the result of their test before saving: a
-  failed test does not prevent saving (a server not reachable yet). It stays
+  failed test does not prevent saving (a server not reachable yet). For
+  databases held in files, the test gives the state of each one, with its
+  fixes (`ConnectionCheckFiles`). It stays
   under the "Nouvelle connexion" button while another connection is shown.
   "Dupliquer" starts a creation at the settings, from the input of the
   connection shown under another name; its password, left empty, is that of
@@ -44,6 +46,7 @@ import { probeConnection, probeMessage, probeSettings } from '@/api/connections'
 import { serverName } from '@/api/flavors'
 import { errorMessage } from '@/api/errorMessage'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
+import type { DatabaseState } from '@/api/generated/DatabaseState'
 import { useConnectionsStore } from '@/stores/connections'
 import { useEditorsStore } from '@/stores/editors'
 
@@ -60,9 +63,11 @@ import {
   placeOfForm,
 } from './connectionForm'
 import type { Creation, ListEntry, ManagerSelection } from './connectionManager'
+import { reviewText } from './databaseCheck'
 import { ENGINE_TYPES, SOURCE_FAMILIES } from './sourceTypes'
 import { openTransactionsNotice } from './transactionNotice'
 
+import ConnectionCheckFiles from './ConnectionCheckFiles.vue'
 import ConnectionFlavorBadge from './ConnectionFlavorBadge.vue'
 import ConnectionFormFiles from './ConnectionFormFiles.vue'
 import ConnectionFormServer from './ConnectionFormServer.vue'
@@ -127,6 +132,28 @@ const error = ref<string | null>(null)
  * the warning of an unsupported version), `null` if none.
  */
 const probed = ref<ReturnType<typeof probeMessage> | null>(null)
+
+/**
+ * State of each database held in files, as the last test of a creation gave
+ * it; `null` without such a test.
+ */
+const checked = ref<DatabaseState[] | null>(null)
+
+/**
+ * Message of the last test as shown: a warning while a database tested is
+ * to look at again, which its fixes clear.
+ */
+const shownProbed = computed(() => {
+  const message = probed.value
+  const input = form.value
+  if (message === null || checked.value === null || input === null) {
+    return message
+  }
+  const review = reviewText(input.databases, checked.value)
+  return review === null
+    ? message
+    : { tone: 'warning' as const, title: `${message.title}\n${review}` }
+})
 
 /**
  * Test in progress.
@@ -266,9 +293,10 @@ const summary = computed(() => {
     return []
   }
   const input = step.form
+  // The databases tested have their own list (`ConnectionCheckFiles`).
   const settings =
     ENGINE_FAMILIES[input.engine] === 'files'
-      ? input.databases.map((database) => ({
+      ? (checked.value === null ? input.databases : []).map((database) => ({
           label: database.schema || '(sans schéma)',
           value:
             database.origin === 'memory'
@@ -296,6 +324,7 @@ const summary = computed(() => {
 function clearMessages(): void {
   error.value = null
   probed.value = null
+  checked.value = null
 }
 
 /**
@@ -382,8 +411,17 @@ watch(open, (isOpen) => {
   }
 })
 
-// A changed input makes the last test stale.
-watch(form, () => (probed.value = null), { deep: true })
+// A changed input makes the last test stale, except the fixes of the
+// "Vérification" step: the files keep the state tested.
+watch(
+  form,
+  () => {
+    if (shownCreation.value?.step !== 3) {
+      probed.value = null
+    }
+  },
+  { deep: true },
+)
 
 /**
  * Connects with the input of the connection shown. Unchanged, the test is
@@ -489,6 +527,7 @@ async function next(): Promise<void> {
       saved_id: current.copyOf ?? undefined,
     })
     probed.value = probeMessage(info)
+    checked.value = info.databases ?? null
   } catch (failure) {
     error.value = errorMessage(failure)
   } finally {
@@ -658,7 +697,7 @@ function onRemoved(id: number): void {
           </template>
 
           <ui-alert v-if="error" tone="error" :title="error" />
-          <ui-alert v-if="probed" :tone="probed.tone" :title="probed.title" />
+          <ui-alert v-if="shownProbed" :tone="shownProbed.tone" :title="shownProbed.title" />
           <ui-alert
             v-if="shownChanged && transactionCount > 0"
             tone="warning"
@@ -687,6 +726,11 @@ function onRemoved(id: number): void {
                 <dd class="truncate font-mono text-fg-strong">{{ row.value }}</dd>
               </template>
             </dl>
+            <connection-check-files
+              v-if="form && checked && ENGINE_FAMILIES[form.engine] === 'files'"
+              :form="form"
+              :states="checked"
+            />
             <p class="text-sm text-fg-secondary">
               Une fois enregistrée, la connexion apparaît dans le navigateur d’objets et dans le
               choix de connexion des éditeurs.
