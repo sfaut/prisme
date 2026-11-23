@@ -38,19 +38,23 @@ struct Entry {
     id: u64,
     /// Connection of the session.
     connection_id: i64,
+    /// Key of the session, that names its resources
+    /// (`OpenOptions::session_key`).
+    key: String,
     /// Access to the session.
     handle: SessionHandle,
 }
 
 impl Sessions {
     /// Reattaches `socket` to the session of editor `editor_id` if it is open
-    /// on connection `connection_id`, otherwise opens one with `open`, which
-    /// receives the WebSocket and the function to call at the end of the
-    /// session.
+    /// on connection `connection_id`, otherwise opens one of key `key` with
+    /// `open`, which receives the WebSocket and the function to call at the
+    /// end of the session.
     pub(crate) fn attach(
         self: &Arc<Self>,
         editor_id: i64,
         connection_id: i64,
+        key: String,
         socket: WebSocket,
         open: impl FnOnce(WebSocket, Box<dyn FnOnce() + Send + Sync>) -> SessionHandle,
     ) {
@@ -79,9 +83,19 @@ impl Sessions {
             Entry {
                 id,
                 connection_id,
+                key,
                 handle,
             },
         );
+    }
+
+    /// Key of the session of editor `editor_id`, if it is open on
+    /// connection `connection_id`.
+    pub(crate) fn key_of(&self, editor_id: i64, connection_id: i64) -> Option<String> {
+        self.lock()
+            .get(&editor_id)
+            .filter(|entry| entry.connection_id == connection_id)
+            .map(|entry| entry.key.clone())
     }
 
     /// Stops the session of editor `editor_id`, if it has one.

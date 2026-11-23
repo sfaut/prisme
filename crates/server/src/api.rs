@@ -428,7 +428,8 @@ async fn editor_session(
         let history = span.in_scope(|| console::editor_span(user_id, &name, id));
         async move {
             let sessions = Arc::clone(&state.sessions);
-            sessions.attach(id, connection_id, socket, |socket, on_end| {
+            let key = source.options.session_key.clone().unwrap_or_default();
+            sessions.attach(id, connection_id, key, socket, |socket, on_end| {
                 let recorder = Recorder::new(state.clone(), id);
                 query_session::start(
                     socket,

@@ -99,6 +99,7 @@ Architecture:
 - ✅ Files created when the connection is saved
 - ✅ Sessions, their parallel queries and exports opened on `main` whatever the database asked for, when the engine does not change databases
 - ✅ Sessions: a key of their own, shared by their parallel connections (databases in memory)
+- ✅ Exports of a database in memory: their connection takes the key of the session of their editor
 - ⬜ API of the attachments of the navigator (session or connection)
 - ⬜ Saving a database in memory to a file
 - ⬜ Schemas read again after `ATTACH` / `DETACH`

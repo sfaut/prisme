@@ -16,13 +16,18 @@ use tower::ServiceExt;
 use super::table::{self, NewExport};
 use super::{ExportState, interrupt_unfinished};
 use crate::api::{AppState, Folders, router};
-use crate::connections::{self, NewConnection, NewServerSettings, NewSettings};
+use crate::connections::{
+    self, NewConnection, NewFileDatabase, NewFilesSettings, NewServerSettings, NewSettings,
+};
+use crate::editors::{self, NewEditor};
 use crate::master_key::MasterKey;
+use crate::settings::{self, SettingsUpdate};
 use crate::store;
 use prisme_connectors::api::Engine;
 use prisme_connectors::flavor::Flavor;
 use prisme_connectors::mysql::MysqlTarget;
 use prisme_connectors::test_servers;
+use prisme_dialects::classify::WriteKind;
 
 /// Application whose exports go to a temporary folder.
 struct TestApp {
@@ -40,9 +45,6 @@ impl TestApp {
     /// Application with, for its user, a connection to `target` and the
     /// exports that `prepare` saves in its internal database.
     fn new(target: &MysqlTarget, prepare: impl FnOnce(&rusqlite::Connection, i64)) -> Self {
-        let db = store::open_in_memory();
-        let key = MasterKey::generate();
-        let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let connection = NewConnection {
             name: "test".to_string(),
             engine: Engine::Mysql,
@@ -57,7 +59,19 @@ impl TestApp {
             session_timeout_minutes: 5,
             show_system_schemas: true,
         };
-        connections::insert(&db, &key, user_id, &connection).unwrap();
+        Self::with_connection(&connection, prepare)
+    }
+
+    /// Application with, for its user, the connection `connection` and what
+    /// `prepare` saves in its internal database.
+    fn with_connection(
+        connection: &NewConnection,
+        prepare: impl FnOnce(&rusqlite::Connection, i64),
+    ) -> Self {
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let user_id = store::ensure_user(&db, "test@example.com").unwrap();
+        connections::insert(&db, &key, user_id, connection).unwrap();
         prepare(&db, user_id);
         let data = tempfile::tempdir().unwrap();
         let folder = data.path().join(super::FOLDER);
@@ -460,4 +474,91 @@ async fn stops_refuses_and_fails_exports() {
             })
             .await;
     }
+}
+
+/// Runs `sql` under the cursor on the session of `socket`, until the end of
+/// its batch.
+async fn run_on_session(
+    socket: &mut tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+    sql: &str,
+) {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+
+    let request = json!({ "type": "run", "sql": sql, "cursor": 0 });
+    socket
+        .send(Message::Text(request.to_string().into()))
+        .await
+        .unwrap();
+    while let Some(message) = socket.next().await {
+        if let Message::Text(text) = message.unwrap() {
+            let message: Value = serde_json::from_str(&text).unwrap();
+            assert_ne!(message["type"], "error", "{sql}: {message}");
+            if message["type"] == "batch_done" {
+                return;
+            }
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn exports_a_database_in_memory_of_the_session_of_its_editor() {
+    let connection = NewConnection {
+        name: "memory".to_string(),
+        engine: Engine::Sqlite,
+        settings: NewSettings::Files(NewFilesSettings {
+            databases: vec![NewFileDatabase {
+                schema: "main".to_string(),
+                location: ":memory:".to_string(),
+                create: false,
+            }],
+        }),
+        init_sql: String::new(),
+        session_timeout_minutes: 5,
+        show_system_schemas: true,
+    };
+    let mut editor_id = 0;
+    let test = TestApp::with_connection(&connection, |db, user_id| {
+        let current = settings::load(db, user_id).unwrap();
+        let update = SettingsUpdate {
+            row_limit: current.row_limit,
+            read_only_session: false,
+            allowed_writes: vec![WriteKind::CreateTable, WriteKind::Insert],
+            history_retention_days: current.history_retention_days,
+            debug_retention_days: current.debug_retention_days,
+            indent_size: current.indent_size,
+            concat_max_bytes: current.concat_max_bytes,
+            pivot_refresh_ms: current.pivot_refresh_ms,
+            remote_connect_timeout_seconds: current.remote_connect_timeout_seconds,
+            remote_download_timeout_minutes: current.remote_download_timeout_minutes,
+            remote_max_mebibytes: current.remote_max_mebibytes,
+            remote_cache_days: current.remote_cache_days,
+        };
+        settings::update(db, user_id, &update).unwrap();
+        let editor = NewEditor {
+            connection_id: Some(1),
+        };
+        editor_id = editors::create(db, user_id, &editor).unwrap().id;
+    });
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let app = test.app.clone();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+    run_on_session(&mut socket, "CREATE TABLE t (x INTEGER)").await;
+    run_on_session(&mut socket, "INSERT INTO t VALUES (1), (2)").await;
+
+    let mut request = export_request("SELECT x FROM t ORDER BY x", &[]);
+    request["editor_id"] = json!(editor_id);
+    let (status, started) = test.send("POST", "/api/exports", Some(request)).await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{started}");
+    let id = started["id"].as_i64().unwrap();
+    let ended = test
+        .wait_for(id, |export| export["state"] != "running")
+        .await;
+    assert_eq!(ended["state"], "ready", "{ended}");
+    assert_eq!(ended["rows"], 2);
 }
