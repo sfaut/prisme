@@ -3,4 +3,4 @@
 /**
  * Flavor of the server, detected on connection.
  */
-export type Flavor = "mysql" | "mariadb";
+export type Flavor = "mysql" | "mariadb" | "sqlite";

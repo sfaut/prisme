@@ -45,6 +45,10 @@ export interface FlavorSpec {
    */
   name: string
   /**
+   * Driver of Prisme for the flavor, named by the messages of its failures.
+   */
+  driver: string
+  /**
    * Syntax of the CTE of a result.
    */
   cte: CteSyntax
@@ -56,10 +60,17 @@ export interface FlavorSpec {
 export const FLAVORS: Record<Flavor, FlavorSpec> = {
   mysql: {
     name: 'MySQL',
+    driver: 'mysql_async',
     cte: { rowConstructor: true, zeroDatesAsStrings: true, castsJson: true, readSince: [8, 0, 19] },
   },
   mariadb: {
     name: 'MariaDB',
+    driver: 'mysql_async',
+    cte: { rowConstructor: false, zeroDatesAsStrings: false, castsJson: false, readSince: null },
+  },
+  sqlite: {
+    name: 'SQLite',
+    driver: 'rusqlite',
     cte: { rowConstructor: false, zeroDatesAsStrings: false, castsJson: false, readSince: null },
   },
 }

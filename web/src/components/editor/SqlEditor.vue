@@ -33,7 +33,13 @@
 import { autocompletion } from '@codemirror/autocomplete'
 import { LanguageSupport, codeFolding, foldedRanges } from '@codemirror/language'
 import { type Diagnostic, setDiagnostics } from '@codemirror/lint'
-import { MariaSQL, MySQL, type SQLDialect, schemaCompletionSource } from '@codemirror/lang-sql'
+import {
+  MariaSQL,
+  MySQL,
+  SQLite,
+  type SQLDialect,
+  schemaCompletionSource,
+} from '@codemirror/lang-sql'
 import { type ChangeSpec, Compartment, EditorSelection } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
 import { EditorView } from 'codemirror'
@@ -235,7 +241,11 @@ async function loadKeywords(): Promise<void> {
  * Dialect of CodeMirror of each flavor, used as long as the syntax of the
  * server is not received.
  */
-const FALLBACK_DIALECTS: Record<Flavor, SQLDialect> = { mysql: MySQL, mariadb: MariaSQL }
+const FALLBACK_DIALECTS: Record<Flavor, SQLDialect> = {
+  mysql: MySQL,
+  mariadb: MariaSQL,
+  sqlite: SQLite,
+}
 
 /**
  * CodeMirror language of the editor: dialect and completion, from the

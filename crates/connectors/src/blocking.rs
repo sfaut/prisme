@@ -25,6 +25,9 @@ use std::thread;
 
 use tokio::sync::oneshot;
 
+use crate::api::ConnectorError;
+use crate::failure::FailureCause;
+
 /// Order sent to the thread of a connection.
 type Order<T> = Box<dyn FnOnce(&mut T) + Send>;
 
@@ -33,6 +36,14 @@ type Order<T> = Box<dyn FnOnce(&mut T) + Send>;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("the thread of the connection stopped")]
 pub struct Stopped;
+
+impl From<Stopped> for ConnectorError {
+    fn from(stopped: Stopped) -> Self {
+        Self::Query(FailureCause::Driver {
+            message: stopped.to_string(),
+        })
+    }
+}
 
 /// Connection held by a thread of its own. Dropping the worker ends the
 /// thread once its last order ran, which closes the connection.

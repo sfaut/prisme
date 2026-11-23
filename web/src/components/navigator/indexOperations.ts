@@ -65,17 +65,37 @@ export interface IndexTarget {
 
 /**
  * First versions that know the visibility of an index, then its renaming,
- * by flavor.
+ * by flavor; `null` for a flavor that knows neither (SQLite).
  */
-const VISIBILITY_SINCE: Record<Flavor, Version> = { mysql: [8, 0, 0], mariadb: [10, 6, 0] }
-const RENAME_SINCE: Record<Flavor, Version> = { mysql: [5, 7, 0], mariadb: [10, 5, 2] }
+const VISIBILITY_SINCE: Record<Flavor, Version | null> = {
+  mysql: [8, 0, 0],
+  mariadb: [10, 6, 0],
+  sqlite: null,
+}
+const RENAME_SINCE: Record<Flavor, Version | null> = {
+  mysql: [5, 7, 0],
+  mariadb: [10, 5, 2],
+  sqlite: null,
+}
 
 /**
  * Keywords that make an index visible, then invisible, by flavor.
  */
-const VISIBILITY_KEYWORDS: Record<Flavor, [string, string]> = {
+const VISIBILITY_KEYWORDS: Record<Flavor, [string, string] | null> = {
   mysql: ['VISIBLE', 'INVISIBLE'],
   mariadb: ['NOT IGNORED', 'IGNORED'],
+  sqlite: null,
+}
+
+/**
+ * Does the server know an operation, from its first version (`null`: it
+ * knows none)?
+ *
+ * @param server Server the operation is written for.
+ * @param since First version of its flavor that knows the operation.
+ */
+function knows(server: IndexServer, since: Version | null): boolean {
+  return since !== null && versionAtLeast(server.version, since)
 }
 
 /**
@@ -121,13 +141,14 @@ export function indexOperations(
   if (target.name === 'PRIMARY') {
     statements.push(`${alter} DROP PRIMARY KEY`)
   } else {
-    if (versionAtLeast(server.version, VISIBILITY_SINCE[server.flavor])) {
-      const [visible, invisible] = VISIBILITY_KEYWORDS[server.flavor]
+    const keywords = VISIBILITY_KEYWORDS[server.flavor]
+    if (keywords !== null && knows(server, VISIBILITY_SINCE[server.flavor])) {
+      const [visible, invisible] = keywords
       statements.push(`${alter} ALTER INDEX ${index} ${visible}`)
       statements.push(`${alter} ALTER INDEX ${index} ${invisible}`)
     }
     statements.push(`${alter} DROP KEY ${index}`)
-    if (versionAtLeast(server.version, RENAME_SINCE[server.flavor])) {
+    if (knows(server, RENAME_SINCE[server.flavor])) {
       statements.push(`${alter} RENAME KEY ${index} TO new_index_name`)
     }
   }

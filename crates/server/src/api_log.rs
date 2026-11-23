@@ -268,6 +268,7 @@ mod tests {
                     dialect_options: DialectOptions::default(),
                     oldest_supported: None,
                     capabilities: capabilities(),
+                    databases: Vec::new(),
                 },
                 database: Some("shop".to_string()),
                 transaction: false,

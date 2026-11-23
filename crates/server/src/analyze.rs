@@ -80,6 +80,7 @@ pub fn dialect_of(flavor: Flavor) -> Dialect {
     match flavor {
         Flavor::MySql => Dialect::MySql,
         Flavor::MariaDb => Dialect::MariaDb,
+        Flavor::Sqlite => Dialect::Sqlite,
     }
 }
 

@@ -1843,6 +1843,7 @@ dependencies = [
  "prisme-connectors",
  "prisme-dialects",
  "reqwest",
+ "rusqlite",
  "secrecy",
  "serde",
  "serde_json",

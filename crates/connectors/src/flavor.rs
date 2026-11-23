@@ -16,12 +16,14 @@ pub enum Flavor {
     MySql,
     /// MariaDB server.
     MariaDb,
+    /// SQLite, the library embedded in Prisme.
+    Sqlite,
 }
 
 impl Flavor {
     /// Every flavor, as the reference table `flavors` of the internal
     /// database lists them.
-    pub const ALL: [Self; 2] = [Self::MySql, Self::MariaDb];
+    pub const ALL: [Self; 3] = [Self::MySql, Self::MariaDb, Self::Sqlite];
 
     /// Key of the flavor, as serialized and as the internal database stores
     /// it.
@@ -29,6 +31,7 @@ impl Flavor {
         match self {
             Self::MySql => "mysql",
             Self::MariaDb => "mariadb",
+            Self::Sqlite => "sqlite",
         }
     }
 
@@ -41,6 +44,7 @@ impl Flavor {
     pub fn engine(self) -> Engine {
         match self {
             Self::MySql | Self::MariaDb => Engine::Mysql,
+            Self::Sqlite => Engine::Sqlite,
         }
     }
 
@@ -51,6 +55,8 @@ impl Flavor {
         match self {
             Self::MySql => "8.0.11",
             Self::MariaDb => "10.6.3",
+            // The library is the one Prisme ships: never older.
+            Self::Sqlite => rusqlite::version(),
         }
     }
 }

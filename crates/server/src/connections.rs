@@ -673,7 +673,8 @@ pub fn probe_target(
                     settings: Settings::Server(saved),
                     ..
                 }) => saved.password,
-                None => return Ok(None),
+                // A saved connection of another family has no password.
+                Some(_) | None => return Ok(None),
             }
         }
         _ => server.password,
@@ -701,7 +702,9 @@ mod tests {
 
     /// Password of the settings of a server.
     fn password(target: &Target) -> &str {
-        let Settings::Server(server) = &target.settings;
+        let Settings::Server(server) = &target.settings else {
+            panic!("settings of a server expected");
+        };
         server.password.expose_secret()
     }
 
@@ -979,6 +982,7 @@ mod tests {
             dialect_options: DialectOptions::default(),
             oldest_supported: None,
             capabilities: capabilities(),
+            databases: Vec::new(),
         };
         remember_server(&db, user_id, id, &server).unwrap();
         let summary = &list(&db, user_id).unwrap()[0];

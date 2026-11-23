@@ -496,6 +496,7 @@ async fn tells_the_origin_of_the_columns_of_a_result() {
                 let derived = match server.flavor {
                     Flavor::MySql => "f",
                     Flavor::MariaDb => "d",
+                    Flavor::Sqlite => unreachable!("a server of compose.yaml"),
                 };
                 assert_eq!(
                     origins(&mut connection, "SELECT id FROM (SELECT id FROM f) AS d").await,

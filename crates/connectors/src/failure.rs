@@ -9,6 +9,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::location::LocationError;
+
 /// Text written outside Prisme that explains a failure, as it was written.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, thiserror::Error)]
 #[ts(export)]
@@ -24,7 +26,18 @@ pub enum FailureCause {
         /// Message of the server.
         message: String,
     },
-    /// Message of the driver (`mysql_async`), in English.
+    /// Answer of an engine that names its errors by a code (SQLite).
+    #[error("{name} ({code}): {message}")]
+    Engine {
+        /// Code of the error in the engine, as text (`2067` for SQLite's
+        /// `SQLITE_CONSTRAINT_UNIQUE`).
+        code: String,
+        /// Name of the code in the engine (`SQLITE_CONSTRAINT_UNIQUE`).
+        name: String,
+        /// Message of the engine, in its language.
+        message: String,
+    },
+    /// Message of the driver (`mysql_async`, `rusqlite`), in English.
     #[error("{message}")]
     Driver {
         /// Message of the driver.
@@ -38,7 +51,8 @@ pub enum FailureCause {
     },
 }
 
-/// Why a connection could not open. `address` is `host:port`.
+/// Why a connection could not open. `address` is `host:port` for a server;
+/// `location` is the location of a file, as typed (a path, a URL).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, thiserror::Error)]
 #[ts(export)]
 #[serde(tag = "reason", rename_all = "snake_case")]
@@ -122,6 +136,34 @@ pub enum ConnectFailure {
         username: String,
         /// Authentication plugin of the account.
         plugin: String,
+    },
+    /// The file of a database does not exist.
+    #[error("the file \"{location}\" does not exist")]
+    FileNotFound {
+        /// Location of the file, as typed.
+        location: String,
+    },
+    /// The file is not a database of the engine.
+    #[error("\"{location}\" is not a database: {cause}")]
+    NotADatabase {
+        /// Location of the file, as typed.
+        location: String,
+        /// Message of the engine.
+        cause: FailureCause,
+    },
+    /// The file could not be opened: access refused, folder...
+    #[error("cannot open \"{location}\": {cause}")]
+    FileUnreadable {
+        /// Location of the file, as typed.
+        location: String,
+        /// Message of the engine or of the system.
+        cause: FailureCause,
+    },
+    /// The location could not be reached: a remote file, its copy.
+    #[error("{error}")]
+    Location {
+        /// Why the location could not be reached.
+        error: LocationError,
     },
     /// Any other failure, told by the driver or the system.
     #[error("cannot connect to {address}: {cause}")]

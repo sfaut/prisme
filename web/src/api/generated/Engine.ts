@@ -4,4 +4,4 @@
  * Family of connector: one per native driver. An engine may serve several
  * flavors (MySQL and MariaDB through `mysql_async`).
  */
-export type Engine = "mysql";
+export type Engine = "mysql" | "sqlite";

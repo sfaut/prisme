@@ -354,6 +354,7 @@ const fileLabel = computed(() => props.tab.name ?? `requête-${props.tab.number 
 const CTE_HINTS: Record<Flavor, Tooltip> = {
   mysql: { title: 'Lignes en VALUES ROW (…)', description: 'Lu par MySQL 8.0.19 et suivants' },
   mariadb: { title: 'Lignes en VALUES (…)', description: 'Lu par MariaDB' },
+  sqlite: { title: 'Lignes en VALUES (…)', description: 'Lu par SQLite' },
 }
 
 /**

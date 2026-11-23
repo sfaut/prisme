@@ -21,6 +21,9 @@ Functional:
 13. The interface is coded with the `frontend-design` skill, in Prisme's theme and rules.
 14. Numbers are shown in one normalized writing, whatever the engine: plain decimal, roughly `[+-]?[0-9]*\.?[0-9]+`, never in scientific notation. A floating-point number is written with the fewest digits that read back the same value (`100`, `100000000000000000000`, `0.0000001`, `3.141592653589793`). MySQL and MariaDB send their `DOUBLE`s in scientific notation beyond some sizes (`1e20`, `1.5e300`, `1.2345678901234568e17`, measured on 8.0.11, the latest MySQL, 10.6.3 and the latest MariaDB on 2026-11-22), and SQLite writes `1.0e+20`, `100.0`: the connectors normalize them.
 15. Remote locations (`http`, `https`): 10 s to connect, 5 min for a whole download, 1 GiB at most per download, 5 redirects at most and never from `https` to `http`; private addresses (`127.0.0.1`, local network) accepted. Prisme keeps the copy of a remote database in its data folder (`cache/locations/`), opens it read-only and downloads it again only when the server says it changed (`ETag` / `Last-Modified`); a copy no session opened for 30 days is deleted. The timeouts, the largest download and the delay of the purge are preferences of each user, saved in the internal database.
+16. A database of the settings that cannot be opened (missing file, not a database, unreachable location) is left out of the session, which opens without it; only the main database fails the opening. The identity of the source tells the state of each database (`SourceInfo::databases`): open, with its size, its journal and whether it is read-only, or unavailable, with its failure (`ConnectFailure`), read when the source is tested and when a session opens.
+17. An error of the library is an answer of the engine (`FailureCause::Engine`): its extended code (`2067`), the name of that code (`SQLITE_CONSTRAINT_UNIQUE`) and its message. The interface writes "SQLite a répondu (SQLITE_CONSTRAINT_UNIQUE, code 2067)".
+18. A session sees the schemas of its connection without changing its current one (`switch_namespace` refused, a session opened on `main` only); the connections of one session share its databases in memory, named by the key of the session (`OpenOptions::session_key`).
 
 Architecture:
 
@@ -84,10 +87,10 @@ Architecture:
 
 - ✅ Module `blocking`
 - ⬜ `Driver`, `Session`, `CatalogReader`, `Rows`, `Canceller`
-- ⬜ Attachments, remote copies read-only, databases in `memdb`
+- ✅ Attachments, remote copies read-only, databases in `memdb`
 - ⬜ Backup of a database in memory
 - ⬜ Catalog
-- ⬜ Check database by database
+- ✅ Check database by database
 - ⬜ `Fixture` SQLite in the contract suite
 
 ## 5. Server, SQLite part
@@ -107,7 +110,9 @@ Architecture:
 - ⬜ List and card: location of `main`, number of attached databases, protocol
 - ⬜ Badge SQLite, light and dark
 - ⬜ Navigator: schemas, protocol, menus, window **Attacher une base**; labels of the namespace levels (`NamespaceLevel`) in the navigator and the completion
-- ⬜ Editor dialect, CTE and `IN` clause in SQLite
+- ⬜ Editor dialect, CTE and `IN` clause in SQLite (literals of the dates, times and bytes)
+- ⬜ Operations on the indexes in the navigator, in SQLite (`CREATE INDEX`, `DROP INDEX`)
+- ⬜ Messages of the states of the databases (`DatabaseState`) in the interface
 - ⬜ Switches of the engine in the settings
 - ⬜ SQL run at connection: the pragmas of the connection it accepts, stated beside the field (decision 4)
 
@@ -120,4 +125,3 @@ Architecture:
 ## Open points, settled at their step
 
 - Switch needed by **Enregistrer dans un fichier…**, and its fate in a read-only session.
-- Exact form of the neutral variant of `FailureCause`, given what `recorder.rs` saved already.

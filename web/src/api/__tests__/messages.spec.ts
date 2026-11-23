@@ -79,4 +79,61 @@ describe('messages of the errors', () => {
         "Le serveur a répondu (erreur 1045, SQLSTATE 28000) :\n\nAccess denied for user 'root'@'172.17.0.1'",
     )
   })
+
+  it('names the engine and the driver of a failure', () => {
+    expect(
+      describeError({
+        code: 'query_failed',
+        flavor: 'sqlite',
+        cause: { source: 'engine', code: '1', name: 'SQLITE_ERROR', message: 'no such table: t' },
+      }),
+    ).toBe('SQLite a répondu (SQLITE_ERROR, code 1) :\n\nno such table: t')
+    expect(
+      describeError({
+        code: 'query_failed',
+        flavor: 'sqlite',
+        cause: { source: 'driver', message: 'Invalid column type' },
+      }),
+    ).toBe('Le pilote de connexion (rusqlite) a signalé :\n\nInvalid column type')
+  })
+
+  it('tells what is wrong with the file of a database', () => {
+    expect(
+      describeError({
+        code: 'connect',
+        failure: { reason: 'file_not_found', location: 'D:\\data\\v.db' },
+      }),
+    ).toBe('Le fichier D:\\data\\v.db n’existe pas.')
+    expect(
+      describeError({
+        code: 'connect',
+        failure: {
+          reason: 'not_a_database',
+          location: '/srv/v.db',
+          cause: {
+            source: 'engine',
+            code: '26',
+            name: 'SQLITE_NOTADB',
+            message: 'file is not a database',
+          },
+        },
+      }),
+    ).toBe(
+      '/srv/v.db n’est pas une base de données.\n\n' +
+        'Le moteur a répondu (SQLITE_NOTADB, code 26) :\n\nfile is not a database',
+    )
+    expect(
+      describeError({
+        code: 'connect',
+        failure: {
+          reason: 'location',
+          error: {
+            code: 'unreachable',
+            address: 'https://example.com/v.db',
+            message: '404 Not Found',
+          },
+        },
+      }),
+    ).toBe('https://example.com/v.db est injoignable :\n\n404 Not Found')
+  })
 })

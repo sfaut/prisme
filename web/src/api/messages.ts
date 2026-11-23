@@ -20,6 +20,7 @@ import type { ErrorDetail } from './generated/ErrorDetail'
 import type { FailureCause } from './generated/FailureCause'
 import type { Field } from './generated/Field'
 import type { Flavor } from './generated/Flavor'
+import type { LocationError } from './generated/LocationError'
 import { FLAVORS } from './flavors'
 import { WRITE_KIND_STATEMENTS } from './writeKinds'
 
@@ -96,8 +97,14 @@ function causeText(cause: FailureCause, flavor: Flavor | null = null): string {
       const reference = `erreur ${cause.number}, SQLSTATE ${cause.sqlstate}`
       return quoted(`${server} a répondu (${reference})`, cause.message)
     }
-    case 'driver':
-      return quoted('Le pilote de connexion (mysql_async) a signalé', cause.message)
+    case 'engine': {
+      const engine = flavor === null ? 'Le moteur' : FLAVORS[flavor].name
+      return quoted(`${engine} a répondu (${cause.name}, code ${cause.code})`, cause.message)
+    }
+    case 'driver': {
+      const driver = flavor === null ? '' : ` (${FLAVORS[flavor].driver})`
+      return quoted(`Le pilote de connexion${driver} a signalé`, cause.message)
+    }
     case 'system':
       return quoted('Le système a signalé', cause.message)
   }
@@ -145,8 +152,48 @@ function connectMessage(failure: ConnectFailure): string {
       return withCause(`${failure.address} refuse la connexion.`, failure.cause)
     case 'unsupported_authentication':
       return `Le compte « ${failure.username} » utilise une méthode d’authentification que Prisme ne prend pas en charge (${failure.plugin}).`
+    case 'file_not_found':
+      return `Le fichier ${failure.location} n’existe pas.`
+    case 'not_a_database':
+      return withCause(`${failure.location} n’est pas une base de données.`, failure.cause)
+    case 'file_unreadable':
+      return withCause(`Impossible d’ouvrir ${failure.location}.`, failure.cause)
+    case 'location':
+      return locationMessage(failure.error)
     case 'other':
       return withCause(`Connexion impossible à ${failure.address}.`, failure.cause)
+  }
+}
+
+/**
+ * Message of a location refused, or that could not be reached.
+ *
+ * @param error Why the location is refused or unreachable.
+ */
+export function locationMessage(error: LocationError): string {
+  switch (error.code) {
+    case 'empty':
+      return 'Aucun emplacement n’est saisi.'
+    case 'too_long':
+      return `L’emplacement dépasse ${error.max} caractères.`
+    case 'relative_path':
+      return `${error.address} : le chemin doit être absolu.`
+    case 'invalid_url':
+      return `${error.address} : adresse illisible.`
+    case 'credentials':
+      return `${error.address} : un emplacement web doit être public, sans compte.`
+    case 'not_served':
+      return `Le protocole ${error.scheme} n’est pas encore servi par Prisme.`
+    case 'unknown_scheme':
+      return `Le protocole ${error.scheme} est inconnu.`
+    case 'already_exists':
+      return `${error.address} existe déjà.`
+    case 'too_large':
+      return `Le fichier dépasse ${error.max_bytes} octets, la taille permise par les préférences.`
+    case 'not_creatable':
+      return `Prisme ne peut pas créer de base par le protocole ${error.scheme}.`
+    case 'unreachable':
+      return quoted(`${error.address} est injoignable`, error.message)
   }
 }
 

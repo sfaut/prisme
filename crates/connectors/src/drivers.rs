@@ -3,11 +3,12 @@
 //! then only uses the contracts of `api`.
 
 use crate::api::{Driver, Engine};
-use crate::mysql;
+use crate::{mysql, sqlite};
 
 /// Driver of the engine `engine`.
 pub fn of(engine: Engine) -> &'static dyn Driver {
     match engine {
         Engine::Mysql => &mysql::DRIVER,
+        Engine::Sqlite => &sqlite::DRIVER,
     }
 }

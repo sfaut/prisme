@@ -247,7 +247,7 @@ describe('ResultView', () => {
     ])
     const file = menuItem(wrapper, 'Fichier', 'Résultat affiché en CTE')
     expect(file?.disabled).toBe(false)
-    expect(file?.items?.map((item) => item.label)).toEqual(['MariaDB', 'MySQL'])
+    expect(file?.items?.map((item) => item.label)).toEqual(['MariaDB', 'MySQL', 'SQLite'])
 
     await wrapper.find('.grid-corner').trigger('mousedown')
     expect(menuItem(wrapper, 'Presse-papiers', 'Sélection')?.label).toBe('Sélection en CTE')

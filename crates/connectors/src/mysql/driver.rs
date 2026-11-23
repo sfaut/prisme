@@ -54,7 +54,7 @@ impl Driver for MysqlDriver {
         target: &'a Target,
     ) -> BoxFuture<'a, Result<SourceInfo, ConnectorError>> {
         Box::pin(async move {
-            let target = mysql_target(target, &OpenOptions::default());
+            let target = mysql_target(target, &OpenOptions::default())?;
             let mut connection = connect(&target).await?;
             let info = server_info(&mut connection).await;
             // The identity is read: a failure to disconnect changes nothing.
@@ -69,7 +69,7 @@ impl Driver for MysqlDriver {
         options: OpenOptions,
     ) -> BoxFuture<'a, Result<Box<dyn Session>, ConnectorError>> {
         Box::pin(async move {
-            let target = mysql_target(target, &options);
+            let target = mysql_target(target, &options)?;
             let mut connection = connect(&target).await?;
             let info = match server_info(&mut connection).await {
                 Ok(info) => source_info(info),
@@ -125,6 +125,7 @@ pub fn source_info(info: ServerInfo) -> SourceInfo {
         },
         oldest_supported: info.oldest_supported,
         capabilities: capabilities(),
+        databases: Vec::new(),
     }
 }
 
@@ -132,13 +133,19 @@ pub fn source_info(info: ServerInfo) -> SourceInfo {
 /// the namespace asked instead of the database of the settings, and the
 /// read-only mode after the statements of the target, so that they cannot
 /// switch it off.
-fn mysql_target(target: &Target, options: &OpenOptions) -> MysqlTarget {
-    let Settings::Server(server) = &target.settings;
+///
+/// # Errors
+///
+/// Fails for a source held in files.
+fn mysql_target(target: &Target, options: &OpenOptions) -> Result<MysqlTarget, ConnectorError> {
+    let Settings::Server(server) = &target.settings else {
+        return Err(ConnectorError::Unsupported("a source held in files"));
+    };
     let mut init_statements = target.init_statements.clone();
     if options.read_only {
         init_statements.push(READ_ONLY_STATEMENT.to_string());
     }
-    MysqlTarget {
+    Ok(MysqlTarget {
         host: server.host.clone(),
         port: server.port,
         username: server.username.clone(),
@@ -148,7 +155,7 @@ fn mysql_target(target: &Target, options: &OpenOptions) -> MysqlTarget {
             |namespace| namespace.name().to_string(),
         ),
         init_statements,
-    }
+    })
 }
 
 impl From<MysqlError> for ConnectorError {
@@ -320,11 +327,13 @@ mod tests {
             ..OpenOptions::default()
         };
         assert_eq!(
-            mysql_target(&target(), &read_only).init_statements,
+            mysql_target(&target(), &read_only).unwrap().init_statements,
             ["SET NAMES utf8mb4", READ_ONLY_STATEMENT]
         );
         assert_eq!(
-            mysql_target(&target(), &OpenOptions::default()).init_statements,
+            mysql_target(&target(), &OpenOptions::default())
+                .unwrap()
+                .init_statements,
             ["SET NAMES utf8mb4"]
         );
     }
@@ -335,9 +344,14 @@ mod tests {
             namespace: Some(Namespace::single("xlist")),
             ..OpenOptions::default()
         };
-        assert_eq!(mysql_target(&target(), &elsewhere).database_name, "xlist");
         assert_eq!(
-            mysql_target(&target(), &OpenOptions::default()).database_name,
+            mysql_target(&target(), &elsewhere).unwrap().database_name,
+            "xlist"
+        );
+        assert_eq!(
+            mysql_target(&target(), &OpenOptions::default())
+                .unwrap()
+                .database_name,
             "shop"
         );
     }

@@ -1,7 +1,8 @@
 //! Prisme's connectors: access to each target database engine.
 //!
 //! One module per family of engines, each with its native driver (see
-//! `docs/V1.md`, section 3.2). For now: MySQL and MariaDB. What every
+//! `docs/V1.md`, section 3.2). For now: MySQL and MariaDB (`mysql`), and
+//! SQLite (`sqlite`). What every
 //! engine gives takes a neutral form, that each connector fills: the
 //! flavor of its source (`flavor`), the columns and cells of a result
 //! (`columns`), the outcome of a statement (`outcome`), its failures
@@ -24,5 +25,6 @@ pub mod number_text;
 pub mod outcome;
 mod secret_mask;
 pub mod sql_log;
+pub mod sqlite;
 #[cfg(feature = "test-servers")]
 pub mod test_servers;

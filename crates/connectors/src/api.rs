@@ -32,7 +32,11 @@ use crate::catalog::{NamespaceInfo, ObjectInfo, ObjectKind, TableDetails};
 use crate::columns::{Cell, ColumnTypeInfo};
 use crate::failure::{ConnectFailure, FailureCause};
 use crate::flavor::Flavor;
+use crate::location::{Location, Remote};
 use crate::outcome::{Notice, StatementOutcome};
+
+/// Name of the schema of the main database of a source held in files.
+pub const MAIN_SCHEMA: &str = "main";
 
 /// Family of connector: one per native driver. An engine may serve several
 /// flavors (MySQL and MariaDB through `mysql_async`).
@@ -42,18 +46,21 @@ use crate::outcome::{Notice, StatementOutcome};
 pub enum Engine {
     /// MySQL and MariaDB, through `mysql_async`.
     Mysql,
+    /// SQLite, embedded in Prisme, through `rusqlite`.
+    Sqlite,
 }
 
 impl Engine {
     /// Every engine, as the reference table `engines` of the internal
     /// database lists them.
-    pub const ALL: [Self; 1] = [Self::Mysql];
+    pub const ALL: [Self; 2] = [Self::Mysql, Self::Sqlite];
 
     /// Key of the engine, as the internal database stores it
     /// (`connections.engine`).
     pub fn key(self) -> &'static str {
         match self {
             Self::Mysql => "mysql",
+            Self::Sqlite => "sqlite",
         }
     }
 
@@ -61,15 +68,13 @@ impl Engine {
     pub fn family(self) -> Family {
         match self {
             Self::Mysql => Family::Server,
+            Self::Sqlite => Family::Files,
         }
     }
 
     /// Engine of the key `key`, as the internal database stores it.
     pub fn from_key(key: &str) -> Option<Self> {
-        match key {
-            "mysql" => Some(Self::Mysql),
-            _ => None,
-        }
+        Self::ALL.into_iter().find(|engine| engine.key() == key)
     }
 }
 
@@ -117,6 +122,8 @@ pub struct Target {
 pub enum Settings {
     /// A database server reached over the network.
     Server(ServerSettings),
+    /// Databases held in files.
+    Files(FilesSettings),
 }
 
 /// Settings of a database server reached over the network.
@@ -134,14 +141,37 @@ pub struct ServerSettings {
     pub database_name: String,
 }
 
+/// Settings of databases held in files: a main database, and the databases
+/// attached to it in each session.
+#[derive(Clone)]
+pub struct FilesSettings {
+    /// Databases, the main one first (schema `MAIN_SCHEMA`), then those
+    /// attached, in the order of their attachment.
+    pub databases: Vec<FileDatabase>,
+    /// Where the remote databases are copied, and the limits of a download.
+    pub remote: Remote,
+}
+
+/// Database of a source held in files: its schema in the sessions, and where
+/// it is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileDatabase {
+    /// Name of its schema in the sessions: `main` for the main database, the
+    /// name of its `ATTACH` for another one.
+    pub schema: String,
+    /// Where the database is.
+    pub location: Location,
+}
+
 impl Target {
     /// Namespace the settings open a session on, `None` if none: the
-    /// database chosen for a server.
+    /// database chosen for a server, the main database for files.
     pub fn namespace(&self) -> Option<Namespace> {
         match &self.settings {
             Settings::Server(server) => {
                 (!server.database_name.is_empty()).then(|| Namespace::single(&server.database_name))
             }
+            Settings::Files(_) => Some(Namespace::single(MAIN_SCHEMA)),
         }
     }
 }
@@ -242,6 +272,49 @@ pub struct SourceInfo {
     pub oldest_supported: Option<String>,
     /// What the engine of the source can do.
     pub capabilities: Capabilities,
+    /// State of each database of a source held in files, in the order of
+    /// its settings: the ones that could not be opened are left out of the
+    /// session, which opens without them. Empty for a server.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<DatabaseState>>", optional)]
+    pub databases: Vec<DatabaseState>,
+}
+
+/// State of a database of a source held in files, when a session opens or
+/// the source is tested.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct DatabaseState {
+    /// Name of its schema in the session.
+    pub schema: String,
+    /// Where the database is.
+    pub location: Location,
+    /// Is it open, or why not.
+    #[serde(flatten)]
+    pub status: DatabaseStatus,
+}
+
+/// Is a database of a source held in files open, or why not.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum DatabaseStatus {
+    /// Open in the session.
+    Open {
+        /// Size of the database, in bytes (its pages).
+        #[ts(type = "number")]
+        bytes: u64,
+        /// Mode of its journal (`delete`, `wal`, `memory`...).
+        journal_mode: String,
+        /// Can it only be read: a file the process cannot write, a copy of a
+        /// remote file, or a read-only session.
+        read_only: bool,
+    },
+    /// Left out of the session.
+    Unavailable {
+        /// Why it could not be opened.
+        failure: ConnectFailure,
+    },
 }
 
 /// Lexical settings of a session that change how its text reads, read on the
