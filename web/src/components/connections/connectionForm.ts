@@ -16,6 +16,7 @@
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { NewConnection } from '@/api/generated/NewConnection'
 import type { NewServerSettings } from '@/api/generated/NewServerSettings'
+import type { SavedSettings } from '@/api/generated/SavedSettings'
 
 /**
  * Input of a connection to a server, every field filled: the common
@@ -65,7 +66,9 @@ export function emptyForm(): ConnectionForm {
  */
 export function formOf(connection: ConnectionSummary): ConnectionForm {
   const { name, settings, init_sql, session_timeout_minutes, show_system_schemas } = connection
-  const { host, port, username, database_name } = settings
+  // The form of the databases held in files comes with their interface.
+  const { host, port, username, database_name } =
+    settings.family === 'server' ? settings : emptyForm()
   return {
     name,
     host,
@@ -121,12 +124,19 @@ export function copyForm(form: ConnectionForm): ConnectionForm {
 }
 
 /**
- * Where a connection points: `host:port`.
+ * Where a connection points: `host:port` for a server, the location of the
+ * main database for databases held in files.
  *
- * @param form Input, or settings of a saved connection.
+ * @param settings Input, or settings of a saved connection.
  */
-export function placeOf(form: Pick<NewServerSettings, 'host' | 'port'>): string {
-  return `${form.host}:${form.port}`
+export function placeOf(
+  settings: Pick<NewServerSettings, 'host' | 'port'> | SavedSettings,
+): string {
+  if ('family' in settings && settings.family === 'files') {
+    const main = settings.databases[0]?.location
+    return main?.scheme === 'memory' ? ':memory:' : (main?.address ?? '')
+  }
+  return `${settings.host}:${settings.port}`
 }
 
 /**

@@ -3,6 +3,7 @@ import type { ConnectFailure } from "./ConnectFailure";
 import type { FailureCause } from "./FailureCause";
 import type { Field } from "./Field";
 import type { Flavor } from "./Flavor";
+import type { LocationError } from "./LocationError";
 import type { WriteKind } from "./WriteKind";
 
 /**
@@ -70,6 +71,39 @@ export type ErrorDetail =
      * Key of the engine.
      */
     engine: string;
+  }
+  | { "code": "main_database_first" }
+  | {
+    "code": "too_many_databases";
+    /**
+     * Databases attached at most.
+     */
+    max: number;
+  }
+  | {
+    "code": "duplicate_schema";
+    /**
+     * Name given twice.
+     */
+    schema: string;
+  }
+  | {
+    "code": "reserved_schema";
+    /**
+     * Name refused.
+     */
+    schema: string;
+  }
+  | {
+    "code": "location";
+    /**
+     * Schema of the database.
+     */
+    schema: string;
+    /**
+     * Why the location is refused.
+     */
+    error: LocationError;
   }
   | {
     "code": "init_sql_not_understood";

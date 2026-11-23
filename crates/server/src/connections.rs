@@ -21,9 +21,22 @@
 //! (`migrations/0037_connections_by_family.sql`). The API carries the
 //! settings tagged by their family (`"family": "server"`); the engine of a
 //! saved connection does not change.
+//!
+//! The databases of a source held in files are in `connection_files`, the
+//! main one first: each at a location typed by the user (`Location::parse`),
+//! under a name of schema. Their remote copies go into the cache of their
+//! user (`cache/locations/<user>` in the data folder), read within the
+//! limits of their preferences (`settings::remote_limits`).
 
-use prisme_connectors::api::{Engine, Family, ServerSettings, Settings, SourceInfo, Target};
+use std::collections::BTreeMap;
+use std::path::Path;
+
+use prisme_connectors::api::{
+    Engine, Family, FileDatabase, FilesSettings, MAIN_SCHEMA, ServerSettings, Settings, SourceInfo,
+    Target,
+};
 use prisme_connectors::flavor::Flavor;
+use prisme_connectors::location::{Location, Remote, Scheme};
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{SettingRefusal, session_setting_refusal};
 use rusqlite::types::Type;
@@ -32,9 +45,11 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::analyze::dialect_of;
 use crate::error_detail::{ErrorDetail, Field};
 use crate::master_key::MasterKey;
 use crate::secrets::{self, SecretError};
+use crate::settings;
 
 /// Maximum length of a connection's name, in characters.
 const NAME_MAX_LENGTH: usize = 100;
@@ -47,6 +62,17 @@ const USERNAME_MAX_LENGTH: usize = 80;
 
 /// Maximum length of a database name (MySQL and MariaDB limit), in characters.
 const DATABASE_NAME_MAX_LENGTH: usize = 64;
+
+/// Maximum length of the name of a schema of a source held in files, in
+/// characters (`connection_files`).
+const SCHEMA_NAME_MAX_LENGTH: usize = 64;
+
+/// Databases attached to the main one at most: the limit of the SQLite
+/// Prisme embeds (`SQLITE_MAX_ATTACHED`).
+const ATTACHED_MAX: usize = 10;
+
+/// Schema of the temporary tables of SQLite, which no database takes.
+const TEMP_SCHEMA: &str = "temp";
 
 /// Maximum length of the on-connect queries, in characters.
 const INIT_SQL_MAX_LENGTH: usize = 4000;
@@ -94,6 +120,8 @@ pub struct NewConnection {
 pub enum NewSettings {
     /// A server reached over the network.
     Server(NewServerSettings),
+    /// Databases held in files.
+    Files(NewFilesSettings),
 }
 
 impl NewSettings {
@@ -101,8 +129,28 @@ impl NewSettings {
     fn family(&self) -> Family {
         match self {
             Self::Server(_) => Family::Server,
+            Self::Files(_) => Family::Files,
         }
     }
+}
+
+/// Databases of a source held in files, as typed by the user.
+#[derive(Deserialize, TS)]
+#[ts(export)]
+pub struct NewFilesSettings {
+    /// The main database (`main`) first, then those attached to it, in the
+    /// order of their attachment.
+    pub databases: Vec<NewFileDatabase>,
+}
+
+/// Database of a source held in files, as typed by the user.
+#[derive(Deserialize, TS)]
+#[ts(export)]
+pub struct NewFileDatabase {
+    /// Name of its schema in the sessions: `main` for the first one.
+    pub schema: String,
+    /// Location as typed: absolute path, URL, or `:memory:`.
+    pub location: String,
 }
 
 /// Settings of a server to save, as typed by the user.
@@ -180,6 +228,16 @@ pub struct ConnectionSummary {
 pub enum SavedSettings {
     /// A server reached over the network.
     Server(SavedServerSettings),
+    /// Databases held in files.
+    Files(SavedFilesSettings),
+}
+
+/// Saved databases of a source held in files.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+pub struct SavedFilesSettings {
+    /// The main database first, then those attached to it, in their order.
+    pub databases: Vec<FileDatabase>,
 }
 
 /// Saved settings of a server, without its password.
@@ -240,6 +298,9 @@ impl NewConnection {
         }
         match &self.settings {
             NewSettings::Server(server) => server.validate()?,
+            NewSettings::Files(files) => {
+                files.databases()?;
+            }
         }
         check_length(Field::InitSql, &self.init_sql, 0, INIT_SQL_MAX_LENGTH)?;
         if self.session_timeout_minutes > SESSION_TIMEOUT_MAX_MINUTES {
@@ -249,10 +310,9 @@ impl NewConnection {
                 max: SESSION_TIMEOUT_MAX_MINUTES,
             }));
         }
-        for statement in init_statements(&self.init_sql) {
-            // The dialect is only known on connection: MySQL's also serves
-            // MariaDB, which shares the syntax of settings.
-            if let Some(refusal) = session_setting_refusal(&statement, Dialect::MySql) {
+        let dialect = engine_dialect(self.engine);
+        for statement in init_statements(&self.init_sql, dialect) {
+            if let Some(refusal) = session_setting_refusal(&statement, dialect) {
                 return Err(ConnectionsError::Invalid(refused_setting(
                     statement, refusal,
                 )));
@@ -284,9 +344,71 @@ impl NewServerSettings {
     }
 }
 
+impl NewFilesSettings {
+    /// Databases of the settings, checked with the same limits as
+    /// `connection_files`, each with its location read.
+    pub fn databases(&self) -> Result<Vec<FileDatabase>, ConnectionsError> {
+        let invalid = |detail| Err(ConnectionsError::Invalid(detail));
+        if self.databases.len() > ATTACHED_MAX + 1 {
+            return invalid(ErrorDetail::TooManyDatabases {
+                max: count(ATTACHED_MAX),
+            });
+        }
+        let mut read: Vec<FileDatabase> = Vec::with_capacity(self.databases.len());
+        for (position, database) in self.databases.iter().enumerate() {
+            let schema = database.schema.trim();
+            check_length(Field::SchemaName, schema, 1, SCHEMA_NAME_MAX_LENGTH)?;
+            let main = schema.eq_ignore_ascii_case(MAIN_SCHEMA);
+            if position == 0 && !main {
+                return invalid(ErrorDetail::MainDatabaseFirst);
+            }
+            if (position > 0 && main) || schema.eq_ignore_ascii_case(TEMP_SCHEMA) {
+                return invalid(ErrorDetail::ReservedSchema {
+                    schema: schema.to_string(),
+                });
+            }
+            // SQLite tells its schemas apart without their case (ASCII).
+            if read
+                .iter()
+                .any(|other| other.schema.eq_ignore_ascii_case(schema))
+            {
+                return invalid(ErrorDetail::DuplicateSchema {
+                    schema: schema.to_string(),
+                });
+            }
+            let location_error = |error| {
+                ConnectionsError::Invalid(ErrorDetail::Location {
+                    schema: schema.to_string(),
+                    error,
+                })
+            };
+            let location = Location::parse(&database.location).map_err(location_error)?;
+            let schema = if main { MAIN_SCHEMA } else { schema };
+            read.push(FileDatabase {
+                schema: schema.to_string(),
+                location,
+            });
+        }
+        if read.is_empty() {
+            return invalid(ErrorDetail::MainDatabaseFirst);
+        }
+        Ok(read)
+    }
+}
+
+/// Dialect of the engine `engine`, for its on-connect queries: that of its
+/// first flavor (MySQL's also serves MariaDB, which shares the syntax of
+/// settings).
+fn engine_dialect(engine: Engine) -> Dialect {
+    Flavor::ALL
+        .into_iter()
+        .find(|flavor| flavor.engine() == engine)
+        .map_or(Dialect::MySql, dialect_of)
+}
+
 /// On-connect queries, split as in the editor (`splitter` crate).
-fn init_statements(init_sql: &str) -> Vec<String> {
-    prisme_splitter::split(init_sql, Dialect::MySql.lexical_rules())
+fn init_statements(init_sql: &str, dialect: Dialect) -> Vec<String> {
+    prisme_splitter::split(init_sql, dialect.lexical_rules())
         .into_iter()
         .map(|statement| statement.sql)
         .collect()
@@ -330,6 +452,7 @@ pub fn insert(
     new.validate()?;
     let password_secret = match &new.settings {
         NewSettings::Server(server) => secrets::encrypt(key, &server.password)?,
+        NewSettings::Files(_) => Vec::new(),
     };
     insert_rows(db, user_id, new, &password_secret)
 }
@@ -349,7 +472,20 @@ pub fn insert_copy(
     new: &NewConnection,
 ) -> Result<Option<i64>, ConnectionsError> {
     new.validate()?;
-    let NewSettings::Server(server) = &new.settings;
+    let NewSettings::Server(server) = &new.settings else {
+        // Nothing secret to take from the source: the copy is a new connection.
+        let exists = db
+            .query_row(
+                "SELECT 1 FROM connections WHERE id = ?1 AND user_id = ?2 AND engine = ?3",
+                params![source_id, user_id, new.engine.key()],
+                |_| Ok(()),
+            )
+            .optional()?;
+        return match exists {
+            Some(()) => insert_rows(db, user_id, new, &[]).map(Some),
+            None => Ok(None),
+        };
+    };
     let saved_secret: Option<Vec<u8>> = db
         .query_row(
             "SELECT s.password_secret
@@ -370,8 +506,8 @@ pub fn insert_copy(
     insert_rows(db, user_id, new, &password_secret).map(Some)
 }
 
-/// Inserts the rows of a validated connection, its password already
-/// encrypted, and returns its id.
+/// Inserts the rows of a validated connection, the password of a server
+/// already encrypted (empty for another family), and returns its id.
 fn insert_rows(
     db: &Connection,
     user_id: i64,
@@ -408,9 +544,33 @@ fn insert_rows(
                 ],
             )?;
         }
+        NewSettings::Files(files) => insert_files(&transaction, id, files)?,
     }
     transaction.commit()?;
     Ok(id)
+}
+
+/// Inserts the rows of the databases of `files`, validated, for connection
+/// `id`.
+fn insert_files(
+    db: &Connection,
+    id: i64,
+    files: &NewFilesSettings,
+) -> Result<(), ConnectionsError> {
+    for (position, database) in files.databases()?.into_iter().enumerate() {
+        db.execute(
+            "INSERT INTO connection_files (connection_id, position, schema_name, scheme, location)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                id,
+                u32::try_from(position).unwrap_or(u32::MAX),
+                database.schema,
+                database.location.scheme.key(),
+                database.location.address,
+            ],
+        )?;
+    }
+    Ok(())
 }
 
 /// Changes connection `id` of user `user_id`. An empty password keeps the
@@ -467,6 +627,13 @@ pub fn update(
                 ],
             )?;
         }
+        NewSettings::Files(files) => {
+            transaction.execute(
+                "DELETE FROM connection_files WHERE connection_id = ?1",
+                params![id],
+            )?;
+            insert_files(&transaction, id, files)?;
+        }
     }
     transaction.commit()?;
     Ok(true)
@@ -498,14 +665,60 @@ fn engine_at(row: &Row<'_>, index: usize) -> rusqlite::Result<Engine> {
     })
 }
 
+/// Protocol of the key read in column `index`.
+fn scheme_at(row: &Row<'_>, index: usize) -> rusqlite::Result<Scheme> {
+    let key: String = row.get(index)?;
+    Scheme::from_key(&key).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            index,
+            Type::Text,
+            format!("unknown protocol {key}").into(),
+        )
+    })
+}
+
+/// Databases of the sources held in files of user `user_id`, by connection,
+/// the main one first; only connection `only` when given.
+fn files_of(
+    db: &Connection,
+    user_id: i64,
+    only: Option<i64>,
+) -> rusqlite::Result<BTreeMap<i64, Vec<FileDatabase>>> {
+    let mut statement = db.prepare(
+        "SELECT f.connection_id, f.schema_name, f.scheme, f.location
+         FROM connection_files f JOIN connections c ON c.id = f.connection_id
+         WHERE c.user_id = ?1 AND (?2 IS NULL OR c.id = ?2)
+         ORDER BY f.connection_id, f.position",
+    )?;
+    let rows = statement.query_map(params![user_id, only], |row| {
+        Ok((
+            row.get::<_, i64>(0)?,
+            FileDatabase {
+                schema: row.get(1)?,
+                location: Location {
+                    scheme: scheme_at(row, 2)?,
+                    address: row.get(3)?,
+                },
+            },
+        ))
+    })?;
+    let mut files: BTreeMap<i64, Vec<FileDatabase>> = BTreeMap::new();
+    for row in rows {
+        let (id, database) = row?;
+        files.entry(id).or_default().push(database);
+    }
+    Ok(files)
+}
+
 /// Lists the connections of user `user_id`, by name, without their password.
 pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, ConnectionsError> {
+    let mut files = files_of(db, user_id, None)?;
     let mut statement = db.prepare(
         "SELECT c.id, c.name, c.engine, s.host, s.port, s.username, s.database_name, c.init_sql,
                 c.session_timeout_minutes, c.show_system_schemas, p.flavor, p.version,
                 p.connected_at, c.created_at
          FROM connections c
-         JOIN connection_servers s ON s.connection_id = c.id
+         LEFT JOIN connection_servers s ON s.connection_id = c.id
          LEFT JOIN connection_probes p ON p.connection_id = c.id
          WHERE c.user_id = ?1 ORDER BY c.name",
     )?;
@@ -522,16 +735,24 @@ pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, Con
                 .transpose()?,
             None => None,
         };
-        Ok(ConnectionSummary {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            engine: engine_at(row, 2)?,
-            settings: SavedSettings::Server(SavedServerSettings {
+        let id: i64 = row.get(0)?;
+        let engine = engine_at(row, 2)?;
+        let settings = match engine.family() {
+            Family::Server => SavedSettings::Server(SavedServerSettings {
                 host: row.get(3)?,
                 port: row.get(4)?,
                 username: row.get(5)?,
                 database_name: row.get(6)?,
             }),
+            Family::Files => SavedSettings::Files(SavedFilesSettings {
+                databases: files.remove(&id).unwrap_or_default(),
+            }),
+        };
+        Ok(ConnectionSummary {
+            id,
+            name: row.get(1)?,
+            engine,
+            settings,
             init_sql: row.get(7)?,
             session_timeout_minutes: row.get(8)?,
             show_system_schemas: row.get(9)?,
@@ -553,7 +774,19 @@ pub fn delete(db: &Connection, user_id: i64, id: i64) -> Result<bool, Connection
     Ok(deleted == 1)
 }
 
-/// Loads the settings of the source of connection `id`, password decrypted.
+/// Where the remote databases of user `user_id` are read: their folder in
+/// the cache of the locations `locations` (`cache/locations` in the data
+/// folder), the limits of their preferences.
+fn remote_of(db: &Connection, user_id: i64, locations: &Path) -> rusqlite::Result<Remote> {
+    Ok(Remote {
+        cache_dir: locations.join(user_id.to_string()),
+        limits: settings::remote_limits(db, user_id)?,
+    })
+}
+
+/// Loads the settings of the source of connection `id`, password decrypted;
+/// its remote databases are copied into the cache of the locations
+/// `locations`.
 ///
 /// Returns `None` if the connection does not exist or belongs to another user.
 pub fn load_target(
@@ -561,41 +794,53 @@ pub fn load_target(
     key: &MasterKey,
     user_id: i64,
     id: i64,
+    locations: &Path,
 ) -> Result<Option<Target>, ConnectionsError> {
     let row = db
         .query_row(
-            "SELECT c.engine, s.host, s.port, s.username, s.password_secret, s.database_name,
-                    c.init_sql
-             FROM connections c JOIN connection_servers s ON s.connection_id = c.id
-             WHERE c.id = ?1 AND c.user_id = ?2",
+            "SELECT engine, init_sql FROM connections WHERE id = ?1 AND user_id = ?2",
             params![id, user_id],
-            |row| {
-                Ok((
-                    engine_at(row, 0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, u16>(2)?,
-                    row.get::<_, String>(3)?,
-                    row.get::<_, Vec<u8>>(4)?,
-                    row.get::<_, String>(5)?,
-                    row.get::<_, String>(6)?,
-                ))
-            },
+            |row| Ok((engine_at(row, 0)?, row.get::<_, String>(1)?)),
         )
         .optional()?;
-
-    let Some((engine, host, port, username, password_secret, database_name, init_sql)) = row else {
+    let Some((engine, init_sql)) = row else {
         return Ok(None);
+    };
+    let settings = match engine.family() {
+        Family::Server => {
+            let (host, port, username, password_secret, database_name) = db.query_row(
+                "SELECT host, port, username, password_secret, database_name
+                 FROM connection_servers WHERE connection_id = ?1",
+                params![id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, u16>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, Vec<u8>>(3)?,
+                        row.get::<_, String>(4)?,
+                    ))
+                },
+            )?;
+            Settings::Server(ServerSettings {
+                host,
+                port,
+                username,
+                password: secrets::decrypt(key, &password_secret)?,
+                database_name,
+            })
+        }
+        Family::Files => Settings::Files(FilesSettings {
+            databases: files_of(db, user_id, Some(id))?
+                .remove(&id)
+                .unwrap_or_default(),
+            remote: remote_of(db, user_id, locations)?,
+        }),
     };
     Ok(Some(Target {
         engine,
-        settings: Settings::Server(ServerSettings {
-            host,
-            port,
-            username,
-            password: secrets::decrypt(key, &password_secret)?,
-            database_name,
-        }),
-        init_statements: init_statements(&init_sql),
+        settings,
+        init_statements: init_statements(&init_sql, engine_dialect(engine)),
     }))
 }
 
@@ -651,7 +896,8 @@ pub fn session_timeout(
 }
 
 /// Connection settings of a test of typed settings. An empty password takes
-/// that of the saved connection `saved_id`, if there is one.
+/// that of the saved connection `saved_id`, if there is one; the remote
+/// databases are copied into the cache of the locations `locations`.
 ///
 /// Returns `None` if `saved_id` designates a missing connection or one
 /// belonging to another user.
@@ -660,45 +906,59 @@ pub fn probe_target(
     key: &MasterKey,
     user_id: i64,
     request: ProbeRequest,
+    locations: &Path,
 ) -> Result<Option<Target>, ConnectionsError> {
     let ProbeRequest {
         connection,
         saved_id,
     } = request;
-    let NewSettings::Server(server) = connection.settings;
-    let password = match saved_id {
-        Some(id) if server.password.expose_secret().is_empty() => {
-            match load_target(db, key, user_id, id)? {
-                Some(Target {
-                    settings: Settings::Server(saved),
-                    ..
-                }) => saved.password,
-                // A saved connection of another family has no password.
-                Some(_) | None => return Ok(None),
-            }
+    let dialect = engine_dialect(connection.engine);
+    let settings = match connection.settings {
+        NewSettings::Server(server) => {
+            let password = match saved_id {
+                Some(id) if server.password.expose_secret().is_empty() => {
+                    match load_target(db, key, user_id, id, locations)? {
+                        Some(Target {
+                            settings: Settings::Server(saved),
+                            ..
+                        }) => saved.password,
+                        // A saved connection of another family has no password.
+                        Some(_) | None => return Ok(None),
+                    }
+                }
+                _ => server.password,
+            };
+            Settings::Server(ServerSettings {
+                host: server.host,
+                port: server.port,
+                username: server.username,
+                password,
+                database_name: server.database_name,
+            })
         }
-        _ => server.password,
+        NewSettings::Files(files) => Settings::Files(FilesSettings {
+            databases: files.databases()?,
+            remote: remote_of(db, user_id, locations)?,
+        }),
     };
     Ok(Some(Target {
         engine: connection.engine,
-        settings: Settings::Server(ServerSettings {
-            host: server.host,
-            port: server.port,
-            username: server.username,
-            password,
-            database_name: server.database_name,
-        }),
-        init_statements: init_statements(&connection.init_sql),
+        settings,
+        init_statements: init_statements(&connection.init_sql, dialect),
     }))
 }
 
 #[cfg(test)]
 mod tests {
     use prisme_connectors::api::DialectOptions;
+    use prisme_connectors::location::LocationError;
     use prisme_connectors::mysql::capabilities;
 
     use super::*;
     use crate::store;
+
+    /// Cache of the remote databases of the tests that read none.
+    const UNUSED: &str = "unused-locations";
 
     /// Password of the settings of a server.
     fn password(target: &Target) -> &str {
@@ -727,7 +987,9 @@ mod tests {
 
     /// Settings of the server of a connection to save.
     fn server(connection: &mut NewConnection) -> &mut NewServerSettings {
-        let NewSettings::Server(server) = &mut connection.settings;
+        let NewSettings::Server(server) = &mut connection.settings else {
+            panic!("settings of a server expected");
+        };
         server
     }
 
@@ -741,7 +1003,9 @@ mod tests {
             "SET NAMES utf8mb4;\nSET SESSION sql_mode = 'ANSI_QUOTES';".to_string();
         let id = insert(&db, &key, user_id, &connection).unwrap();
         assert_eq!(list(&db, user_id).unwrap()[0].init_sql, connection.init_sql);
-        let target = load_target(&db, &key, user_id, id).unwrap().unwrap();
+        let target = load_target(&db, &key, user_id, id, Path::new(UNUSED))
+            .unwrap()
+            .unwrap();
         assert_eq!(
             target.init_statements,
             ["SET NAMES utf8mb4", "SET SESSION sql_mode = 'ANSI_QUOTES'"]
@@ -771,10 +1035,14 @@ mod tests {
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].name, "prod");
         assert_eq!(summaries[0].engine, Engine::Mysql);
-        let SavedSettings::Server(saved) = &summaries[0].settings;
+        let SavedSettings::Server(saved) = &summaries[0].settings else {
+            panic!("settings of a server expected");
+        };
         assert_eq!((saved.host.as_str(), saved.port), ("localhost", 3306));
 
-        let target = load_target(&db, &key, user_id, id).unwrap().unwrap();
+        let target = load_target(&db, &key, user_id, id, Path::new(UNUSED))
+            .unwrap()
+            .unwrap();
         assert_eq!(password(&target), "secret");
     }
 
@@ -817,7 +1085,11 @@ mod tests {
         let id = insert(&db, &key, alice, &new_connection("prod")).unwrap();
 
         assert!(list(&db, bob).unwrap().is_empty());
-        assert!(load_target(&db, &key, bob, id).unwrap().is_none());
+        assert!(
+            load_target(&db, &key, bob, id, Path::new(UNUSED))
+                .unwrap()
+                .is_none()
+        );
         // The same name stays free for another user.
         assert!(insert(&db, &key, bob, &new_connection("prod")).is_ok());
     }
@@ -856,12 +1128,16 @@ mod tests {
         server(&mut changed).password = SecretString::from("");
         assert!(update(&db, &key, alice, id, &changed).unwrap());
         assert_eq!(list(&db, alice).unwrap()[0].name, "staging");
-        let target = load_target(&db, &key, alice, id).unwrap().unwrap();
+        let target = load_target(&db, &key, alice, id, Path::new(UNUSED))
+            .unwrap()
+            .unwrap();
         assert_eq!(password(&target), "secret");
 
         server(&mut changed).password = SecretString::from("new");
         assert!(update(&db, &key, alice, id, &changed).unwrap());
-        let target = load_target(&db, &key, alice, id).unwrap().unwrap();
+        let target = load_target(&db, &key, alice, id, Path::new(UNUSED))
+            .unwrap()
+            .unwrap();
         assert_eq!(password(&target), "new");
 
         assert!(!update(&db, &key, bob, id, &changed).unwrap());
@@ -880,7 +1156,9 @@ mod tests {
         let id = insert_copy(&db, &key, alice, source, &copy)
             .unwrap()
             .unwrap();
-        let target = load_target(&db, &key, alice, id).unwrap().unwrap();
+        let target = load_target(&db, &key, alice, id, Path::new(UNUSED))
+            .unwrap()
+            .unwrap();
         assert_eq!(password(&target), "secret");
 
         copy.name = "prod (autre)".to_string();
@@ -888,7 +1166,9 @@ mod tests {
         let id = insert_copy(&db, &key, alice, source, &copy)
             .unwrap()
             .unwrap();
-        let target = load_target(&db, &key, alice, id).unwrap().unwrap();
+        let target = load_target(&db, &key, alice, id, Path::new(UNUSED))
+            .unwrap()
+            .unwrap();
         assert_eq!(password(&target), "other");
 
         // The name stays unique, and another user's connection cannot be copied.
@@ -934,14 +1214,20 @@ mod tests {
             }
         };
 
-        let target = probe_target(&db, &key, alice, request("", Some(id)));
+        let target = probe_target(&db, &key, alice, request("", Some(id)), Path::new(UNUSED));
         assert_eq!(password(&target.unwrap().unwrap()), "secret");
-        let target = probe_target(&db, &key, alice, request("other", Some(id)));
+        let target = probe_target(
+            &db,
+            &key,
+            alice,
+            request("other", Some(id)),
+            Path::new(UNUSED),
+        );
         assert_eq!(password(&target.unwrap().unwrap()), "other");
-        let target = probe_target(&db, &key, alice, request("", None));
+        let target = probe_target(&db, &key, alice, request("", None), Path::new(UNUSED));
         assert_eq!(password(&target.unwrap().unwrap()), "");
         assert!(
-            probe_target(&db, &key, bob, request("", Some(id)))
+            probe_target(&db, &key, bob, request("", Some(id)), Path::new(UNUSED))
                 .unwrap()
                 .is_none()
         );
@@ -1020,5 +1306,167 @@ mod tests {
         assert!(list(&db, user_id).unwrap()[0].show_system_schemas);
         assert_eq!(session_timeout(&db, user_id, id).unwrap(), Some(30));
         assert_eq!(session_timeout(&db, user_id + 1, id).unwrap(), None);
+    }
+
+    /// Connection of the databases `databases`, each a schema and a location.
+    fn files_connection(name: &str, databases: &[(&str, &str)]) -> NewConnection {
+        NewConnection {
+            name: name.to_string(),
+            engine: Engine::Sqlite,
+            settings: NewSettings::Files(NewFilesSettings {
+                databases: databases
+                    .iter()
+                    .map(|(schema, location)| NewFileDatabase {
+                        schema: (*schema).to_string(),
+                        location: (*location).to_string(),
+                    })
+                    .collect(),
+            }),
+            init_sql: String::new(),
+            session_timeout_minutes: 5,
+            show_system_schemas: true,
+        }
+    }
+
+    /// Absolute path of the file `name`, on every system.
+    fn absolute(name: &str) -> String {
+        std::env::temp_dir()
+            .join(name)
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Detail of the refusal of `connection`.
+    fn refusal(connection: &NewConnection) -> ErrorDetail {
+        match connection.validate() {
+            Err(ConnectionsError::Invalid(detail)) => detail,
+            other => panic!("refusal expected: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn saves_and_loads_the_databases_held_in_files() {
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let user_id = store::ensure_user(&db, "a@example.com").unwrap();
+        let sales = absolute("sales.db");
+        let main = absolute("main.db");
+        let mut connection = files_connection(
+            "files",
+            &[
+                ("MAIN", ":memory:"),
+                ("sales", &sales),
+                ("remote", "https://example.com/v.db"),
+            ],
+        );
+        connection.init_sql = "PRAGMA foreign_keys = ON".to_string();
+        let id = insert(&db, &key, user_id, &connection).unwrap();
+
+        let summary = list(&db, user_id).unwrap().remove(0);
+        assert_eq!(summary.engine, Engine::Sqlite);
+        let SavedSettings::Files(saved) = summary.settings else {
+            panic!("settings of files expected");
+        };
+        let read: Vec<(&str, Scheme, &str)> = saved
+            .databases
+            .iter()
+            .map(|database| {
+                (
+                    database.schema.as_str(),
+                    database.location.scheme,
+                    database.location.address.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            read,
+            [
+                ("main", Scheme::Memory, ""),
+                ("sales", Scheme::File, sales.as_str()),
+                ("remote", Scheme::Https, "https://example.com/v.db"),
+            ]
+        );
+
+        let locations = Path::new("data").join("cache");
+        let target = load_target(&db, &key, user_id, id, &locations)
+            .unwrap()
+            .unwrap();
+        assert_eq!(target.init_statements, ["PRAGMA foreign_keys = ON"]);
+        let Settings::Files(files) = target.settings else {
+            panic!("settings of files expected");
+        };
+        assert_eq!(files.databases, saved.databases);
+        assert_eq!(files.remote.cache_dir, locations.join(user_id.to_string()));
+        assert_eq!(files.remote.limits.max_bytes, 1 << 30);
+
+        // A change replaces the databases; a copy takes them.
+        let changed = files_connection("files", &[("main", &main)]);
+        assert!(update(&db, &key, user_id, id, &changed).unwrap());
+        let copy = files_connection("files (copie)", &[("main", &main)]);
+        insert_copy(&db, &key, user_id, id, &copy).unwrap().unwrap();
+        for summary in list(&db, user_id).unwrap() {
+            let SavedSettings::Files(saved) = summary.settings else {
+                panic!("settings of files expected");
+            };
+            assert_eq!(saved.databases.len(), 1, "{}", summary.name);
+        }
+        assert!(
+            insert_copy(&db, &key, user_id + 1, id, &copy)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn refuses_databases_out_of_the_rules() {
+        assert_eq!(
+            refusal(&files_connection("f", &[])),
+            ErrorDetail::MainDatabaseFirst
+        );
+        assert_eq!(
+            refusal(&files_connection("f", &[("other", ":memory:")])),
+            ErrorDetail::MainDatabaseFirst
+        );
+        assert_eq!(
+            refusal(&files_connection(
+                "f",
+                &[("main", ":memory:"), ("Temp", ":memory:")]
+            )),
+            ErrorDetail::ReservedSchema {
+                schema: "Temp".to_string()
+            }
+        );
+        assert_eq!(
+            refusal(&files_connection(
+                "f",
+                &[("main", ":memory:"), ("a", ":memory:"), ("A", ":memory:")]
+            )),
+            ErrorDetail::DuplicateSchema {
+                schema: "A".to_string()
+            }
+        );
+        let many: Vec<(String, &str)> = (0..=ATTACHED_MAX)
+            .map(|index| (format!("s{index}"), ":memory:"))
+            .collect();
+        let mut databases: Vec<(&str, &str)> = vec![("main", ":memory:")];
+        databases.extend(
+            many.iter()
+                .map(|(schema, location)| (schema.as_str(), *location)),
+        );
+        assert_eq!(
+            refusal(&files_connection("f", &databases)),
+            ErrorDetail::TooManyDatabases { max: 10 }
+        );
+        assert!(matches!(
+            refusal(&files_connection("f", &[("main", "relative.db")])),
+            ErrorDetail::Location {
+                error: LocationError::RelativePath { .. },
+                ..
+            }
+        ));
+        // The settings of SQLite at connection are its pragmas, not those of MySQL.
+        let mut connection = files_connection("f", &[("main", ":memory:")]);
+        connection.init_sql = "SET NAMES utf8mb4".to_string();
+        assert!(connection.validate().is_err());
     }
 }

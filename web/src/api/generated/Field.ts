@@ -21,4 +21,5 @@ export type Field =
   | "remote_connect_timeout_seconds"
   | "remote_download_timeout_minutes"
   | "remote_max_mebibytes"
-  | "remote_cache_days";
+  | "remote_cache_days"
+  | "schema_name";

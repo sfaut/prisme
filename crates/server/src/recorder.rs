@@ -582,8 +582,8 @@ mod tests {
     use prisme_dialects::verb::StatementVerb;
 
     use super::*;
+    use crate::api::Folders;
     use crate::editors::NewEditor;
-    use crate::exports;
     use crate::master_key::MasterKey;
     use crate::query_session::LimitReport;
     use crate::store;
@@ -654,7 +654,7 @@ mod tests {
         let db = store::open_in_memory();
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let editor = editors::create(&db, user_id, &NewEditor::default()).unwrap();
-        let state = AppState::new(db, MasterKey::generate(), user_id, exports::unused_folder());
+        let state = AppState::new(db, MasterKey::generate(), user_id, Folders::unused());
         let recorder = Recorder::new(state.clone(), editor.id);
 
         let mut batch = ServerMessage::Batch {
@@ -740,7 +740,7 @@ mod tests {
         let db = store::open_in_memory();
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let editor = create_editor(&db, user_id);
-        let state = AppState::new(db, MasterKey::generate(), user_id, exports::unused_folder());
+        let state = AppState::new(db, MasterKey::generate(), user_id, Folders::unused());
         let recorder = Recorder::new(state.clone(), editor);
         recorder.observe(&mut single_query(0)).await;
         recorder.observe(&mut columns()).await;
@@ -782,7 +782,7 @@ mod tests {
         let db = store::open_in_memory();
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let editor = create_editor(&db, user_id);
-        let state = AppState::new(db, MasterKey::generate(), user_id, exports::unused_folder());
+        let state = AppState::new(db, MasterKey::generate(), user_id, Folders::unused());
         let recorder = Recorder::new(state.clone(), editor);
         recorder.observe(&mut single_query(0)).await;
         recorder.observe(&mut columns()).await;
@@ -844,7 +844,7 @@ mod tests {
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let editor = create_editor(&db, user_id);
         let other = create_editor(&db, user_id);
-        let state = AppState::new(db, MasterKey::generate(), user_id, exports::unused_folder());
+        let state = AppState::new(db, MasterKey::generate(), user_id, Folders::unused());
         let recorder = Recorder::new(state.clone(), editor);
         let saved = |row: &str| -> [ServerMessage; 4] {
             [
@@ -912,7 +912,7 @@ mod tests {
         let db = store::open_in_memory();
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let editor = create_editor(&db, user_id);
-        let state = AppState::new(db, MasterKey::generate(), user_id, exports::unused_folder());
+        let state = AppState::new(db, MasterKey::generate(), user_id, Folders::unused());
         let recorder = Recorder::new(state.clone(), editor);
         let saved = || state.with_db(move |db, _| editors::database_of(db, user_id, editor));
 

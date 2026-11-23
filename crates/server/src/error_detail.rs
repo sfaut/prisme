@@ -13,6 +13,7 @@ use std::fmt;
 use prisme_connectors::api::ConnectorError;
 use prisme_connectors::failure::{ConnectFailure, FailureCause};
 use prisme_connectors::flavor::Flavor;
+use prisme_connectors::location::LocationError;
 use prisme_dialects::classify::WriteKind;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -59,6 +60,8 @@ pub enum Field {
     RemoteMaxMebibytes,
     /// Days after which an unused copy of a remote file is deleted.
     RemoteCacheDays,
+    /// Name of the schema of a database of a source held in files.
+    SchemaName,
 }
 
 impl fmt::Display for Field {
@@ -127,6 +130,38 @@ pub enum ErrorDetail {
     SettingsFamily {
         /// Key of the engine.
         engine: String,
+    },
+    /// The first database of a source held in files is not that of the
+    /// schema `main`.
+    #[error("databases: the first one must be that of the schema main")]
+    MainDatabaseFirst,
+    /// More databases attached to the main one than the engine attaches.
+    #[error("databases: {max} attached at most")]
+    TooManyDatabases {
+        /// Databases attached at most.
+        max: u32,
+    },
+    /// A name of schema given twice in a connection, whatever its case.
+    #[error("schema {schema}: given twice")]
+    DuplicateSchema {
+        /// Name given twice.
+        schema: String,
+    },
+    /// A name of schema the engine keeps for itself: `temp`, or `main` for
+    /// an attached database.
+    #[error("schema {schema}: reserved by the engine")]
+    ReservedSchema {
+        /// Name refused.
+        schema: String,
+    },
+    /// The location of a database refused, or where an empty database could
+    /// not be created.
+    #[error("schema {schema}: {error}")]
+    Location {
+        /// Schema of the database.
+        schema: String,
+        /// Why the location is refused.
+        error: LocationError,
     },
     /// A query of `init_sql` is not understood by Prisme.
     #[error("init_sql: \"{statement}\": query not understood by Prisme")]

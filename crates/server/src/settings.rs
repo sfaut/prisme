@@ -18,6 +18,9 @@
 //! Synchronous functions (`rusqlite`), called from blocking tasks.
 
 use crate::error_detail::{ErrorDetail, Field};
+use std::time::Duration;
+
+use prisme_connectors::location::RemoteLimits;
 use prisme_dialects::classify::WriteKind;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
@@ -374,6 +377,23 @@ pub fn update(
     }
     transaction.commit()?;
     load(db, user_id)
+}
+
+/// Limits of the reading of the remote locations of user `user_id`, as their
+/// preferences set them.
+pub fn remote_limits(db: &Connection, user_id: i64) -> rusqlite::Result<RemoteLimits> {
+    db.query_row(
+        "SELECT remote_connect_timeout_seconds, remote_download_timeout_minutes, remote_max_mebibytes
+         FROM users WHERE id = ?1",
+        params![user_id],
+        |row| {
+            Ok(RemoteLimits {
+                connect_timeout: Duration::from_secs(row.get::<_, u32>(0)?.into()),
+                download_timeout: Duration::from_secs(60 * u64::from(row.get::<_, u32>(1)?)),
+                max_bytes: u64::from(row.get::<_, u32>(2)?) << 20,
+            })
+        },
+    )
 }
 
 #[cfg(test)]

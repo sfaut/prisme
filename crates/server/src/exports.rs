@@ -409,12 +409,6 @@ pub fn interrupt_unfinished(
     Ok(unfinished.len())
 }
 
-/// Exports folder of the tests that start no export: never created.
-#[cfg(test)]
-pub fn unused_folder() -> PathBuf {
-    std::env::temp_dir().join("prisme-tests-without-exports")
-}
-
 /// Routes of the exports, to merge into the API router.
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -475,9 +469,10 @@ async fn start_export(
     }
     let user_id = user.id;
     let connection_id = request.connection_id;
+    let locations = state.locations();
     let (target, connection_name) = state
         .with_db(move |db, key| {
-            let target = connections::load_target(db, key, user_id, connection_id)?;
+            let target = connections::load_target(db, key, user_id, connection_id, &locations)?;
             let name = connections::name_of(db, user_id, connection_id)?;
             Ok::<_, ConnectionsError>(target.map(|target| (target, name)))
         })

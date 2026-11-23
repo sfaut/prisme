@@ -104,9 +104,10 @@ async fn stream_catalog(
     Query(query): Query<CatalogQuery>,
 ) -> Result<Response, ApiError> {
     let user_id = user.id;
+    let locations = state.locations();
     let (target, name) = state
         .with_db(move |db, key| {
-            let target = connections::load_target(db, key, user_id, id)?;
+            let target = connections::load_target(db, key, user_id, id, &locations)?;
             let name = connections::name_of(db, user_id, id)?;
             Ok::<_, ConnectionsError>(target.map(|target| (target, name)))
         })
@@ -253,9 +254,8 @@ mod tests {
     use secrecy::SecretString;
     use tower::ServiceExt;
 
-    use crate::api::{AppState, router};
+    use crate::api::{AppState, Folders, router};
     use crate::connections::{self, NewConnection, NewServerSettings, NewSettings};
-    use crate::exports;
     use crate::master_key::MasterKey;
     use crate::store;
 
@@ -280,7 +280,7 @@ mod tests {
             show_system_schemas: true,
         };
         connections::insert(&db, &key, user_id, &new).unwrap();
-        let app = router(AppState::new(db, key, user_id, exports::unused_folder()));
+        let app = router(AppState::new(db, key, user_id, Folders::unused()));
 
         let request = Request::get(uri)
             .header("host", "localhost:8484")

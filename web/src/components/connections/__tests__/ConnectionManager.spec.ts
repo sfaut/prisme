@@ -187,7 +187,11 @@ beforeEach(() => {
   })
   api.copyConnection.mockImplementation(async (_, input) => {
     const copied = connection(4, input.name)
-    saved = [...saved, { ...copied, settings: { ...copied.settings, host: input.settings.host } }]
+    const settings =
+      copied.settings.family === 'server' && input.settings.family === 'server'
+        ? { ...copied.settings, host: input.settings.host }
+        : copied.settings
+    saved = [...saved, { ...copied, settings }]
     return { id: 4 }
   })
 })

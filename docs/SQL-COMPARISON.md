@@ -579,6 +579,7 @@ A session stays on `main`: SQLite has no statement that changes the current data
 Opening of the databases of a connection, measured on 2026-11-23:
 
 - A database in memory (`file:/<name>?vfs=memdb`, or `:memory:`) opens without `SQLITE_OPEN_CREATE`, and takes tables. Opened read-only, a new one refuses its first table ("attempt to write a readonly database"); an existing one, opened read-only by another connection, gives its rows and refuses an `INSERT`.
+- A connection attaches 10 databases at most besides `main` (`SQLITE_MAX_ATTACHED`, 10 unless SQLite is built with another value: `#define SQLITE_MAX_ATTACHED 10` in the `sqlite3.c` of `libsqlite3-sys` 0.39.1, which `rusqlite` 0.41.1 builds; [Limits In SQLite](https://sqlite.org/limits.html), section 11). A connection of Prisme saves as many.
 - `ATTACH ?1 AS ?2` takes the file and the name of the schema as bound parameters: `ATTACH ?1 AS ?2` with the name `other db` gives a schema read as `"other db".t`.
 - An attachment opens in the file system (VFS) of its connection: on a connection whose main database is in `memdb`, `ATTACH` of the path of a file gives an empty database in memory ("no such table" on its tables); the URI `file:///<path>?vfs=win32` (`unix` on Linux and macOS) reads the file.
 - On Windows, the URI `file:////<server>/<share>/<path>` (an empty authority) reads a file of a network share: `file:////localhost/C$/.../opening.db` gives its rows.

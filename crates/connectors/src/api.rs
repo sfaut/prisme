@@ -154,7 +154,8 @@ pub struct FilesSettings {
 
 /// Database of a source held in files: its schema in the sessions, and where
 /// it is.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct FileDatabase {
     /// Name of its schema in the sessions: `main` for the main database, the
     /// name of its `ATTACH` for another one.

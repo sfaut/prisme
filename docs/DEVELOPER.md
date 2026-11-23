@@ -617,6 +617,20 @@ $connection = @{
 } | ConvertTo-Json
 Invoke-RestMethod "$api/connections" -Method Post -ContentType "application/json" -Body $connection
 
+# Save a source held in files ("files": the main database first, then those attached to it;
+# a location is an absolute path, a URL or ":memory:")
+$files = @{
+    name = "local files"; engine = "sqlite"
+    settings = @{
+        family = "files"
+        databases = @(
+            @{ schema = "main"; location = "D:\data\main.db" },
+            @{ schema = "scratch"; location = ":memory:" }
+        )
+    }
+} | ConvertTo-Json -Depth 4
+Invoke-RestMethod "$api/connections" -Method Post -ContentType "application/json" -Body $files
+
 # List the connections (the password never appears)
 Invoke-RestMethod "$api/connections"
 
@@ -634,8 +648,8 @@ On error (status 4xx or 5xx), PowerShell raises an exception, and the JSON body 
 |---|---|---|
 | `GET /api/health` | Answers `ok`. | — |
 | `GET /api/version` | Version of the executable: `{"version": "0.2.0"}`. The interface shows it next to the name. | — |
-| `GET /api/connections` | Lists the connections, without passwords: `engine`, `settings` tagged by their family (`"family": "server"`), and `probe`, the last successful connection (`flavor`, `version`, `connected_at`), `null` if none. | — |
-| `POST /api/connections` | Saves a connection (`name`, `engine`, `settings` of the family of the engine, `init_sql`...), returns `{"id": ...}` (201). | 400 invalid input or settings of another family, 409 name already taken |
+| `GET /api/connections` | Lists the connections, without passwords: `engine`, `settings` tagged by their family (`"family": "server"`, `"family": "files"` with the `databases`, each a `schema` and a `location` `{scheme, address}`), and `probe`, the last successful connection (`flavor`, `version`, `connected_at`), `null` if none. | — |
+| `POST /api/connections` | Saves a connection (`name`, `engine`, `settings` of the family of the engine, `init_sql`...), returns `{"id": ...}` (201). | 400 invalid input, settings of another family, database refused (`main_database_first`, `too_many_databases`, `duplicate_schema`, `reserved_schema`, `location`: location not understood...), 409 name already taken |
 | `POST /api/connections/{id}/copies` | Saves a copy of the connection with the settings received, returns `{"id": ...}` (201). An empty password takes that of the copied connection. | 400 invalid input, 404 unknown connection or of another engine, 409 name already taken |
 | `PUT /api/connections/{id}` | Changes the connection (204). An empty password keeps the saved one; the engine of a saved connection does not change. | 400 invalid input, 404 unknown connection or of another engine, 409 name already taken |
 | `DELETE /api/connections/{id}` | Deletes the connection, with its settings and its last connection (204). | 404 unknown connection |

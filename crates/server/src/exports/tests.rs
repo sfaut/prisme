@@ -15,7 +15,7 @@ use tower::ServiceExt;
 
 use super::table::{self, NewExport};
 use super::{ExportState, interrupt_unfinished};
-use crate::api::{AppState, router};
+use crate::api::{AppState, Folders, router};
 use crate::connections::{self, NewConnection, NewServerSettings, NewSettings};
 use crate::master_key::MasterKey;
 use crate::store;
@@ -62,7 +62,11 @@ impl TestApp {
         let data = tempfile::tempdir().unwrap();
         let folder = data.path().join(super::FOLDER);
         std::fs::create_dir(&folder).unwrap();
-        let state = AppState::new(db, key, user_id, folder.clone());
+        let folders = Folders {
+            exports: folder.clone(),
+            ..Folders::of(data.path())
+        };
+        let state = AppState::new(db, key, user_id, folders);
         Self {
             app: router(state.clone()),
             state,

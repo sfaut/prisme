@@ -321,8 +321,9 @@ async function connectEditor(
   const opens = reopens || editor.connectionId !== connectionId
   // The source chosen again reopens on its own database, in place of the
   // last current database of the editor, on which a session opens otherwise.
-  const opening =
-    database ?? (reopens ? connectionOf(connectionId)?.settings.database_name : undefined)
+  const settings = connectionOf(connectionId)?.settings
+  const own = settings?.family === 'server' ? settings.database_name : undefined
+  const opening = database ?? (reopens ? own : undefined)
   if (opens && opening !== undefined) {
     openingDatabases.value[editorId] = opening
   }

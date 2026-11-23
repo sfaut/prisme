@@ -46,6 +46,7 @@ const FIELD_LABELS: Record<Field, string> = {
   remote_download_timeout_minutes: 'Durée d’un téléchargement',
   remote_max_mebibytes: 'Taille la plus grande',
   remote_cache_days: 'Copies inutilisées',
+  schema_name: 'Schéma',
 }
 
 /**
@@ -228,6 +229,16 @@ export function describe(detail: ErrorDetail): string {
       return `Une connexion nommée « ${detail.name} » existe déjà.`
     case 'settings_family':
       return `Les réglages envoyés ne conviennent pas au moteur « ${detail.engine} ».`
+    case 'main_database_first':
+      return 'La première base est la base principale, de schéma « main ».'
+    case 'too_many_databases':
+      return `${number(detail.max)} bases attachées au plus, en plus de la base principale.`
+    case 'duplicate_schema':
+      return `Le schéma « ${detail.schema} » est donné deux fois (sans tenir compte de la casse).`
+    case 'reserved_schema':
+      return `Le schéma « ${detail.schema} » est réservé par le moteur : choisir un autre nom.`
+    case 'location':
+      return `Schéma « ${detail.schema} » : ${locationMessage(detail.error)}`
     case 'init_sql_not_understood':
       return `À la connexion : Prisme ne comprend pas la requête « ${detail.statement} ».`
     case 'init_sql_global_setting':

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { describe as describeError } from '../messages'
+import { describe as describeError, locationMessage } from '../messages'
 
 describe('messages of the errors', () => {
   it('writes the messages of Prisme in French, with their parameters', () => {
@@ -95,6 +95,33 @@ describe('messages of the errors', () => {
         cause: { source: 'driver', message: 'Invalid column type' },
       }),
     ).toBe('Le pilote de connexion (rusqlite) a signalé :\n\nInvalid column type')
+  })
+
+  it('tells what is wrong with the databases of a connection held in files', () => {
+    expect(describeError({ code: 'main_database_first' })).toBe(
+      'La première base est la base principale, de schéma « main ».',
+    )
+    expect(describeError({ code: 'too_many_databases', max: 10 })).toBe(
+      '10 bases attachées au plus, en plus de la base principale.',
+    )
+    expect(describeError({ code: 'duplicate_schema', schema: 'Ventes' })).toBe(
+      'Le schéma « Ventes » est donné deux fois (sans tenir compte de la casse).',
+    )
+    expect(describeError({ code: 'reserved_schema', schema: 'temp' })).toBe(
+      'Le schéma « temp » est réservé par le moteur : choisir un autre nom.',
+    )
+    expect(
+      describeError({
+        code: 'location',
+        schema: 'ventes',
+        error: { code: 'already_exists', address: '/srv/v.db' },
+      }),
+    ).toBe(
+      `Schéma « ventes » : ${locationMessage({ code: 'already_exists', address: '/srv/v.db' })}`,
+    )
+    expect(
+      describeError({ code: 'field_length', field: 'schema_name', min: 1, max: 64, length: 0 }),
+    ).toBe('Schéma : entre 1 et 64 caractères, 0 reçus.')
   })
 
   it('tells what is wrong with the file of a database', () => {

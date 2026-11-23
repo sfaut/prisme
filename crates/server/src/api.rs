@@ -88,25 +88,59 @@ pub struct AppState {
     pub console: broadcast::Sender<ConsoleEvent>,
     /// Exports of full results to CSV files (`exports.rs`).
     pub exports: Arc<Exports>,
+    /// Cache of the copies of the remote databases, one folder per user
+    /// (`connections::load_target`).
+    locations: Arc<PathBuf>,
+}
+
+/// Folders of the data folder the server writes into.
+pub struct Folders {
+    /// Exports of full results (`exports::FOLDER`).
+    pub exports: PathBuf,
+    /// Cache of the copies of the remote databases (`LOCATIONS_FOLDER`).
+    pub locations: PathBuf,
+}
+
+/// Folder of the cache of the remote databases, in the data folder.
+const LOCATIONS_FOLDER: [&str; 2] = ["cache", "locations"];
+
+impl Folders {
+    /// Folders of the data folder `data_dir`.
+    pub fn of(data_dir: &std::path::Path) -> Self {
+        Self {
+            exports: data_dir.join(exports::FOLDER),
+            locations: LOCATIONS_FOLDER
+                .iter()
+                .fold(data_dir.to_path_buf(), |path, part| path.join(part)),
+        }
+    }
+
+    /// Folders of the tests that neither export nor read a remote database:
+    /// never created.
+    #[cfg(test)]
+    pub fn unused() -> Self {
+        Self::of(&std::env::temp_dir().join("prisme-tests-without-files"))
+    }
 }
 
 impl AppState {
     /// Builds the state from the open internal database, the key, the local
-    /// user and the folder of the exports.
-    pub fn new(
-        db: Connection,
-        key: MasterKey,
-        local_user_id: i64,
-        exports_folder: PathBuf,
-    ) -> Self {
+    /// user and the folders it writes into.
+    pub fn new(db: Connection, key: MasterKey, local_user_id: i64, folders: Folders) -> Self {
         Self {
             db: Arc::new(Mutex::new(db)),
             key: Arc::new(key),
             local_user_id,
             sessions: Arc::default(),
             console: broadcast::Sender::new(console::EVENTS_CAPACITY),
-            exports: Arc::new(Exports::new(exports_folder)),
+            exports: Arc::new(Exports::new(folders.exports)),
+            locations: Arc::new(folders.locations),
         }
+    }
+
+    /// Folder of the cache of the remote databases (`Folders::locations`).
+    pub fn locations(&self) -> Arc<PathBuf> {
+        Arc::clone(&self.locations)
     }
 
     /// Internal database, for the console's writer: it must not write to the
@@ -291,9 +325,10 @@ async fn query_socket(
     upgrade: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
     let user_id = user.id;
+    let locations = state.locations();
     let (target, read_only, name) = state
         .with_db(move |db, key| {
-            let target = connections::load_target(db, key, user_id, id)?;
+            let target = connections::load_target(db, key, user_id, id, &locations)?;
             let read_only = settings::load(db, user_id)?.read_only_session;
             let name = connections::name_of(db, user_id, id)?;
             Ok::<_, ApiError>((target, read_only, name))
@@ -346,9 +381,10 @@ async fn editor_session(
         .await?
         .ok_or(ApiError::NotFound)?
         .ok_or(ApiError::BadRequest(ErrorDetail::NoConnection))?;
+    let locations = state.locations();
     let (target, minutes, read_only, name, saved_database) = state
         .with_db(move |db, key| {
-            let target = connections::load_target(db, key, user_id, connection_id)?;
+            let target = connections::load_target(db, key, user_id, connection_id, &locations)?;
             let minutes = connections::session_timeout(db, user_id, connection_id)?;
             let read_only = settings::load(db, user_id)?.read_only_session;
             let name = connections::name_of(db, user_id, connection_id)?;
@@ -615,8 +651,9 @@ async fn probe_settings(
 ) -> Result<Json<SourceInfo>, ApiError> {
     let user_id = user.id;
     let name = request.connection.name.clone();
+    let locations = state.locations();
     let target = state
-        .with_db(move |db, key| connections::probe_target(db, key, user_id, request))
+        .with_db(move |db, key| connections::probe_target(db, key, user_id, request, &locations))
         .await?
         .ok_or(ApiError::NotFound)?;
 
@@ -632,9 +669,10 @@ async fn probe_connection(
     Path(id): Path<i64>,
 ) -> Result<Json<SourceInfo>, ApiError> {
     let user_id = user.id;
+    let locations = state.locations();
     let (target, name) = state
         .with_db(move |db, key| {
-            let target = connections::load_target(db, key, user_id, id)?;
+            let target = connections::load_target(db, key, user_id, id, &locations)?;
             let name = connections::name_of(db, user_id, id)?;
             Ok::<_, ConnectionsError>(target.map(|target| (target, name)))
         })
@@ -664,7 +702,7 @@ mod tests {
     fn test_app() -> Router {
         let db = store::open_in_memory();
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
-        let state = AppState::new(db, MasterKey::generate(), user_id, exports::unused_folder());
+        let state = AppState::new(db, MasterKey::generate(), user_id, Folders::unused());
         router(state)
     }
 
@@ -768,7 +806,7 @@ mod tests {
         let editor = editors::create(&db, user_id, &NewEditor::default()).unwrap();
         let tab = editors::start_batch(&db, editor.id, &[(0, "SELECT 1".into())]).unwrap()[0].0;
         editors::save_chunk(&db, tab, 0, 0, r#"[["1",null]]"#).unwrap();
-        let state = AppState::new(db, MasterKey::generate(), user_id, exports::unused_folder());
+        let state = AppState::new(db, MasterKey::generate(), user_id, Folders::unused());
         let app = router(state);
 
         let uri = format!("/api/editors/{}/results", editor.id);
