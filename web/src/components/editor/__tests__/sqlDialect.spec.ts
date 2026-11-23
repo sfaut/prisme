@@ -43,39 +43,58 @@ function syntaxOf(lexical: LexicalRules) {
 
 describe('editorDialect', () => {
   it('takes the keywords of the dialect, sorted by class', () => {
-    const dialect = editorDialect({
-      reserved: ['SELECT', 'FROM'],
-      keywords: ['COMMIT'],
-      types: ['VARCHAR'],
-      literals: ['NULL', 'CURRENT_DATE'],
-      lexical: MYSQL,
-    })
+    const dialect = editorDialect(
+      {
+        reserved: ['SELECT', 'FROM'],
+        keywords: ['COMMIT'],
+        types: ['VARCHAR'],
+        literals: ['NULL', 'CURRENT_DATE'],
+        lexical: MYSQL,
+      },
+      'mysql',
+    )
     expect(dialect.spec.keywords).toBe('select from commit')
     expect(dialect.spec.types).toBe('varchar')
     expect(dialect.spec.builtin).toBe('current_date')
   })
 
   it('reads the texts by the lexical rules of the dialect', () => {
-    const mysql = editorDialect(syntaxOf(MYSQL)).spec
+    const mysql = editorDialect(syntaxOf(MYSQL), 'mysql').spec
     expect([mysql.hashComments, mysql.spaceAfterDashes, mysql.backslashEscapes]).toEqual([
       true,
       true,
       true,
     ])
     expect([mysql.doubleQuotedStrings, mysql.identifierQuotes]).toEqual([true, '`'])
-    const sqlite = editorDialect(syntaxOf(SQLITE)).spec
+    const sqlite = editorDialect(syntaxOf(SQLITE), 'sqlite').spec
     expect([sqlite.hashComments, sqlite.spaceAfterDashes, sqlite.backslashEscapes]).toEqual([
       false,
       false,
       false,
     ])
-    expect([sqlite.doubleQuotedStrings, sqlite.identifierQuotes]).toEqual([false, '"`'])
+    expect([sqlite.doubleQuotedStrings, sqlite.identifierQuotes]).toEqual([false, '"`['])
+  })
+
+  it('reads the tokens of the flavor', () => {
+    const mysql = editorDialect(syntaxOf(MYSQL), 'mysql').spec
+    expect([mysql.charSetCasts, mysql.unquotedBitLiterals, mysql.specialVar]).toEqual([
+      true,
+      true,
+      '@?',
+    ])
+    const sqlite = editorDialect(syntaxOf(SQLITE), 'sqlite').spec
+    expect([sqlite.charSetCasts, sqlite.unquotedBitLiterals, sqlite.specialVar]).toEqual([
+      false,
+      false,
+      '@:?$',
+    ])
+    expect(sqlite.operatorChars).toContain('~')
   })
 
   it('quotes identifiers with double quotes in ANSI_QUOTES', () => {
-    const ansi = editorDialect(syntaxOf(MYSQL), true)
+    const ansi = editorDialect(syntaxOf(MYSQL), 'mysql', true)
     expect(ansi.spec.identifierQuotes).toBe('"`')
     expect(ansi.spec.doubleQuotedStrings).toBe(false)
-    expect(editorDialect(syntaxOf(SQLITE), true).spec.identifierQuotes).toBe('"`')
+    expect(editorDialect(syntaxOf(SQLITE), 'sqlite', true).spec.identifierQuotes).toBe('"`[')
   })
 })

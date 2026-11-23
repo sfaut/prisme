@@ -261,7 +261,7 @@ const FALLBACK_DIALECTS: Record<Flavor, SQLDialect> = {
  */
 function currentLanguage(): LanguageSupport {
   const fallback = FALLBACK_DIALECTS[props.flavor]
-  const dialect = syntax === null ? fallback : editorDialect(syntax, props.ansiQuotes)
+  const dialect = syntax === null ? fallback : editorDialect(syntax, props.flavor, props.ansiQuotes)
   // Workaround: language assembled by hand, because `sql()` always adds the
   // completion of keywords; only the names of the catalog are offered
   // (`docs/DEVELOPER.md`, section "Workarounds").

@@ -1,8 +1,9 @@
 /**
  * Registry of the flavors of source: what the interface knows of each one.
  *
- * Each flavor declares here its name and the syntax of the CTE that the
- * interface writes for it (also that of the `IN` clause of a selection). The
+ * Each flavor declares here its name, what the editor reads beyond the
+ * lexical rules of its dialect, and the syntax of the CTE that the interface
+ * writes for it (also that of the `IN` clause of a selection). The
  * components read this registry and the capabilities of the source, and never
  * test a flavor themselves: a new flavor that forgets an entry is reported by
  * the compiler (`Record<Flavor, …>`). The colors of its badge come from the
@@ -10,6 +11,31 @@
  */
 
 import type { Flavor } from './generated/Flavor'
+
+/**
+ * Tokens of a flavor that the SQL editor reads (`sqlDialect.ts`), beyond the
+ * lexical rules of its dialect: those of the dialects of
+ * `@codemirror/lang-sql`.
+ */
+export interface EditorSyntax {
+  /**
+   * Characters of the operators.
+   */
+  operatorChars: string
+  /**
+   * Are the charset casts read (`_utf8'…'`, `N'…'`)?
+   */
+  charSetCasts: boolean
+  /**
+   * Are the bit values written `0b101` read?
+   */
+  unquotedBitLiterals: boolean
+  /**
+   * Characters that start a variable or a parameter (`@name`, `?`,
+   * `:name`, `$name`).
+   */
+  specialVar: string
+}
 
 /**
  * How the CTE of a result (`cte.ts`) is written for a flavor.
@@ -49,9 +75,23 @@ export interface FlavorSpec {
    */
   driver: string
   /**
+   * Tokens that the SQL editor reads.
+   */
+  editor: EditorSyntax
+  /**
    * Syntax of the CTE of a result.
    */
   cte: CteSyntax
+}
+
+/**
+ * Tokens of MySQL and MariaDB that the editor reads.
+ */
+const MYSQL_EDITOR: EditorSyntax = {
+  operatorChars: '*+-%<>!=&|^',
+  charSetCasts: true,
+  unquotedBitLiterals: true,
+  specialVar: '@?',
 }
 
 /**
@@ -61,16 +101,24 @@ export const FLAVORS: Record<Flavor, FlavorSpec> = {
   mysql: {
     name: 'MySQL',
     driver: 'mysql_async',
+    editor: MYSQL_EDITOR,
     cte: { rowConstructor: true, zeroDatesAsStrings: true, castsJson: true, readSince: [8, 0, 19] },
   },
   mariadb: {
     name: 'MariaDB',
     driver: 'mysql_async',
+    editor: MYSQL_EDITOR,
     cte: { rowConstructor: false, zeroDatesAsStrings: false, castsJson: false, readSince: null },
   },
   sqlite: {
     name: 'SQLite',
     driver: 'rusqlite',
+    editor: {
+      operatorChars: '*+-%<>!=&|/~',
+      charSetCasts: false,
+      unquotedBitLiterals: false,
+      specialVar: '@:?$',
+    },
     cte: { rowConstructor: false, zeroDatesAsStrings: false, castsJson: false, readSince: null },
   },
 }
