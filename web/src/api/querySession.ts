@@ -50,6 +50,7 @@ import { describe } from './messages'
 import { markRaw, onScopeDispose, reactive } from 'vue'
 
 import type { AttachedDatabase } from './generated/AttachedDatabase'
+import type { Location as DatabaseLocation } from './generated/Location'
 import type { ColumnTypeInfo } from './generated/ColumnTypeInfo'
 import type { GridDisplay } from './generated/GridDisplay'
 import type { LimitReport } from './generated/LimitReport'
@@ -405,6 +406,11 @@ export interface SessionState {
    */
   databases: AttachedDatabase[] | null
   /**
+   * Last copy of a database into a file, told by the server; `null` if
+   * none.
+   */
+  backedUp: { schema: string; location: DatabaseLocation } | null
+  /**
    * Tabs: the pinned ones of the previous batches, then the queries of the current batch.
    */
   tabs: QueryTab[]
@@ -475,6 +481,7 @@ export function initialState(): SessionState {
     database: null,
     transaction: false,
     databases: null,
+    backedUp: null,
     tabs: [],
     batch: 0,
     nextTabId: 1,
@@ -639,6 +646,9 @@ export function applyMessage(
       break
     case 'databases':
       state.databases = message.databases
+      break
+    case 'backed_up':
+      state.backedUp = { schema: message.schema, location: message.location }
       break
     case 'resume':
       resumeBatch(state, message.queries, message.running, now)
@@ -1746,6 +1756,31 @@ export function useQuerySession(
   }
 
   /**
+   * Copies a database of the session into a new file (`backup`); the
+   * server answers `backed_up`, or a session error.
+   *
+   * @param schema Schema of the database.
+   * @param location Location of the file, as typed.
+   */
+  function backupDatabase(schema: string, location: string): void {
+    if (state.status === 'ready') {
+      send({ type: 'backup', schema, location })
+    }
+  }
+
+  /**
+   * Detaches a database from the session (`detach`); the server answers
+   * with the databases left, or a session error.
+   *
+   * @param schema Schema of the database.
+   */
+  function detachDatabase(schema: string): void {
+    if (state.status === 'ready') {
+      send({ type: 'detach', schema })
+    }
+  }
+
+  /**
    * Stops all the running queries: they end with a "query interrupted"
    * error, and those waiting for their turn do not start. A stopped refresh
    * gives its tab back as it was; the waiting refreshes are cancelled.
@@ -1883,6 +1918,8 @@ export function useQuerySession(
     run,
     reopen,
     changeDatabase,
+    backupDatabase,
+    detachDatabase,
     cancel,
     refresh,
     stopRefresh,

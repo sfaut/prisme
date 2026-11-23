@@ -212,6 +212,15 @@ describe('applyMessage', () => {
     expect(state.status).toBe('ready')
   })
 
+  it('keeps the last copy of a database into a file', () => {
+    const state = readyState()
+    expect(state.backedUp).toBeNull()
+    const location = { scheme: 'file' as const, address: 'D:/data/copie.db' }
+    applyMessage(state, { type: 'backed_up', schema: 'main', location })
+    expect(state.backedUp).toEqual({ schema: 'main', location })
+    expect(state.status).toBe('ready')
+  })
+
   it('follows the transaction open on the session', () => {
     const state = readyState()
     expect(state.transaction).toBe(false)

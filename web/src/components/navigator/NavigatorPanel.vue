@@ -62,6 +62,14 @@
   the editor, like the button of the line. The active navigator reads again
   the catalog of a connection changed in the manager.
 
+  On hovering a database of a source that attaches databases (SQLite), a
+  "⋮" menu acts on the editor's session on that source, once it is ready:
+  "Enregistrer dans un fichier…" copies a database in memory into a new
+  file (`NavigatorBackupDialog`), "Détacher pour la session" detaches an
+  attached database until the next session (emits `detach`); "Retirer de
+  la connexion…" opens the connection in the connections manager, where a
+  saved database is removed at saving.
+
   The tree is Reka UI's (`TreeRoot`, `TreeItem`: keyboard, opening of the
   levels, accessibility), with virtual scrolling (`TreeVirtualizer`); the
   rendering of the lines is Prisme's, in Tailwind classes. All the lines
@@ -80,7 +88,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { Pencil, PlugZap, RefreshCw, Trash2, Unplug } from '@lucide/vue'
+import { Pencil, PlugZap, RefreshCw, Save, Trash2, Unlink, Unplug } from '@lucide/vue'
 import {
   TreeItem,
   type TreeItemSelectEvent,
@@ -99,6 +107,7 @@ import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
 import { useNavigatorStore } from '@/stores/navigator'
 
+import NavigatorBackupDialog from './NavigatorBackupDialog.vue'
 import NavigatorLine from './NavigatorLine.vue'
 import ConnectionRemoveDialog from '@/components/connections/ConnectionRemoveDialog.vue'
 import PanelHeader from '@/components/panel/PanelHeader.vue'
@@ -166,6 +175,15 @@ const emit = defineEmits<{
    * The user closes the session of the editor.
    */
   disconnect: []
+  /**
+   * The user detaches a database from the session of the editor.
+   */
+  detach: [schema: string]
+  /**
+   * The user copies a database of the session of the editor into a new
+   * file.
+   */
+  backup: [schema: string, location: string]
 }>()
 
 const catalog = useCatalogStore()
@@ -212,6 +230,12 @@ const failures = ref<Record<number, string>>({})
  * Connection whose deletion waits for confirmation, `null` if none.
  */
 const removing = ref<ConnectionSummary | null>(null)
+
+/**
+ * Database in memory whose copy into a file waits for its location
+ * ("Enregistrer dans un fichier…"), `null` if none.
+ */
+const backingUp = ref<string | null>(null)
 
 /**
  * Forgets the reading error of a deleted connection.
@@ -422,9 +446,61 @@ function menuItems(node: NavigatorNode): MenuItem[] | null {
           },
         },
       ]
+    case 'database':
+      return connection === null ? null : databaseMenu(node, connection)
     default:
       return null
   }
+}
+
+/**
+ * Choices of the "⋮" menu of a database held in files, `null` for a
+ * source that attaches no database. Detaching and saving to a file act on
+ * the editor's session, enabled once it is ready on this source; the
+ * removal opens the connection in the connections manager, where it is
+ * done at saving.
+ *
+ * @param node Node of the database.
+ * @param connection Connection of its source.
+ */
+function databaseMenu(node: NavigatorNode, connection: ConnectionSummary): MenuItem[] | null {
+  const capabilities = catalog.catalogOf(node.connectionId)?.source?.capabilities
+  if (capabilities?.attachments !== true) {
+    return null
+  }
+  const name = node.schema.toLowerCase()
+  const ready = sessionOf(node.connectionId) === 'ready'
+  const attached = name !== 'main' && name !== 'temp'
+  const saved =
+    connection.settings.family === 'files' &&
+    connection.settings.databases.some((database) => database.schema.toLowerCase() === name)
+  const items: MenuItem[] = []
+  if (node.pill === 'memdb' || node.pill === 'memory') {
+    items.push({
+      label: 'Enregistrer dans un fichier…',
+      icon: Save,
+      disabled: !ready,
+      onSelect: () => {
+        backingUp.value = node.schema
+      },
+    })
+  }
+  if (attached) {
+    items.push({
+      label: 'Détacher pour la session',
+      icon: Unlink,
+      disabled: !ready,
+      onSelect: () => emit('detach', node.schema),
+    })
+  }
+  if (attached && saved) {
+    items.push({
+      label: 'Retirer de la connexion…',
+      icon: Trash2,
+      onSelect: () => connections.openManager(connection.id),
+    })
+  }
+  return items.length === 0 ? null : items
 }
 
 /**
@@ -792,6 +868,10 @@ watch(() => visible.value.rows.length, retryScroll)
       </div>
     </div>
 
+    <navigator-backup-dialog
+      v-model:schema="backingUp"
+      @save="(schema, location) => emit('backup', schema, location)"
+    />
     <connection-remove-dialog
       v-model:connection="removing"
       @removed="forgetFailure"

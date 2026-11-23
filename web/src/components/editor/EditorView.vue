@@ -787,6 +787,16 @@ watch(
   { immediate: true },
 )
 
+// A database copied into a file: a message says where.
+watch(
+  () => state.backedUp,
+  (copy) => {
+    if (copy !== null) {
+      notify(`Base « ${copy.schema} » enregistrée dans ${copy.location.address}`)
+    }
+  },
+)
+
 // The session attached or detached a database: the navigator shows its
 // schemas again. The first list, told as the session opens, changes
 // nothing.
@@ -822,12 +832,35 @@ async function disconnect(): Promise<void> {
   }
 }
 
+/**
+ * Copies a database of the session into a new file ("Enregistrer dans un
+ * fichier…" of the navigator).
+ *
+ * @param schema Schema of the database.
+ * @param location Location of the file, as typed.
+ */
+function backupDatabase(schema: string, location: string): void {
+  session.backupDatabase(schema, location)
+}
+
+/**
+ * Detaches a database from the session ("Détacher pour la session" of the
+ * navigator); it comes back with the next session.
+ *
+ * @param schema Schema of the database.
+ */
+function detachDatabase(schema: string): void {
+  session.detachDatabase(schema)
+}
+
 defineExpose({
   run,
   runWhenReady,
   showTableWhenReady,
   writeIndexOperationsWhenReady,
   changeDatabaseWhenReady,
+  backupDatabase,
+  detachDatabase,
   disconnect,
 })
 </script>

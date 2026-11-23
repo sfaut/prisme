@@ -221,7 +221,9 @@ Rules:
 | `PencilRuler` | Write the operations on an index | line's button |
 | `Pencil` | Edit a connection, in the connections manager | source's menu |
 | `RefreshCw` | Reload the catalog of a connection, of all of them | source's menu; sources' menu |
-| `Trash2` | Delete a connection; remove a database attached to a connection | source's menu; connections manager (`ConnectionFormFiles`, `ConnectionCheckFiles`) |
+| `Trash2` | Delete a connection; remove a database attached to a connection | source's menu; database's menu ("Retirer de la connexion…"); connections manager (`ConnectionFormFiles`, `ConnectionCheckFiles`) |
+| `Unlink` | Detach a database for the session ("Détacher pour la session") | database's menu |
+| `Save` | Copy a database in memory into a file ("Enregistrer dans un fichier…") | database's menu |
 | `EllipsisVertical` | Menu of a line | line's button |
 
 #### Connections manager
