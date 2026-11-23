@@ -103,7 +103,7 @@ Architecture:
 - ⬜ API of the attachments of the navigator (session or connection)
 - ⬜ Saving a database in memory to a file
 - ⬜ Schemas read again after `ATTACH` / `DETACH`
-- ⬜ Switches `attach` and `maintenance`
+- ✅ Switches `attach` and `maintenance` (classification of step 3, migration 0040)
 - ⬜ Remote databases read within the preferences of their user (`RemoteLimits`), cache of each user in `cache/locations/<user>`, purged by `location::purge` after `remote_cache_days`
 
 ## 6. SQLite interface
