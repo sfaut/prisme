@@ -3,6 +3,8 @@
  * pane shows, a line of its list, and the creation in progress (wizard).
  */
 
+import type { Engine } from '@/api/generated/Engine'
+
 import type { ConnectionForm } from './connectionForm'
 import type { SourceTypeKey } from './sourceTypes'
 
@@ -25,7 +27,11 @@ export interface ListEntry {
    */
   name: string
   /**
-   * Where it points: `host:port`.
+   * Engine of the connection, which gives its family and its icon.
+   */
+  engine: Engine
+  /**
+   * Where it points: `host:port`, or the location of the main database.
    */
   place: string
   /**

@@ -2,10 +2,10 @@
  * Kinds of data sources that a connection can reach, as the connections
  * manager offers them, grouped in families (database servers, files).
  *
- * The list states where Prisme is going: only MySQL / MariaDB is supported
- * today (`ready`). The other kinds show greyed out, marked "à venir", in the
- * choice of the type of a new connection; the family of the files has no
- * connection yet.
+ * The list states where Prisme is going: MySQL / MariaDB and SQLite are
+ * supported today (`ready`), each served by its engine. The other kinds
+ * show greyed out, marked "à venir", in the choice of the type of a new
+ * connection.
  */
 
 import {
@@ -18,6 +18,8 @@ import {
   Sheet,
 } from '@lucide/vue'
 import type { Component } from 'vue'
+
+import type { Engine } from '@/api/generated/Engine'
 
 /**
  * Key of a kind of source.
@@ -52,6 +54,16 @@ export interface SourceType {
 }
 
 /**
+ * A kind of source that a connection can reach today, with its engine.
+ */
+export interface ReadySourceType extends SourceType {
+  /**
+   * Engine that serves it.
+   */
+  engine: Engine
+}
+
+/**
  * A family of kinds of sources.
  */
 export interface SourceFamily {
@@ -81,12 +93,35 @@ export interface SourceFamily {
  * Kind of the MySQL and MariaDB connections, the only one supported: the
  * flavor is detected on connection.
  */
-export const MYSQL: SourceType = {
+export const MYSQL: ReadySourceType = {
   key: 'mysql',
   label: 'MySQL / MariaDB',
   description: 'Serveur MySQL ou MariaDB ; la variante se détecte à la connexion.',
   icon: Server,
   ready: true,
+  engine: 'mysql',
+}
+
+/**
+ * Kind of the SQLite connections: a main database and those attached to it,
+ * in files or in memory.
+ */
+export const SQLITE: ReadySourceType = {
+  key: 'sqlite',
+  label: 'SQLite',
+  description:
+    'Bases dans des fichiers .sqlite ou .db, lus par le serveur de Prisme, ou en mémoire.',
+  icon: HardDrive,
+  ready: true,
+  engine: 'sqlite',
+}
+
+/**
+ * Kind of source of each engine: a new engine is forgotten nowhere.
+ */
+export const ENGINE_TYPES: Record<Engine, ReadySourceType> = {
+  mysql: MYSQL,
+  sqlite: SQLITE,
 }
 
 /**
@@ -120,15 +155,9 @@ export const SOURCE_FAMILIES: SourceFamily[] = [
     key: 'file',
     title: 'Fichiers',
     heading: 'Fichiers',
-    ready: false,
+    ready: true,
     types: [
-      {
-        key: 'sqlite',
-        label: 'SQLite',
-        description: 'Base dans un fichier .sqlite ou .db.',
-        icon: HardDrive,
-        ready: false,
-      },
+      SQLITE,
       {
         key: 'duckdb',
         label: 'DuckDB',

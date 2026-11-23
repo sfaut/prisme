@@ -112,7 +112,7 @@ Architecture:
 
 ## 6. SQLite interface
 
-- ⬜ Family of the files ready, form of the files (main database, attached databases, location field with its protocol)
+- ✅ Family of the files ready, form of the files (main database, attached databases, location field with its protocol)
 - ⬜ Step **Vérification** database by database
 - ⬜ Saved connection: removal struck through and restorable
 - ⬜ List and card: location of `main`, number of attached databases, protocol

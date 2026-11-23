@@ -188,7 +188,7 @@ Rules:
 
 | Icon | Action | Where |
 |---|---|---|
-| `Plus` | New editor; add a connection | top bar, first of its right group, filled in the primary color (`TopBar`); connections manager (`ConnectionManagerList`) |
+| `Plus` | New editor; add a connection; attach a database to a connection | top bar, first of its right group, filled in the primary color (`TopBar`); connections manager (`ConnectionManagerList`, `ConnectionFormFiles`) |
 | `ChevronDown` | Menu of what "Nouveau" creates | top bar, joined to "Nouveau" (`UiSplitButton`) |
 | `Code`, `Server` | Create an editor, a connection | menu of "Nouveau" |
 | `History` | Reopen a closed editor | editors' bar |
@@ -221,7 +221,7 @@ Rules:
 | `PencilRuler` | Write the operations on an index | line's button |
 | `Pencil` | Edit a connection, in the connections manager | source's menu |
 | `RefreshCw` | Reload the catalog of a connection, of all of them | source's menu; sources' menu |
-| `Trash2` | Delete a connection | source's menu; connections manager |
+| `Trash2` | Delete a connection; remove a database attached to a connection | source's menu; connections manager |
 | `EllipsisVertical` | Menu of a line | line's button |
 
 #### Connections manager
@@ -261,6 +261,7 @@ Rules:
 | `Info`, `CircleCheckBig`, `CircleAlert`, `CircleX` | Message: information, success, warning, error | `UiAlert` |
 | `CircleCheckBig`, `CircleX` | Transient message: success, error, as in `UiAlert` | `UiToaster` |
 | `Eye` / `EyeOff` | Show / hide the password | connections manager (`ConnectionFormServer`) |
+| `FileCheck`, `FilePlus`, `MemoryStick` | Origin of a database held in files: existing file, new file, memory | connections manager (`ConnectionFormFiles`) |
 | `ChevronDown`, `Check` | Open a list; chosen item | `UiSelect` |
 | `Sun`, `Monitor`, `Moon` | Color mode: light, system, dark | top bar (`UiChoiceSwitch`) |
 | `User`, `Server`, `Settings` | Profile, connections, preferences | account menu |

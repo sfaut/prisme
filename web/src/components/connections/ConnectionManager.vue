@@ -6,10 +6,12 @@
   "⋮" menu of a source in the navigator ("Modifier", on that connection),
   through the connections store: it is mounted once.
 
-  A saved connection shows its card at the top (icon, name, flavor badge,
-  server and its version, last connection; the list gives its place), with "Tester", "Dupliquer" and
-  "Supprimer" (after confirmation, `ConnectionRemoveDialog`), then its
-  settings on a single page (`ConnectionFormServer`). "Tester" connects with the
+  A saved connection shows its card at the top (icon of its kind, name,
+  flavor badge, source and its version, last connection; the list gives its
+  place), with "Tester", "Dupliquer" and "Supprimer" (after confirmation,
+  `ConnectionRemoveDialog`), then its settings on a single page, those of
+  its family: a server (`ConnectionFormServer`) or databases held in files
+  (`ConnectionFormFiles`). "Tester" connects with the
   settings as typed; unchanged, the test is that of the saved connection,
   whose server and date of connection the server then remembers.
 
@@ -23,9 +25,9 @@
   warning says so, and the button says that they will be rolled back.
 
   A creation goes in three steps (`ConnectionManagerSteps`): the kind of
-  source (`ConnectionManagerTypes`, MySQL / MariaDB only for now), the
-  settings, then the result of their test before saving: a failed test does
-  not prevent saving (a server not reachable yet). It stays
+  source (`ConnectionManagerTypes`, MySQL / MariaDB or SQLite for now), the
+  settings of its family, then the result of their test before saving: a
+  failed test does not prevent saving (a server not reachable yet). It stays
   under the "Nouvelle connexion" button while another connection is shown.
   "Dupliquer" starts a creation at the settings, from the input of the
   connection shown under another name; its password, left empty, is that of
@@ -50,16 +52,19 @@ import {
   connectedText,
   copyForm,
   connectionOf,
+  ENGINE_FAMILIES,
   emptyForm,
   formOf,
   isChanged,
   placeOf,
+  placeOfForm,
 } from './connectionForm'
 import type { Creation, ListEntry, ManagerSelection } from './connectionManager'
-import { SOURCE_FAMILIES } from './sourceTypes'
+import { ENGINE_TYPES, SOURCE_FAMILIES } from './sourceTypes'
 import { openTransactionsNotice } from './transactionNotice'
 
 import ConnectionFlavorBadge from './ConnectionFlavorBadge.vue'
+import ConnectionFormFiles from './ConnectionFormFiles.vue'
 import ConnectionFormServer from './ConnectionFormServer.vue'
 import ConnectionManagerList from './ConnectionManagerList.vue'
 import ConnectionManagerSteps from './ConnectionManagerSteps.vue'
@@ -79,6 +84,11 @@ const editors = useEditorsStore()
 const TYPES = new Map(
   SOURCE_FAMILIES.flatMap((family) => family.types).map((type) => [type.key, type]),
 )
+
+/**
+ * Engine of each kind of source supported, by key.
+ */
+const TYPE_ENGINES = new Map(Object.values(ENGINE_TYPES).map((type) => [type.key, type.engine]))
 
 /**
  * Is the window open?
@@ -181,6 +191,7 @@ const entries = computed<ListEntry[]>(() =>
     const isChangedNow = changed(connection)
     return {
       id: connection.id,
+      engine: connection.engine,
       name: isChangedNow ? forms.value[connection.id]!.name : connection.name,
       place: placeOf(connection.settings),
       changed: isChangedNow,
@@ -255,12 +266,26 @@ const summary = computed(() => {
     return []
   }
   const input = step.form
+  const settings =
+    ENGINE_FAMILIES[input.engine] === 'files'
+      ? input.databases.map((database) => ({
+          label: database.schema || '(sans schéma)',
+          value:
+            database.origin === 'memory'
+              ? 'en mémoire'
+              : database.origin === 'new'
+                ? `${database.location} (à créer)`
+                : database.location,
+        }))
+      : [
+          { label: 'Serveur', value: placeOfForm(input) },
+          { label: 'Compte', value: input.username || '(aucun)' },
+          { label: 'Base', value: input.database_name || '(aucune)' },
+        ]
   return [
     { label: 'Type', value: TYPES.get(step.type)!.label },
     { label: 'Nom', value: input.name || '(sans nom)' },
-    { label: 'Serveur', value: placeOf(input) },
-    { label: 'Compte', value: input.username || '(aucun)' },
-    { label: 'Base', value: input.database_name || '(aucune)' },
+    ...settings,
     { label: 'Session gardée', value: `${input.session_timeout_minutes} min` },
   ]
 })
@@ -432,7 +457,12 @@ function duplicate(): void {
   if (connection === null || input === null) {
     return
   }
-  creation.value = { step: 2, type: 'mysql', form: copyForm(input), copyOf: connection.id }
+  creation.value = {
+    step: 2,
+    type: ENGINE_TYPES[connection.engine].key,
+    form: copyForm(input),
+    copyOf: connection.id,
+  }
   selected.value = 'new'
   clearMessages()
 }
@@ -448,6 +478,7 @@ async function next(): Promise<void> {
   }
   clearMessages()
   if (current.step === 1) {
+    current.form.engine = TYPE_ENGINES.get(current.type) ?? current.form.engine
     current.step = 2
     return
   }
@@ -562,7 +593,7 @@ function onRemoved(id: number): void {
             class="grid size-12 shrink-0 place-items-center rounded-control bg-primary/15 text-primary"
             aria-hidden="true"
           >
-            <component :is="SOURCE_FAMILIES[0]!.types[0]!.icon" class="size-5" />
+            <component :is="ENGINE_TYPES[saved.engine].icon" class="size-5" />
           </span>
           <div class="flex min-w-0 flex-1 flex-col gap-1">
             <h3 class="flex min-w-0 items-center gap-2 text-lg font-semibold text-fg-strong">
@@ -639,11 +670,14 @@ function onRemoved(id: number): void {
             v-model:type="shownCreation.type"
           />
           <!-- The input is changed in place: the form gets it, without replacing it. -->
-          <connection-form-server
-            v-else-if="form && (saved || shownCreation?.step === 2)"
-            :form="form"
-            :password="saved ? 'saved' : shownCreation?.copyOf ? 'copy' : 'new'"
-          />
+          <template v-else-if="form && (saved || shownCreation?.step === 2)">
+            <connection-form-files v-if="ENGINE_FAMILIES[form.engine] === 'files'" :form="form" />
+            <connection-form-server
+              v-else
+              :form="form"
+              :password="saved ? 'saved' : shownCreation?.copyOf ? 'copy' : 'new'"
+            />
+          </template>
           <template v-else-if="shownCreation?.step === 3">
             <dl
               class="grid grid-cols-[--spacing(40)_minmax(0,1fr)] gap-x-6 gap-y-2 rounded-control border border-line px-4 py-3"

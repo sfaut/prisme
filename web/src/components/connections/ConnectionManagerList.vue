@@ -3,11 +3,12 @@
   button, the connection being created right under it, then the saved
   connections grouped by family of sources (`sourceTypes.ts`).
 
-  The servers' family folds and unfolds; the files' family has no
-  connection yet: it shows "à venir". A creation starts from the "Nouvelle
-  connexion" button alone.
+  Each family folds and unfolds; a family without a kind supported yet
+  shows "à venir". A creation starts from the "Nouvelle connexion" button
+  alone.
 
-  Each connection shows its icon, its name and where it points, and a dot:
+  Each connection shows the icon of its kind, its name and where it points
+  (`host:port`, or the location of its main database), and a dot:
   green once connected, grey never. A connection changed and not saved shows
   its name as typed, "modifiée, non enregistrée" in place of its place, and
   an amber dot; so does the creation in progress, with its step. The filter
@@ -18,7 +19,7 @@ import { ChevronDown, ChevronRight, Plus, Search } from '@lucide/vue'
 import { computed, ref } from 'vue'
 
 import type { Creation, ListEntry, ManagerSelection } from './connectionManager'
-import { SOURCE_FAMILIES } from './sourceTypes'
+import { ENGINE_TYPES, SOURCE_FAMILIES, type SourceFamily } from './sourceTypes'
 
 import UiButton from '@/components/ui/UiButton.vue'
 import UiInput from '@/components/ui/UiInput.vue'
@@ -55,9 +56,30 @@ const emit = defineEmits<{
 const query = ref('')
 
 /**
- * Is the servers' family folded?
+ * Keys of the families folded.
  */
-const folded = ref(false)
+const folded = ref(new Set<SourceFamily['key']>())
+
+/**
+ * Folds a family, or unfolds it.
+ *
+ * @param key Key of the family.
+ */
+function toggle(key: SourceFamily['key']): void {
+  if (!folded.value.delete(key)) {
+    folded.value.add(key)
+  }
+}
+
+/**
+ * Connections of a family, among those given.
+ *
+ * @param family Family of sources.
+ * @param entries Connections.
+ */
+function ofFamily(family: SourceFamily, entries: ListEntry[]): ListEntry[] {
+  return entries.filter((entry) => family.types.includes(ENGINE_TYPES[entry.engine]))
+}
 
 /**
  * Connections kept by the filter.
@@ -133,12 +155,16 @@ function lineClasses(active: boolean): string {
           v-if="family.ready"
           type="button"
           class="flex h-7 flex-1 cursor-pointer items-center gap-2 text-sm font-semibold text-fg-secondary hover:text-fg-strong"
-          :aria-expanded="!folded"
-          @click="folded = !folded"
+          :aria-expanded="!folded.has(family.key)"
+          @click="toggle(family.key)"
         >
-          <component :is="folded ? ChevronRight : ChevronDown" class="size-4" aria-hidden="true" />
+          <component
+            :is="folded.has(family.key) ? ChevronRight : ChevronDown"
+            class="size-4"
+            aria-hidden="true"
+          />
           {{ family.title }}
-          <span class="font-medium text-fg-faint">{{ entries.length }}</span>
+          <span class="font-medium text-fg-faint">{{ ofFamily(family, entries).length }}</span>
         </button>
         <span
           v-else
@@ -152,9 +178,9 @@ function lineClasses(active: boolean): string {
         </span>
       </div>
 
-      <div v-if="family.ready && !folded" class="flex flex-col gap-1">
+      <div v-if="family.ready && !folded.has(family.key)" class="flex flex-col gap-1">
         <button
-          v-for="entry in shown"
+          v-for="entry in ofFamily(family, shown)"
           :key="entry.id"
           type="button"
           class="flex w-full cursor-pointer items-center gap-3 rounded-control border px-3 py-1 text-start"
@@ -163,7 +189,7 @@ function lineClasses(active: boolean): string {
           @click="emit('select', entry.id)"
         >
           <component
-            :is="family.types[0]!.icon"
+            :is="ENGINE_TYPES[entry.engine].icon"
             class="size-5 shrink-0"
             :class="selected === entry.id ? 'text-primary' : 'text-fg-secondary'"
             aria-hidden="true"
@@ -183,7 +209,10 @@ function lineClasses(active: boolean): string {
             aria-hidden="true"
           />
         </button>
-        <p v-if="shown.length === 0 && query.trim() !== ''" class="p-3 text-sm text-fg-secondary">
+        <p
+          v-if="ofFamily(family, shown).length === 0 && query.trim() !== ''"
+          class="p-3 text-sm text-fg-secondary"
+        >
           Aucune connexion ne correspond.
         </p>
       </div>
