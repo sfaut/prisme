@@ -32,8 +32,15 @@ pub(crate) enum ClientMessage {
     /// does not exist.
     Backup { schema: String, location: String },
     /// Attach the database at `location`, as typed (an absolute path, a URL
-    /// or `:memory:`), to the session, under the schema `schema`.
-    Attach { schema: String, location: String },
+    /// or `:memory:`), to the session, under the schema `schema`; with
+    /// `save`, also add it to the databases of the connection.
+    Attach {
+        schema: String,
+        location: String,
+        #[serde(default)]
+        #[ts(optional, as = "Option<bool>")]
+        save: bool,
+    },
     /// Detach the database of the schema `schema` from the session.
     Detach { schema: String },
 }
@@ -63,6 +70,8 @@ pub(crate) enum SessionRequest {
         schema: String,
         /// Location of the database, as typed.
         location: String,
+        /// Also add it to the databases of the connection?
+        save: bool,
     },
     /// Detach the database of a schema.
     Detach(String),

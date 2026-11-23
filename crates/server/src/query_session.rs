@@ -113,17 +113,25 @@ pub(crate) struct Source {
     pub(crate) options: OpenOptions,
     /// Resources of the session, shared by its connections.
     pub(crate) shared: Arc<Shared>,
+    /// Saved connection of the source.
+    pub(crate) connection_id: i64,
 }
 
 /// Number of the last session opened, which names its resources.
 static SESSIONS: AtomicU64 = AtomicU64::new(0);
 
 impl Source {
-    /// Source of a session on `target`, read-only or not, opened on
+    /// Source of a session on `target`, of the saved connection
+    /// `connection_id`, read-only or not, opened on
     /// `namespace` when the engine changes namespaces (`USE`), else on the
     /// namespace of its settings. The session gets a key of its own, that
     /// its parallel connections share (`OpenOptions::session_key`).
-    pub(crate) fn new(target: Target, read_only: bool, namespace: Option<Namespace>) -> Self {
+    pub(crate) fn new(
+        connection_id: i64,
+        target: Target,
+        read_only: bool,
+        namespace: Option<Namespace>,
+    ) -> Self {
         let switches = drivers::of(target.engine).capabilities().switch_namespace;
         let number = SESSIONS.fetch_add(1, Ordering::Relaxed) + 1;
         let shared = Shared::new(format!("session-{number}"));
@@ -135,6 +143,7 @@ impl Source {
                 ..OpenOptions::default()
             }),
             shared: Arc::new(shared),
+            connection_id,
         }
     }
 

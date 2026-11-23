@@ -100,7 +100,13 @@ impl fmt::Display for Received<'_> {
             Some(ClientMessage::CancelQuery { query }) => write!(f, "cancel_query, query {query}"),
             Some(ClientMessage::Use { .. }) => f.write_str("use"),
             Some(ClientMessage::Backup { schema, .. }) => write!(f, "backup, schema {schema}"),
-            Some(ClientMessage::Attach { schema, .. }) => write!(f, "attach, schema {schema}"),
+            Some(ClientMessage::Attach { schema, save, .. }) => {
+                write!(f, "attach, schema {schema}")?;
+                if *save {
+                    f.write_str(", saved in the connection")?;
+                }
+                Ok(())
+            }
             Some(ClientMessage::Detach { schema }) => write!(f, "detach, schema {schema}"),
         }
     }

@@ -698,7 +698,7 @@ Prisme answers `{"type":"ready",...}` once connected to the target server. Then 
 
 `backup` copies a database of the session (a database in memory, from the navigator) into a new file, which must not exist: `backed_up` tells the copy, a session `error` its failure. A read-only session copies too: the copy writes no database of the session.
 
-`attach` (`{"type": "attach", "schema": "other", "location": "D:\\data\\other.db"}`, the location an absolute path, a URL or `:memory:`) and `detach` (`{"type": "detach", "schema": "other"}`) attach a database to the session and detach it, from the navigator: no switch applies, unlike an `ATTACH` written in SQL. `databases` answers them, a session `error` tells a database refused (schema `main` or `temp`, location not understood) or that cannot be opened.
+`attach` (`{"type": "attach", "schema": "other", "location": "D:\\data\\other.db"}`, the location an absolute path, a URL or `:memory:`) and `detach` (`{"type": "detach", "schema": "other"}`) attach a database to the session and detach it, from the navigator: no switch applies, unlike an `ATTACH` written in SQL. With `"save": true`, `attach` also adds the database after those of the connection ("Dans la connexion"), without closing the session; a database the connection cannot take (schema already there whatever its case, too many databases) is refused and detached again from the session. `databases` answers them, a session `error` tells a database refused (schema `main` or `temp`, location not understood) or that cannot be opened.
 
 Prisme first announces the queries of the batch (`batch`, each one numbered), then, for each query, messages carrying its number (`query`), in this order:
 

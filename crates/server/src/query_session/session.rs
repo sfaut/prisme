@@ -15,7 +15,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use prisme_connectors::api::{self, ConnectorError, DatabaseState, DatabaseStatus, Namespace};
+use prisme_connectors::api::{
+    self, ConnectorError, DatabaseState, DatabaseStatus, FileDatabase, Namespace,
+};
 use prisme_connectors::drivers;
 use prisme_connectors::flavor::Flavor;
 use prisme_connectors::location::Location;
@@ -36,6 +38,7 @@ use super::protocol::{BatchQuery, QueryRequest, ServerMessage, SessionRequest};
 use super::temporary_tables::TemporaryTables;
 use crate::analyze::dialect_of;
 use crate::api::AppState;
+use crate::api_error::ApiError;
 use crate::connections::{self, ConnectionsError};
 use crate::console::{self, Action};
 use crate::error_detail::ErrorDetail;
@@ -102,9 +105,13 @@ pub(super) async fn serve(
                         .instrument(console::action_span(Action::Databases))
                         .await
                 }
-                SessionRequest::Attach { schema, location } => {
+                SessionRequest::Attach {
+                    schema,
+                    location,
+                    save,
+                } => {
                     session
-                        .attach(connection.as_mut(), flavor, &schema, &location)
+                        .attach(connection.as_mut(), flavor, &schema, &location, save)
                         .instrument(console::action_span(Action::Databases))
                         .await
                 }
@@ -331,15 +338,17 @@ impl Session<'_> {
     }
 
     /// Attaches the database at `location`, as typed, under the schema
-    /// `schema`, and tells the client the databases of the session; a
-    /// database refused, or that cannot be opened, goes as a session error.
-    /// No switch: the request comes from the navigator, not from SQL.
+    /// `schema`, with `save` also to the databases of the connection, and
+    /// tells the client the databases of the session; a database refused,
+    /// or that cannot be opened, goes as a session error. No switch: the
+    /// request comes from the navigator, not from SQL.
     async fn attach(
         &self,
         connection: &mut dyn api::Session,
         flavor: Flavor,
         schema: &str,
         location: &str,
+        save: bool,
     ) -> Result<(), SessionStopped> {
         let database = match connections::attachment(schema, location) {
             Ok(database) => database,
@@ -350,7 +359,14 @@ impl Session<'_> {
             Ok(DatabaseState {
                 status: DatabaseStatus::Open { .. },
                 ..
-            }) => self.tell_databases(connection).await,
+            }) => {
+                if save && let Err(detail) = self.save_database(&database).await {
+                    // Not saved: the session goes back to its databases.
+                    let _ = connection.detach(&database.schema).await;
+                    return self.outbox.error(None, detail).await;
+                }
+                self.tell_databases(connection).await
+            }
             Ok(DatabaseState {
                 status: DatabaseStatus::Unavailable { failure },
                 ..
@@ -362,6 +378,23 @@ impl Session<'_> {
                 let detail = ErrorDetail::of_connector(&error, Some(flavor));
                 self.outbox.error(None, detail).await
             }
+        }
+    }
+
+    /// Adds `database`, just attached, to the databases of the connection of
+    /// the session.
+    async fn save_database(&self, database: &FileDatabase) -> Result<(), ErrorDetail> {
+        let user_id = self.user_id;
+        let id = self.source.connection_id;
+        let database = database.clone();
+        let saved = self
+            .state
+            .with_db(move |db, _| connections::append_file(db, user_id, id, &database))
+            .await;
+        match saved {
+            Ok(true) => Ok(()),
+            Err(ApiError::BadRequest(detail)) => Err(detail),
+            Ok(false) | Err(_) => Err(ErrorDetail::Internal),
         }
     }
 

@@ -394,8 +394,16 @@ async fn read_messages(
                     break;
                 }
             }
-            Ok(ClientMessage::Attach { schema, location }) => {
-                let request = SessionRequest::Attach { schema, location };
+            Ok(ClientMessage::Attach {
+                schema,
+                location,
+                save,
+            }) => {
+                let request = SessionRequest::Attach {
+                    schema,
+                    location,
+                    save,
+                };
                 if requests.send(request).await.is_err() {
                     break;
                 }

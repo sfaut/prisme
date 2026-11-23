@@ -1249,3 +1249,60 @@ async fn the_parallel_queries_see_a_database_the_navigator_attached() {
     let reads = "SELECT a FROM other.u; SELECT count(*) FROM other.u";
     assert_eq!(run_all_rows(&mut socket, reads).await, [3, 1]);
 }
+
+#[tokio::test]
+async fn saves_a_database_attached_in_the_connection() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let folder = tempfile::tempdir().unwrap();
+    let other = attachable_database(folder.path(), "other");
+    let (address, connection_id, editor_id) = start_connection(&memory_connection(), None).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    next_json(&mut socket).await;
+    let mut send = async |request: Value| -> Value {
+        socket
+            .send(ClientMessage::Text(request.to_string().into()))
+            .await
+            .unwrap();
+        next_json(&mut socket).await
+    };
+    let attach = |schema: &str| json!({ "type": "attach", "schema": schema, "location": other, "save": true });
+    assert_eq!(send(attach("other")).await["type"], "databases");
+    assert_eq!(send(attach("other_again")).await["type"], "databases");
+    // Detached from the session only, it stays in the connection: saved
+    // again, whatever its case, it is refused, and detached again from the
+    // session.
+    let detached = send(json!({ "type": "detach", "schema": "other" })).await;
+    assert_eq!(detached["type"], "databases", "{detached}");
+    let refused = send(attach("OTHER")).await;
+    assert_eq!(refused["type"], "error", "{refused}");
+    assert_eq!(refused["detail"]["code"], "duplicate_schema", "{refused}");
+    let detached = send(json!({ "type": "detach", "schema": "OTHER" })).await;
+    assert_eq!(detached["type"], "error", "{detached}");
+
+    // The connection holds the databases saved, in their order.
+    // In plain HTTP: no HTTP client among the dependencies.
+    let mut http = TcpStream::connect(&address).await.unwrap();
+    let request =
+        format!("GET /api/connections HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n");
+    http.write_all(request.as_bytes()).await.unwrap();
+    let mut answer = String::new();
+    http.read_to_string(&mut answer).await.unwrap();
+    let (_, body) = answer.split_once("\r\n\r\n").unwrap();
+    let connections: Value = serde_json::from_str(body).unwrap();
+    let saved = connections
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|connection| connection["id"] == connection_id)
+        .unwrap()
+        .clone();
+    let schemas: Vec<&str> = saved["settings"]["databases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|database| database["schema"].as_str().unwrap())
+        .collect();
+    assert_eq!(schemas, ["main", "other", "other_again"]);
+}

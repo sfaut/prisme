@@ -610,6 +610,47 @@ fn insert_files(
     Ok(())
 }
 
+/// Adds `database` after the databases of connection `id` of user
+/// `user_id`, a source held in files, as attached from the navigator: with
+/// the limits of `connection_files` (attached databases at most, schema
+/// unique whatever its case). Returns `false` if the connection does not
+/// exist, belongs to another user, or holds no files.
+pub fn append_file(
+    db: &Connection,
+    user_id: i64,
+    id: i64,
+    database: &FileDatabase,
+) -> Result<bool, ConnectionsError> {
+    let Some(saved) = files_of(db, user_id, Some(id))?.remove(&id) else {
+        return Ok(false);
+    };
+    if saved.len() > ATTACHED_MAX {
+        return Err(ConnectionsError::Invalid(ErrorDetail::TooManyDatabases {
+            max: count(ATTACHED_MAX),
+        }));
+    }
+    if saved
+        .iter()
+        .any(|other| other.schema.eq_ignore_ascii_case(&database.schema))
+    {
+        return Err(ConnectionsError::Invalid(ErrorDetail::DuplicateSchema {
+            schema: database.schema.clone(),
+        }));
+    }
+    db.execute(
+        "INSERT INTO connection_files (connection_id, position, schema_name, scheme, location)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            id,
+            u32::try_from(saved.len()).unwrap_or(u32::MAX),
+            database.schema,
+            database.location.scheme.key(),
+            database.location.address,
+        ],
+    )?;
+    Ok(true)
+}
+
 /// Changes connection `id` of user `user_id`. An empty password keeps the
 /// saved password: the interface does not know it, so it cannot send it back.
 ///
@@ -1516,7 +1557,36 @@ mod tests {
                 ..
             }
         ));
-        // A database attached from the navigator follows the same rules.
+        // A database attached from the navigator follows the same rules, and
+        // goes after the others when saved in the connection.
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let user_id = store::ensure_user(&db, "test@example.com").unwrap();
+        let id = insert(
+            &db,
+            &key,
+            user_id,
+            &files_connection("f", &[("main", ":memory:")]),
+        )
+        .unwrap();
+        let other = attachment("other", ":memory:").unwrap();
+        assert!(append_file(&db, user_id, id, &other).unwrap());
+        assert!(matches!(
+            append_file(&db, user_id, id, &attachment("OTHER", ":memory:").unwrap()),
+            Err(ConnectionsError::Invalid(
+                ErrorDetail::DuplicateSchema { .. }
+            ))
+        ));
+        assert!(!append_file(&db, user_id, id + 1, &other).unwrap());
+        let saved = files_of(&db, user_id, Some(id))
+            .unwrap()
+            .remove(&id)
+            .unwrap();
+        let schemas: Vec<&str> = saved
+            .iter()
+            .map(|database| database.schema.as_str())
+            .collect();
+        assert_eq!(schemas, ["main", "other"]);
         assert_eq!(attachment(" other ", ":memory:").unwrap().schema, "other");
         for schema in ["Main", "temp"] {
             assert!(matches!(

@@ -363,7 +363,7 @@ async fn query_socket(
             Ok::<_, ApiError>((target, read_only, name))
         })
         .await?;
-    let source = Source::new(target.ok_or(ApiError::NotFound)?, read_only, None);
+    let source = Source::new(id, target.ok_or(ApiError::NotFound)?, read_only, None);
     Ok(upgrade.on_upgrade(move |socket| {
         let span = api_log::connection_span(id);
         let history = span.in_scope(|| console::connection_span(user_id, &name));
@@ -421,7 +421,7 @@ async fn editor_session(
         .await?
         .ok_or(ApiError::NotFound)?;
     let namespace = opening_database(query.database, saved_database).map(Namespace::single);
-    let source = Source::new(target, read_only, namespace);
+    let source = Source::new(connection_id, target, read_only, namespace);
     let keep_alive = Duration::from_secs(u64::from(minutes) * 60);
     Ok(upgrade.on_upgrade(move |socket| {
         let span = api_log::editor_span(id);
