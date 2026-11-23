@@ -1185,3 +1185,67 @@ async fn a_read_only_sqlite_session_copies_its_databases() {
     assert_eq!(message["type"], "backed_up", "{message}");
     assert!(copy.exists());
 }
+
+#[tokio::test]
+async fn attaches_and_detaches_a_database_of_a_sqlite_session() {
+    let folder = tempfile::tempdir().unwrap();
+    let other = attachable_database(folder.path(), "other");
+    // A read-only session, without switches: the request comes from the
+    // navigator.
+    let (address, _, editor_id) = start_connection(&memory_connection(), None).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    next_json(&mut socket).await;
+
+    let mut send = async |request: Value| -> Value {
+        socket
+            .send(ClientMessage::Text(request.to_string().into()))
+            .await
+            .unwrap();
+        next_json(&mut socket).await
+    };
+    let schemas = |message: &Value| -> Vec<String> {
+        assert_eq!(message["type"], "databases", "{message}");
+        message["databases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|database| database["schema"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let attached = send(json!({ "type": "attach", "schema": "other", "location": other })).await;
+    assert_eq!(schemas(&attached), ["main", "other"]);
+    assert_eq!(attached["databases"][1]["location"]["scheme"], "file");
+    let missing = folder
+        .path()
+        .join("missing.db")
+        .to_string_lossy()
+        .into_owned();
+    for (schema, location) in [("gone", missing.as_str()), ("temp", other.as_str())] {
+        let refused =
+            send(json!({ "type": "attach", "schema": schema, "location": location })).await;
+        assert_eq!(refused["type"], "error", "{refused}");
+    }
+    let detached = send(json!({ "type": "detach", "schema": "other" })).await;
+    assert_eq!(schemas(&detached), ["main"]);
+    let refused = send(json!({ "type": "detach", "schema": "other" })).await;
+    assert_eq!(refused["type"], "error", "{refused}");
+}
+
+#[tokio::test]
+async fn the_parallel_queries_see_a_database_the_navigator_attached() {
+    let folder = tempfile::tempdir().unwrap();
+    let other = attachable_database(folder.path(), "other");
+    let (address, _, editor_id) = start_connection(&memory_connection(), None).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    next_json(&mut socket).await;
+    let request = json!({ "type": "attach", "schema": "other", "location": other });
+    socket
+        .send(ClientMessage::Text(request.to_string().into()))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut socket).await["type"], "databases");
+    let reads = "SELECT a FROM other.u; SELECT count(*) FROM other.u";
+    assert_eq!(run_all_rows(&mut socket, reads).await, [3, 1]);
+}

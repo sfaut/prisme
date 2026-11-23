@@ -394,6 +394,17 @@ async fn read_messages(
                     break;
                 }
             }
+            Ok(ClientMessage::Attach { schema, location }) => {
+                let request = SessionRequest::Attach { schema, location };
+                if requests.send(request).await.is_err() {
+                    break;
+                }
+            }
+            Ok(ClientMessage::Detach { schema }) => {
+                if requests.send(SessionRequest::Detach(schema)).await.is_err() {
+                    break;
+                }
+            }
             Ok(ClientMessage::Cancel) => cancellation.cancel().await,
             Ok(ClientMessage::CancelQuery { query }) => cancellation.cancel_query(query).await,
             Err(error) => {

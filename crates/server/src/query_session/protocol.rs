@@ -31,6 +31,11 @@ pub(crate) enum ClientMessage {
     /// a new file at `location`, as typed: an absolute path, of a file that
     /// does not exist.
     Backup { schema: String, location: String },
+    /// Attach the database at `location`, as typed (an absolute path, a URL
+    /// or `:memory:`), to the session, under the schema `schema`.
+    Attach { schema: String, location: String },
+    /// Detach the database of the schema `schema` from the session.
+    Detach { schema: String },
 }
 
 /// Request passed to the session by the reading of the client's messages.
@@ -52,6 +57,15 @@ pub(crate) enum SessionRequest {
         /// Location of the file, as typed.
         location: String,
     },
+    /// Attach a database.
+    Attach {
+        /// Schema of the database.
+        schema: String,
+        /// Location of the database, as typed.
+        location: String,
+    },
+    /// Detach the database of a schema.
+    Detach(String),
 }
 
 /// Run request sent by the client.
@@ -214,8 +228,9 @@ pub(crate) enum ServerMessage {
     /// at the end of a request, before `batch_done`.
     Transaction { open: bool },
     /// The databases attached to the session's connection changed, after a
-    /// request that attached or detached one, before `batch_done`: the main
-    /// one first, in the order of their attachment.
+    /// batch that attached or detached one, before `batch_done`, or after an
+    /// `attach` or `detach` request: the main one first, in the order of
+    /// their attachment.
     Databases { databases: Vec<AttachedDatabase> },
     /// Last batch of the session, sent to a WebSocket that reattaches to it.
     Resume {

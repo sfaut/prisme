@@ -410,6 +410,29 @@ impl NewFilesSettings {
     }
 }
 
+/// Database to attach to a session from the navigator, as typed: checked
+/// as an attached database of `connection_files` (name of its schema,
+/// `main` and `temp` reserved), its location read.
+pub fn attachment(schema: &str, location: &str) -> Result<FileDatabase, ConnectionsError> {
+    let schema = schema.trim();
+    check_length(Field::SchemaName, schema, 1, SCHEMA_NAME_MAX_LENGTH)?;
+    if schema.eq_ignore_ascii_case(MAIN_SCHEMA) || schema.eq_ignore_ascii_case(TEMP_SCHEMA) {
+        return Err(ConnectionsError::Invalid(ErrorDetail::ReservedSchema {
+            schema: schema.to_string(),
+        }));
+    }
+    let location = Location::parse(location).map_err(|error| {
+        ConnectionsError::Invalid(ErrorDetail::Location {
+            schema: schema.to_string(),
+            error,
+        })
+    })?;
+    Ok(FileDatabase {
+        schema: schema.to_string(),
+        location,
+    })
+}
+
 /// Dialect of the engine `engine`, for its on-connect queries: that of its
 /// first flavor (MySQL's also serves MariaDB, which shares the syntax of
 /// settings).
@@ -1492,6 +1515,20 @@ mod tests {
                 error: LocationError::NotCreatable { .. },
                 ..
             }
+        ));
+        // A database attached from the navigator follows the same rules.
+        assert_eq!(attachment(" other ", ":memory:").unwrap().schema, "other");
+        for schema in ["Main", "temp"] {
+            assert!(matches!(
+                attachment(schema, ":memory:"),
+                Err(ConnectionsError::Invalid(
+                    ErrorDetail::ReservedSchema { .. }
+                ))
+            ));
+        }
+        assert!(matches!(
+            attachment("other", "relative.db"),
+            Err(ConnectionsError::Invalid(ErrorDetail::Location { .. }))
         ));
         // The settings of SQLite at connection are its pragmas, not those of MySQL.
         let mut connection = files_connection("f", &[("main", ":memory:")]);

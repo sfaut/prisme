@@ -15,7 +15,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use prisme_connectors::api::{self, ConnectorError, Namespace};
+use prisme_connectors::api::{self, ConnectorError, DatabaseState, DatabaseStatus, Namespace};
 use prisme_connectors::drivers;
 use prisme_connectors::flavor::Flavor;
 use prisme_connectors::location::Location;
@@ -36,6 +36,7 @@ use super::protocol::{BatchQuery, QueryRequest, ServerMessage, SessionRequest};
 use super::temporary_tables::TemporaryTables;
 use crate::analyze::dialect_of;
 use crate::api::AppState;
+use crate::connections::{self, ConnectionsError};
 use crate::console::{self, Action};
 use crate::error_detail::ErrorDetail;
 
@@ -98,6 +99,18 @@ pub(super) async fn serve(
                 SessionRequest::Backup { schema, location } => {
                     session
                         .backup(connection.as_mut(), flavor, &schema, &location)
+                        .instrument(console::action_span(Action::Databases))
+                        .await
+                }
+                SessionRequest::Attach { schema, location } => {
+                    session
+                        .attach(connection.as_mut(), flavor, &schema, &location)
+                        .instrument(console::action_span(Action::Databases))
+                        .await
+                }
+                SessionRequest::Detach(schema) => {
+                    session
+                        .detach(connection.as_mut(), flavor, &schema)
                         .instrument(console::action_span(Action::Databases))
                         .await
                 }
@@ -315,6 +328,72 @@ impl Session<'_> {
                 self.outbox.error(None, detail).await
             }
         }
+    }
+
+    /// Attaches the database at `location`, as typed, under the schema
+    /// `schema`, and tells the client the databases of the session; a
+    /// database refused, or that cannot be opened, goes as a session error.
+    /// No switch: the request comes from the navigator, not from SQL.
+    async fn attach(
+        &self,
+        connection: &mut dyn api::Session,
+        flavor: Flavor,
+        schema: &str,
+        location: &str,
+    ) -> Result<(), SessionStopped> {
+        let database = match connections::attachment(schema, location) {
+            Ok(database) => database,
+            Err(ConnectionsError::Invalid(detail)) => return self.outbox.error(None, detail).await,
+            Err(_) => return self.outbox.error(None, ErrorDetail::Internal).await,
+        };
+        match connection.attach(&database).await {
+            Ok(DatabaseState {
+                status: DatabaseStatus::Open { .. },
+                ..
+            }) => self.tell_databases(connection).await,
+            Ok(DatabaseState {
+                status: DatabaseStatus::Unavailable { failure },
+                ..
+            }) => {
+                let detail = ErrorDetail::Connect { failure };
+                self.outbox.error(None, detail).await
+            }
+            Err(error) => {
+                let detail = ErrorDetail::of_connector(&error, Some(flavor));
+                self.outbox.error(None, detail).await
+            }
+        }
+    }
+
+    /// Detaches the database of the schema `schema`, and tells the client
+    /// the databases of the session; a failure goes as a session error.
+    async fn detach(
+        &self,
+        connection: &mut dyn api::Session,
+        flavor: Flavor,
+        schema: &str,
+    ) -> Result<(), SessionStopped> {
+        match connection.detach(schema).await {
+            Ok(()) => self.tell_databases(connection).await,
+            Err(error) => {
+                let detail = ErrorDetail::of_connector(&error, Some(flavor));
+                self.outbox.error(None, detail).await
+            }
+        }
+    }
+
+    /// Lists the databases of the session's connection again, and tells
+    /// them to the client.
+    async fn tell_databases(
+        &self,
+        connection: &mut dyn api::Session,
+    ) -> Result<(), SessionStopped> {
+        self.follow_databases(connection).await;
+        self.outbox
+            .send(ServerMessage::Databases {
+                databases: self.source.shared.listed(),
+            })
+            .await
     }
 
     /// Handles a request of the client: splits the text, then runs the query

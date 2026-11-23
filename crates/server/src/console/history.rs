@@ -57,7 +57,7 @@ pub enum Action {
     /// (`SHOW WARNINGS` for MySQL and MariaDB).
     Diagnostics,
     /// Databases of a session handled from the navigator: copy of a
-    /// database into a file.
+    /// database into a file, attachment, detachment.
     Databases,
 }
 

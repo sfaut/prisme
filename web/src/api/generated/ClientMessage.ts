@@ -9,4 +9,6 @@ export type ClientMessage =
   | { "type": "cancel" }
   | { "type": "cancel_query"; query: number }
   | { "type": "use"; database: string }
-  | { "type": "backup"; schema: string; location: string };
+  | { "type": "backup"; schema: string; location: string }
+  | { "type": "attach"; schema: string; location: string }
+  | { "type": "detach"; schema: string };
