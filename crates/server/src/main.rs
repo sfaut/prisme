@@ -37,6 +37,8 @@ mod settings;
 mod setup;
 mod store;
 mod tab_pivot;
+#[cfg(test)]
+mod test_support;
 mod user_display;
 mod web_assets;
 

@@ -4,26 +4,22 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use tokio::net::TcpStream;
+use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message as ClientMessage;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 
 use crate::api::{AppState, Folders, router};
-use crate::connections::{
-    self, NewConnection, NewFileDatabase, NewFilesSettings, NewServerSettings, NewSettings,
-};
+use crate::connections::{self, NewConnection, NewServerSettings, NewSettings};
 use crate::editors::{self, NewEditor};
 use crate::error_detail::ErrorDetail;
 use crate::master_key::MasterKey;
-use crate::settings::{self, SettingsUpdate};
 use crate::store;
+use crate::test_support::{ClientSocket, allow_writes, memory_connection};
 use prisme_connectors::api::Engine;
 use prisme_connectors::flavor::Flavor;
 use prisme_connectors::mysql::MysqlTarget;
 use prisme_connectors::test_servers;
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{WriteKind, classify};
-
-type ClientSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 /// Starts Prisme on a free port, with a saved connection to `target` and
 /// an editor on this connection, and returns the server's address, the id
@@ -60,22 +56,7 @@ async fn start_connection(new: &NewConnection, writes: Option<&[WriteKind]>) -> 
     let key = MasterKey::generate();
     let user_id = store::ensure_user(&db, "test@example.com").unwrap();
     if let Some(writes) = writes {
-        let current = settings::load(&db, user_id).unwrap();
-        let update = SettingsUpdate {
-            row_limit: current.row_limit,
-            read_only_session: false,
-            allowed_writes: writes.to_vec(),
-            history_retention_days: current.history_retention_days,
-            debug_retention_days: current.debug_retention_days,
-            indent_size: current.indent_size,
-            concat_max_bytes: current.concat_max_bytes,
-            pivot_refresh_ms: current.pivot_refresh_ms,
-            remote_connect_timeout_seconds: current.remote_connect_timeout_seconds,
-            remote_download_timeout_minutes: current.remote_download_timeout_minutes,
-            remote_max_mebibytes: current.remote_max_mebibytes,
-            remote_cache_days: current.remote_cache_days,
-        };
-        settings::update(&db, user_id, &update).unwrap();
+        allow_writes(&db, user_id, writes);
     }
     let id = connections::insert(&db, &key, user_id, new).unwrap();
     let new_editor = NewEditor {
@@ -1022,24 +1003,6 @@ async fn editor_session_ends_when_the_server_closes_its_connection() {
                 }
             })
             .await;
-    }
-}
-
-/// Connection of SQLite to a main database in memory.
-fn memory_connection() -> NewConnection {
-    NewConnection {
-        name: "memory".to_string(),
-        engine: Engine::Sqlite,
-        settings: NewSettings::Files(NewFilesSettings {
-            databases: vec![NewFileDatabase {
-                schema: "main".to_string(),
-                location: ":memory:".to_string(),
-                create: false,
-            }],
-        }),
-        init_sql: String::new(),
-        session_timeout_minutes: 5,
-        show_system_schemas: true,
     }
 }
 

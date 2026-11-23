@@ -16,13 +16,11 @@ use tower::ServiceExt;
 use super::table::{self, NewExport};
 use super::{ExportState, interrupt_unfinished};
 use crate::api::{AppState, Folders, router};
-use crate::connections::{
-    self, NewConnection, NewFileDatabase, NewFilesSettings, NewServerSettings, NewSettings,
-};
+use crate::connections::{self, NewConnection, NewServerSettings, NewSettings};
 use crate::editors::{self, NewEditor};
 use crate::master_key::MasterKey;
-use crate::settings::{self, SettingsUpdate};
 use crate::store;
+use crate::test_support::{allow_writes, memory_connection, run_on_session, serve};
 use prisme_connectors::api::Engine;
 use prisme_connectors::flavor::Flavor;
 use prisme_connectors::mysql::MysqlTarget;
@@ -476,76 +474,17 @@ async fn stops_refuses_and_fails_exports() {
     }
 }
 
-/// Runs `sql` under the cursor on the session of `socket`, until the end of
-/// its batch.
-async fn run_on_session(
-    socket: &mut tokio_tungstenite::WebSocketStream<
-        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
-    >,
-    sql: &str,
-) {
-    use futures_util::{SinkExt, StreamExt};
-    use tokio_tungstenite::tungstenite::Message;
-
-    let request = json!({ "type": "run", "sql": sql, "cursor": 0 });
-    socket
-        .send(Message::Text(request.to_string().into()))
-        .await
-        .unwrap();
-    while let Some(message) = socket.next().await {
-        if let Message::Text(text) = message.unwrap() {
-            let message: Value = serde_json::from_str(&text).unwrap();
-            assert_ne!(message["type"], "error", "{sql}: {message}");
-            if message["type"] == "batch_done" {
-                return;
-            }
-        }
-    }
-}
-
 #[tokio::test(flavor = "multi_thread")]
 async fn exports_a_database_in_memory_of_the_session_of_its_editor() {
-    let connection = NewConnection {
-        name: "memory".to_string(),
-        engine: Engine::Sqlite,
-        settings: NewSettings::Files(NewFilesSettings {
-            databases: vec![NewFileDatabase {
-                schema: "main".to_string(),
-                location: ":memory:".to_string(),
-                create: false,
-            }],
-        }),
-        init_sql: String::new(),
-        session_timeout_minutes: 5,
-        show_system_schemas: true,
-    };
     let mut editor_id = 0;
-    let test = TestApp::with_connection(&connection, |db, user_id| {
-        let current = settings::load(db, user_id).unwrap();
-        let update = SettingsUpdate {
-            row_limit: current.row_limit,
-            read_only_session: false,
-            allowed_writes: vec![WriteKind::CreateTable, WriteKind::Insert],
-            history_retention_days: current.history_retention_days,
-            debug_retention_days: current.debug_retention_days,
-            indent_size: current.indent_size,
-            concat_max_bytes: current.concat_max_bytes,
-            pivot_refresh_ms: current.pivot_refresh_ms,
-            remote_connect_timeout_seconds: current.remote_connect_timeout_seconds,
-            remote_download_timeout_minutes: current.remote_download_timeout_minutes,
-            remote_max_mebibytes: current.remote_max_mebibytes,
-            remote_cache_days: current.remote_cache_days,
-        };
-        settings::update(db, user_id, &update).unwrap();
+    let test = TestApp::with_connection(&memory_connection(), |db, user_id| {
+        allow_writes(db, user_id, &[WriteKind::CreateTable, WriteKind::Insert]);
         let editor = NewEditor {
             connection_id: Some(1),
         };
         editor_id = editors::create(db, user_id, &editor).unwrap().id;
     });
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let address = listener.local_addr().unwrap();
-    let app = test.app.clone();
-    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let address = serve(test.app.clone()).await;
     let url = format!("ws://{address}/api/editors/{editor_id}/session");
     let (mut socket, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
     run_on_session(&mut socket, "CREATE TABLE t (x INTEGER)").await;
