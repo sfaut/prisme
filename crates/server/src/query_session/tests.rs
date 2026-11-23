@@ -1109,7 +1109,9 @@ async fn tells_the_databases_of_a_sqlite_session_once_they_change() {
             .map(|message| message["databases"].clone())
             .collect()
     };
-    let attached = messages_of(&format!("ATTACH '{other}' AS other")).await;
+    // On a main database in memory, the file is named by its URI.
+    let uri = prisme_dialects::sqlite_files::file_uri(&other, false);
+    let attached = messages_of(&format!("ATTACH '{uri}' AS other")).await;
     let schemas: Vec<Value> = databases(&attached)
         .iter()
         .flat_map(|list| list.as_array().unwrap().clone())
@@ -1305,4 +1307,26 @@ async fn saves_a_database_attached_in_the_connection() {
         .map(|database| database["schema"].as_str().unwrap())
         .collect();
     assert_eq!(schemas, ["main", "other", "other_again"]);
+}
+
+#[tokio::test]
+async fn refuses_a_path_alone_on_a_main_database_in_memory() {
+    let folder = tempfile::tempdir().unwrap();
+    let other = attachable_database(folder.path(), "other");
+    let writes = [WriteKind::Attach];
+    let (address, _, editor_id) = start_connection(&memory_connection(), Some(&writes)).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    next_json(&mut socket).await;
+
+    let result = run_one(&mut socket, &format!("ATTACH '{other}' AS other"), None).await;
+    let detail = result.end["detail"].clone();
+    assert_eq!(detail["code"], "attach_path_in_memory", "{detail}");
+    assert_eq!(detail["path"], other.as_str());
+    // The URI the refusal gives attaches the file.
+    let uri = detail["uri"].as_str().unwrap().to_string();
+    let result = run_one(&mut socket, &format!("ATTACH '{uri}' AS other"), None).await;
+    assert_eq!(result.end["type"], "done", "{:?}", result.end);
+    let result = run_one(&mut socket, "SELECT a FROM other.u", None).await;
+    assert_eq!(result.rows, 3);
 }

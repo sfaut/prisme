@@ -253,6 +253,17 @@ pub enum ErrorDetail {
         /// Kinds of write the query needs and the settings do not allow.
         kinds: Vec<WriteKind>,
     },
+    /// An `ATTACH` naming its file by its path alone, on a SQLite connection
+    /// whose main database is in memory (`memdb`), where it would attach an
+    /// empty database in memory instead of the file: `uri` names the file on
+    /// the disk.
+    #[error("ATTACH of {path} refused: the main database is in memory, name the file {uri}")]
+    AttachPathInMemory {
+        /// Path written in the `ATTACH`.
+        path: String,
+        /// URI that opens the file on the disk.
+        uri: String,
+    },
     /// A write that no switch allows: procedure call, database, trigger,
     /// account, file, server setting...
     #[error("write refused: no setting allows this statement")]
@@ -329,6 +340,10 @@ impl ErrorDetail {
             ConnectorError::Init { statement, cause } => Self::InitQueryFailed {
                 statement: statement.clone(),
                 cause: cause.clone(),
+            },
+            ConnectorError::AttachPathInMemory { path, uri } => Self::AttachPathInMemory {
+                path: path.clone(),
+                uri: uri.clone(),
             },
             ConnectorError::Query(_) | ConnectorError::Unsupported(_) => Self::QueryFailed {
                 flavor,

@@ -377,6 +377,18 @@ pub enum ConnectorError {
     /// exists already.
     #[error("{0}")]
     Location(LocationError),
+
+    /// An `ATTACH` naming its file by its path alone, on a connection whose
+    /// main database is in memory (SQLite): the file system of that database
+    /// would give an empty database in memory instead of the file. `uri`
+    /// names the file in the file system of the disk, which opens it.
+    #[error("ATTACH of {path} refused: the main database is in memory, name the file {uri}")]
+    AttachPathInMemory {
+        /// Path written in the `ATTACH`.
+        path: String,
+        /// URI that opens the file on the disk.
+        uri: String,
+    },
 }
 
 impl ConnectorError {
@@ -386,11 +398,13 @@ impl ConnectorError {
     pub fn cause(&self) -> FailureCause {
         match self {
             Self::Query(cause) | Self::Init { cause, .. } => cause.clone(),
-            Self::Connect(_) | Self::MissingVersion | Self::Unsupported(_) | Self::Location(_) => {
-                FailureCause::Driver {
-                    message: self.to_string(),
-                }
-            }
+            Self::Connect(_)
+            | Self::MissingVersion
+            | Self::Unsupported(_)
+            | Self::Location(_)
+            | Self::AttachPathInMemory { .. } => FailureCause::Driver {
+                message: self.to_string(),
+            },
         }
     }
 }

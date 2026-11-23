@@ -277,6 +277,8 @@ export function describe(detail: ErrorDetail): string {
         ? `Écriture refusée : ${statements} ne sont pas autorisés dans les Paramètres.`
         : `Écriture refusée : ${statements} n’est pas autorisé dans les Paramètres.`
     }
+    case 'attach_path_in_memory':
+      return `ATTACH refusé : la base principale de la connexion est en mémoire (memdb), où le chemin ${detail.path} ouvrirait une base vide au lieu du fichier. Nommer le fichier par son URI : ATTACH '${detail.uri}' AS …`
     case 'write_forbidden':
       return 'Écriture refusée : aucun paramètre n’autorise cette instruction (appel de procédure, base de données, déclencheur, compte, fichier, réglage du serveur…).'
     case 'read_write_transaction_read_only':

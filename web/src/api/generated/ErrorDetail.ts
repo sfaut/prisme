@@ -191,6 +191,17 @@ export type ErrorDetail =
      */
     kinds: Array<WriteKind>;
   }
+  | {
+    "code": "attach_path_in_memory";
+    /**
+     * Path written in the `ATTACH`.
+     */
+    path: string;
+    /**
+     * URI that opens the file on the disk.
+     */
+    uri: string;
+  }
   | { "code": "write_forbidden" }
   | { "code": "read_write_transaction_read_only" }
   | { "code": "xa_transaction_unsupported" }

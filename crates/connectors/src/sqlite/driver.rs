@@ -14,6 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures_util::future::BoxFuture;
 use prisme_dialects::classify::WriteKind;
+use prisme_dialects::sqlite_files::{attached_paths, file_uri};
 use prisme_dialects::verb::StatementVerb;
 use rusqlite::{Connection, InterruptHandle};
 use tokio::sync::{mpsc, oneshot};
@@ -256,6 +257,28 @@ struct Known {
 }
 
 impl SqliteSession {
+    /// Refuses the text `sql` if it attaches a file by its path alone while
+    /// the main database is in memory: opened in the file system `memdb`,
+    /// that database would make SQLite attach an empty database in memory
+    /// under the name of the path, instead of the file. The error gives the
+    /// URI that names the file system of the disk.
+    fn check_attached_paths(&self, sql: &str) -> Result<(), ConnectorError> {
+        let in_memory = self.known.iter().any(|known| {
+            known.database.schema.eq_ignore_ascii_case(MAIN_SCHEMA)
+                && known.database.location.scheme == Scheme::Memory
+        });
+        if !in_memory {
+            return Ok(());
+        }
+        match attached_paths(sql).into_iter().next() {
+            Some(path) => Err(ConnectorError::AttachPathInMemory {
+                uri: file_uri(&path, false),
+                path,
+            }),
+            None => Ok(()),
+        }
+    }
+
     /// Runs `order` on the connection, unless the session was ended.
     async fn run<R: Send + 'static>(
         &self,
@@ -283,6 +306,7 @@ impl Session for SqliteSession {
         sql: &'a str,
     ) -> BoxFuture<'a, Result<Box<dyn Rows<'a> + 'a>, ConnectorError>> {
         Box::pin(async move {
+            self.check_attached_paths(sql)?;
             let (head_sender, head) = oneshot::channel();
             let (rows_sender, rows) = mpsc::channel(ROWS_AHEAD);
             let sql = sql.to_string();
@@ -911,6 +935,47 @@ mod tests {
             DRIVER.open(&target, on("other")).await.err(),
             Some(ConnectorError::Unsupported(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn refuses_a_path_alone_on_a_main_database_in_memory() {
+        let folder = tempfile::tempdir().unwrap();
+        let sales = folder.path().join("sales.db");
+        create(&sales);
+        let path = sales.to_string_lossy().into_owned();
+        let attach = format!("ATTACH '{path}' AS sales");
+
+        // In memory: the path alone is refused, its URI reads the file.
+        let in_memory = target(vec![memory("main")], &[]);
+        let mut session = DRIVER
+            .open(&in_memory, OpenOptions::default())
+            .await
+            .unwrap();
+        let uri = match rows_of(session.as_mut(), &attach).await {
+            Err(ConnectorError::AttachPathInMemory { path: refused, uri }) => {
+                assert_eq!(refused, path);
+                uri
+            }
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(uri, file_uri(&path, false));
+        let attach_uri = format!("ATTACH '{uri}' AS sales");
+        rows_of(session.as_mut(), &attach_uri).await.unwrap();
+        let rows = rows_of(session.as_mut(), "SELECT a FROM sales.t")
+            .await
+            .unwrap();
+        assert_eq!(rows, [[Some("1".to_string())]]);
+
+        // On a file, the path alone reads the file.
+        let main = folder.path().join("main.db");
+        create(&main);
+        let on_file = target(vec![file("main", &main)], &[]);
+        let mut session = DRIVER.open(&on_file, OpenOptions::default()).await.unwrap();
+        rows_of(session.as_mut(), &attach).await.unwrap();
+        let rows = rows_of(session.as_mut(), "SELECT a FROM sales.t")
+            .await
+            .unwrap();
+        assert_eq!(rows, [[Some("1".to_string())]]);
     }
 
     #[tokio::test]

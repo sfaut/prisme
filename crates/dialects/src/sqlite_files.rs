@@ -12,6 +12,11 @@
 
 use std::path::Path;
 
+use sqlparser::ast::{Expr, Statement, Value};
+
+use crate::Dialect;
+use crate::parse::{Parsed, parse_statements};
+
 /// Default file system of SQLite on this platform, named by the URI of
 /// every file.
 pub const FILE_VFS: &str = if cfg!(windows) { "win32" } else { "unix" };
@@ -75,6 +80,31 @@ pub fn attached_file(name: &str) -> Option<AttachedFile> {
     }
 }
 
+/// Paths that the `ATTACH` statements of the SQLite text `sql` give as they
+/// are (`AttachedFile::Path`), in their order; none for a text that cannot
+/// be parsed, which the classification refuses anyway.
+pub fn attached_paths(sql: &str) -> Vec<String> {
+    let Ok(statements) = parse_statements(sql, Dialect::Sqlite) else {
+        return Vec::new();
+    };
+    statements
+        .iter()
+        .filter_map(|statement| match statement {
+            Parsed::Sql(Statement::AttachDatabase {
+                database_file_name: Expr::Value(value),
+                ..
+            }) => match &value.value {
+                Value::SingleQuotedString(name) => match attached_file(name) {
+                    Some(AttachedFile::Path(path)) => Some(path),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect()
+}
+
 /// Absolute path that the URI `uri`, without its `file:`, names in the
 /// default file system; `None` if it names another file system, takes
 /// another parameter or a fragment, or names a relative path.
@@ -134,6 +164,22 @@ fn decoded(path: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_the_paths_attached_as_they_are() {
+        let path = if cfg!(windows) {
+            r"D:\data\v.db"
+        } else {
+            "/srv/v.db"
+        };
+        let uri = file_uri(path, false);
+        let sql = format!(
+            "ATTACH ':memory:' AS m; ATTACH '{uri}' AS u; SELECT 1; ATTACH DATABASE '{path}' AS p"
+        );
+        assert_eq!(attached_paths(&sql), [path]);
+        assert!(attached_paths("SELECT 'D:/data/v.db'").is_empty());
+        assert!(attached_paths("ATTACH").is_empty());
+    }
 
     #[test]
     fn reads_the_files_an_attach_names() {
