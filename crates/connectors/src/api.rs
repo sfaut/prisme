@@ -428,7 +428,9 @@ pub trait Driver: Send + Sync {
     /// What the engine can do.
     fn capabilities(&self) -> Capabilities;
 
-    /// Connects to the source, reads its identity, then disconnects.
+    /// Connects to the source, reads its identity, then disconnects. For a
+    /// source held in files, the identity tells the state of each database,
+    /// the main one included, even when a session could not open.
     fn probe<'a>(&'a self, target: &'a Target)
     -> BoxFuture<'a, Result<SourceInfo, ConnectorError>>;
 

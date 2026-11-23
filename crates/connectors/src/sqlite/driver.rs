@@ -56,10 +56,7 @@ impl Driver for SqliteDriver {
         &'a self,
         target: &'a Target,
     ) -> BoxFuture<'a, Result<SourceInfo, ConnectorError>> {
-        Box::pin(async move {
-            let session = open(target, OpenOptions::default()).await?;
-            Ok(session.info)
-        })
+        Box::pin(probe(target))
     }
 
     fn open<'a>(
@@ -105,6 +102,42 @@ pub fn capabilities() -> Capabilities {
         notices: false,
         rows_estimate: false,
     }
+}
+
+/// Tests `target`: the identity of SQLite and the state of each database.
+/// A main database that cannot be opened (missing, to create, not a
+/// database) gets its state, the others theirs, attached to a main database
+/// in memory in its place; a session, though, does not open without it.
+///
+/// # Errors
+///
+/// Fails if a statement of the target fails.
+async fn probe(target: &Target) -> Result<SourceInfo, ConnectorError> {
+    let failure = match open(target, OpenOptions::default()).await {
+        Ok(session) => return Ok(session.info),
+        Err(ConnectorError::Connect(failure)) => failure,
+        Err(error) => return Err(error),
+    };
+    let Settings::Files(files) = &target.settings else {
+        return Err(ConnectorError::Connect(failure));
+    };
+    let mut standing = target.clone();
+    let Settings::Files(standing_files) = &mut standing.settings else {
+        return Err(ConnectorError::Connect(failure));
+    };
+    let Some(main) = standing_files.databases.first_mut() else {
+        return Err(ConnectorError::Connect(failure));
+    };
+    main.location = Location {
+        scheme: Scheme::Memory,
+        address: String::new(),
+    };
+    let mut info = open(&standing, OpenOptions::default()).await?.info;
+    if let (Some(state), Some(main)) = (info.databases.first_mut(), files.databases.first()) {
+        state.location = main.location.clone();
+        state.status = DatabaseStatus::Unavailable { failure };
+    }
+    Ok(info)
 }
 
 /// Opens a session on the databases of `target`.
@@ -689,6 +722,70 @@ mod tests {
             [[cell("1")]]
         );
         session.close().await;
+    }
+
+    #[tokio::test]
+    async fn tests_each_database_when_the_main_one_cannot_be_opened() {
+        let folder = tempfile::tempdir().unwrap();
+        let missing = folder.path().join("missing.db");
+        let other = folder.path().join("other.db");
+        create(&other);
+        let absent = folder.path().join("absent.db");
+        let info = DRIVER
+            .probe(&target(
+                vec![
+                    file("main", &missing),
+                    file("other", &other),
+                    file("absent", &absent),
+                ],
+                &["PRAGMA foreign_keys = ON"],
+            ))
+            .await
+            .unwrap();
+        let states: Vec<_> = info
+            .databases
+            .iter()
+            .map(|state| (state.schema.as_str(), &state.location, &state.status))
+            .collect();
+        assert!(matches!(
+            states[0],
+            (
+                "main",
+                Location {
+                    scheme: Scheme::File,
+                    ..
+                },
+                DatabaseStatus::Unavailable {
+                    failure: ConnectFailure::FileNotFound { .. }
+                }
+            )
+        ));
+        assert_eq!(
+            states[0].1.address,
+            missing.to_string_lossy(),
+            "the main database keeps its own location"
+        );
+        assert!(matches!(
+            states[1],
+            ("other", _, DatabaseStatus::Open { .. })
+        ));
+        assert!(matches!(
+            states[2],
+            (
+                "absent",
+                _,
+                DatabaseStatus::Unavailable {
+                    failure: ConnectFailure::FileNotFound { .. }
+                }
+            )
+        ));
+        assert!(!missing.exists() && !absent.exists(), "nothing is created");
+        assert!(matches!(
+            DRIVER
+                .probe(&target(vec![file("main", &missing)], &["SELECT * FROM t"]))
+                .await,
+            Err(ConnectorError::Init { .. })
+        ));
     }
 
     #[tokio::test]
