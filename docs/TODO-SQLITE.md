@@ -27,9 +27,9 @@ Functional:
 
 Architecture:
 
-16. Connectors through **traits and a registry**, no dispatch enum.
-17. Settings of an engine in **columns and tables** of the internal database, with their `CHECK`s; reference tables `engines`, `flavors`, `schemes`.
-18. Catalog of the navigator in **namespaces of variable depth** and **open kinds of objects**, labels given by the engine.
+19. Connectors through **traits and a registry**, no dispatch enum.
+20. Settings of an engine in **columns and tables** of the internal database, with their `CHECK`s; reference tables `engines`, `flavors`, `schemes`.
+21. Catalog of the navigator in **namespaces of variable depth** and **open kinds of objects**, labels given by the engine.
 
 ## Contracts
 
