@@ -19,7 +19,7 @@ use prisme_connectors::api::{self, Namespace};
 use prisme_connectors::drivers;
 use prisme_connectors::flavor::Flavor;
 use prisme_connectors::outcome::StatementOutcome;
-use prisme_dialects::classify::ends_transaction;
+use prisme_dialects::classify::{StatementKind, WriteKind, classify, ends_transaction};
 use prisme_dialects::temporary::{TableName, temporary_changes};
 use prisme_dialects::verb::StatementVerb;
 use prisme_splitter::split;
@@ -67,7 +67,9 @@ pub(super) async fn serve(
     let Some(mut connection) = session.open().instrument(opening.clone()).await else {
         return;
     };
-    if let Ok(flavor) = session.ready(connection.as_mut()).instrument(opening).await {
+    let ready = session.ready(connection.as_mut()).instrument(opening).await;
+    if let Ok(flavor) = ready {
+        session.follow_databases(connection.as_mut()).await;
         loop {
             let request = tokio::select! {
                 _ = stop.changed() => break,
@@ -335,6 +337,12 @@ impl Session<'_> {
             self.run_in_sequence(connection, &chosen, flavor, &limits)
                 .await?;
         }
+        let attaches = chosen
+            .iter()
+            .any(|statement| attaches(&statement.sql, flavor));
+        if attaches {
+            self.follow_databases(connection).await;
+        }
         let ends = chosen
             .iter()
             .any(|statement| ends_transaction(&statement.sql, dialect_of(flavor)));
@@ -346,12 +354,38 @@ impl Session<'_> {
 impl Session<'_> {
     /// Can the queries of a batch run in parallel, each on its own
     /// connection? Only when the engine opens several connections on the
-    /// source, and no transaction is open on the session's connection, where
-    /// it lives.
+    /// source, no transaction is open on the session's connection, where it
+    /// lives, and that connection holds no database that the others cannot
+    /// attach.
     fn parallel(&self, connection: &dyn api::Session) -> bool {
         connection.info().capabilities.parallel_sessions
             && !self.transaction.load(Ordering::Relaxed)
+            && !self.source.shared.private()
     }
+
+    /// Lists the databases attached to the session's connection, which its
+    /// other connections attach too (`Shared`), and returns whether they
+    /// changed. An engine without attachments has none to list.
+    async fn follow_databases(&self, connection: &mut dyn api::Session) -> bool {
+        if !connection.info().capabilities.attachments {
+            return false;
+        }
+        match connection.databases().await {
+            Ok(listed) => self.source.shared.follow(&listed),
+            Err(error) => {
+                tracing::warn!("cannot list the attached databases: {error}");
+                false
+            }
+        }
+    }
+}
+
+/// Does the statement `sql` attach or detach a database?
+fn attaches(sql: &str, flavor: Flavor) -> bool {
+    matches!(
+        classify(sql, dialect_of(flavor)),
+        StatementKind::Write(kinds) if kinds.contains(&WriteKind::Attach)
+    )
 }
 
 /// Current database of the session, as the protocol carries it: the

@@ -166,7 +166,7 @@ impl Session<'_> {
     /// Runs a query on a new connection, opened like the session's on the
     /// database `database` (none when absent), without a `USE` of its own;
     /// an engine that does not change namespaces opens it on that of its
-    /// settings.
+    /// settings, and attaches the databases of the session's connection.
     pub(super) async fn run_on_new_connection(
         &self,
         flavor: Flavor,
@@ -175,7 +175,7 @@ impl Session<'_> {
         limits: &RunLimits,
         database: &Option<String>,
     ) -> Result<(), SessionStopped> {
-        let target = &self.source.target;
+        let target = self.source.shared.target(&self.source.target);
         let options = OpenOptions {
             // An empty path opens on no database.
             namespace: self.source.switches_namespace().then(|| {
@@ -185,7 +185,7 @@ impl Session<'_> {
             }),
             ..self.source.options.clone()
         };
-        let mut connection = match drivers::of(target.engine).open(target, options).await {
+        let mut connection = match drivers::of(target.engine).open(&target, options).await {
             Ok(connection) => connection,
             Err(error) => {
                 let detail = ErrorDetail::of_connector(&error, Some(flavor));

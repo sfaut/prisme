@@ -8,7 +8,9 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message as ClientMessage;
 
 use crate::api::{AppState, Folders, router};
-use crate::connections::{self, NewConnection, NewServerSettings, NewSettings};
+use crate::connections::{
+    self, NewConnection, NewFileDatabase, NewFilesSettings, NewServerSettings, NewSettings,
+};
 use crate::editors::{self, NewEditor};
 use crate::error_detail::ErrorDetail;
 use crate::master_key::MasterKey;
@@ -1032,4 +1034,44 @@ async fn the_queries_of_a_sqlite_session_share_its_databases_in_memory() {
     // its own, which sees the database in memory of the session.
     let reads = "SELECT x FROM t; SELECT x FROM t WHERE x = 2";
     assert_eq!(run_all_rows(&mut socket, reads).await, [2, 1]);
+}
+
+#[tokio::test]
+async fn the_parallel_queries_of_a_sqlite_session_see_its_attached_databases() {
+    let folder = tempfile::tempdir().unwrap();
+    let [main, other] = ["main", "other"].map(|name| folder.path().join(format!("{name}.db")));
+    rusqlite::Connection::open(&main).unwrap();
+    rusqlite::Connection::open(&other)
+        .unwrap()
+        .execute_batch("CREATE TABLE t (a); INSERT INTO t VALUES (1)")
+        .unwrap();
+    let new = NewConnection {
+        name: "files".to_string(),
+        settings: NewSettings::Files(NewFilesSettings {
+            databases: vec![NewFileDatabase {
+                schema: "main".to_string(),
+                location: main.to_string_lossy().into_owned(),
+                create: false,
+            }],
+        }),
+        ..memory_connection()
+    };
+    let writes = [WriteKind::Attach, WriteKind::CreateTable];
+    let (address, _, editor_id) = start_connection(&new, Some(&writes)).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    next_json(&mut socket).await;
+
+    // Attached in SQL: each connection of a parallel batch attaches it too.
+    let attach = format!("ATTACH '{}' AS other", other.display());
+    run_one(&mut socket, &attach, None).await;
+    let reads = "SELECT a FROM other.t; SELECT count(*) FROM other.t";
+    assert_eq!(run_all_rows(&mut socket, reads).await, [1, 1]);
+
+    // A database private to the session's connection: the batch runs there,
+    // in sequence.
+    run_one(&mut socket, "ATTACH ':memory:' AS scratch", None).await;
+    run_one(&mut socket, "CREATE TABLE scratch.x (a)", None).await;
+    let reads = "SELECT count(*) FROM scratch.x; SELECT a FROM other.t";
+    assert_eq!(run_all_rows(&mut socket, reads).await, [1, 1]);
 }

@@ -72,6 +72,7 @@ mod limits;
 mod outbox;
 pub(crate) mod protocol;
 mod session;
+mod shared;
 mod temporary_tables;
 #[cfg(test)]
 mod tests;
@@ -97,11 +98,12 @@ use crate::session_relay::{Relay, SessionHandle};
 
 use outbox::Outbox;
 use session::serve;
+pub(crate) use shared::Shared;
 
 /// The source of a session, and how its connections open on it: read-only
 /// or not, on the namespace chosen for the session, else on the one of its
 /// settings, and sharing the resources of the session (its databases in
-/// memory).
+/// memory, the databases attached to its connection).
 #[derive(Clone)]
 pub(crate) struct Source {
     /// Settings of the source.
@@ -109,6 +111,8 @@ pub(crate) struct Source {
     /// Options of the session's connection; those of its parallel queries
     /// follow, on the session's current namespace.
     pub(crate) options: OpenOptions,
+    /// Resources of the session, shared by its connections.
+    pub(crate) shared: Arc<Shared>,
 }
 
 /// Number of the last session opened, which names its resources.
@@ -129,6 +133,7 @@ impl Source {
                 namespace: namespace.filter(|_| switches),
                 session_key: Some(format!("session-{number}")),
             },
+            shared: Arc::new(Shared::new()),
         }
     }
 

@@ -101,6 +101,7 @@ Architecture:
 - ✅ Sessions: a key of their own, shared by their parallel connections (databases in memory)
 - ✅ Exports of a database in memory: their connection takes the key of the session of their editor
 - ✅ Navigator of an editor: its catalog sees the databases in memory of the session of that editor
+- ✅ Parallel queries of a session: their connections attach the databases of the session's connection, listed when it opens and after each `ATTACH` / `DETACH`; a database private to it (`ATTACH ':memory:'` in SQL) runs the batches in sequence on it
 - ⬜ API of the attachments of the navigator (session or connection)
 - ⬜ Saving a database in memory to a file
 - ⬜ Schemas read again after `ATTACH` / `DETACH`
