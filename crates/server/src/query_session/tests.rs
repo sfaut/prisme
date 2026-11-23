@@ -73,6 +73,14 @@ async fn start_connection(new: &NewConnection, writes: Option<&[WriteKind]>) -> 
     (address, id, editor.id)
 }
 
+/// Waits for a SQLite session to open: `ready`, then its databases, told
+/// at once.
+async fn opened(socket: &mut ClientSocket) {
+    assert_eq!(next_json(socket).await["type"], "ready");
+    let databases = next_json(socket).await;
+    assert_eq!(databases["type"], "databases", "{databases}");
+}
+
 /// Reads the next text message of the server, as JSON.
 async fn next_json(socket: &mut ClientSocket) -> Value {
     loop {
@@ -1014,7 +1022,7 @@ async fn a_sqlite_session_stays_on_main_whatever_the_database_asked_for() {
     // SQLite changes no database: the one asked for is left aside.
     let url = format!("ws://{address}/api/editors/{editor_id}/session?database=other");
     let (mut socket, _) = connect_async(&url).await.unwrap();
-    next_json(&mut socket).await;
+    opened(&mut socket).await;
     assert_eq!(
         run_all_rows(&mut socket, "SELECT 1; SELECT 2").await,
         [1, 1]
@@ -1027,7 +1035,7 @@ async fn the_queries_of_a_sqlite_session_share_its_databases_in_memory() {
     let (address, _, editor_id) = start_connection(&memory_connection(), Some(&writes)).await;
     let url = format!("ws://{address}/api/editors/{editor_id}/session");
     let (mut socket, _) = connect_async(&url).await.unwrap();
-    next_json(&mut socket).await;
+    opened(&mut socket).await;
     run_one(&mut socket, "CREATE TABLE t (x INTEGER)", None).await;
     run_one(&mut socket, "INSERT INTO t VALUES (1), (2)", None).await;
     // Without a transaction, each query of a batch runs on a connection of
@@ -1060,7 +1068,7 @@ async fn the_parallel_queries_of_a_sqlite_session_see_its_attached_databases() {
     let (address, _, editor_id) = start_connection(&new, Some(&writes)).await;
     let url = format!("ws://{address}/api/editors/{editor_id}/session");
     let (mut socket, _) = connect_async(&url).await.unwrap();
-    next_json(&mut socket).await;
+    opened(&mut socket).await;
 
     // Attached in SQL: each connection of a parallel batch attaches it too.
     let attach = format!("ATTACH '{}' AS other", other.display());
@@ -1077,14 +1085,17 @@ async fn the_parallel_queries_of_a_sqlite_session_see_its_attached_databases() {
 }
 
 #[tokio::test]
-async fn tells_the_databases_of_a_sqlite_session_once_they_change() {
+async fn tells_the_databases_of_a_sqlite_session_at_once_and_when_they_change() {
     let folder = tempfile::tempdir().unwrap();
     let other = attachable_database(folder.path(), "other");
     let writes = [WriteKind::Attach];
     let (address, _, editor_id) = start_connection(&memory_connection(), Some(&writes)).await;
     let url = format!("ws://{address}/api/editors/{editor_id}/session");
     let (mut socket, _) = connect_async(&url).await.unwrap();
-    next_json(&mut socket).await;
+    assert_eq!(next_json(&mut socket).await["type"], "ready");
+    let opening = next_json(&mut socket).await;
+    assert_eq!(opening["type"], "databases", "{opening}");
+    assert_eq!(opening["databases"][0]["location"]["scheme"], "memory");
 
     // Messages of a batch, from `batch` to `batch_done`, by type.
     let mut messages_of = async |sql: &str| -> Vec<Value> {
@@ -1138,7 +1149,7 @@ async fn copies_a_database_of_a_sqlite_session_into_a_file() {
     let (address, _, editor_id) = start_connection(&memory_connection(), Some(&writes)).await;
     let url = format!("ws://{address}/api/editors/{editor_id}/session");
     let (mut socket, _) = connect_async(&url).await.unwrap();
-    next_json(&mut socket).await;
+    opened(&mut socket).await;
     run_one(&mut socket, "CREATE TABLE t (x INTEGER)", None).await;
     run_one(&mut socket, "INSERT INTO t VALUES (1), (2)", None).await;
 
@@ -1173,7 +1184,7 @@ async fn a_read_only_sqlite_session_copies_its_databases() {
     let (address, _, editor_id) = start_connection(&memory_connection(), None).await;
     let url = format!("ws://{address}/api/editors/{editor_id}/session");
     let (mut socket, _) = connect_async(&url).await.unwrap();
-    next_json(&mut socket).await;
+    opened(&mut socket).await;
     let request = json!({
         "type": "backup",
         "schema": "main",
@@ -1197,7 +1208,7 @@ async fn attaches_and_detaches_a_database_of_a_sqlite_session() {
     let (address, _, editor_id) = start_connection(&memory_connection(), None).await;
     let url = format!("ws://{address}/api/editors/{editor_id}/session");
     let (mut socket, _) = connect_async(&url).await.unwrap();
-    next_json(&mut socket).await;
+    opened(&mut socket).await;
 
     let mut send = async |request: Value| -> Value {
         socket
@@ -1241,7 +1252,7 @@ async fn the_parallel_queries_see_a_database_the_navigator_attached() {
     let (address, _, editor_id) = start_connection(&memory_connection(), None).await;
     let url = format!("ws://{address}/api/editors/{editor_id}/session");
     let (mut socket, _) = connect_async(&url).await.unwrap();
-    next_json(&mut socket).await;
+    opened(&mut socket).await;
     let request = json!({ "type": "attach", "schema": "other", "location": other });
     socket
         .send(ClientMessage::Text(request.to_string().into()))
@@ -1261,7 +1272,7 @@ async fn saves_a_database_attached_in_the_connection() {
     let (address, connection_id, editor_id) = start_connection(&memory_connection(), None).await;
     let url = format!("ws://{address}/api/editors/{editor_id}/session");
     let (mut socket, _) = connect_async(&url).await.unwrap();
-    next_json(&mut socket).await;
+    opened(&mut socket).await;
     let mut send = async |request: Value| -> Value {
         socket
             .send(ClientMessage::Text(request.to_string().into()))
@@ -1317,7 +1328,7 @@ async fn refuses_a_path_alone_on_a_main_database_in_memory() {
     let (address, _, editor_id) = start_connection(&memory_connection(), Some(&writes)).await;
     let url = format!("ws://{address}/api/editors/{editor_id}/session");
     let (mut socket, _) = connect_async(&url).await.unwrap();
-    next_json(&mut socket).await;
+    opened(&mut socket).await;
 
     let result = run_one(&mut socket, &format!("ATTACH '{other}' AS other"), None).await;
     let detail = result.end["detail"].clone();

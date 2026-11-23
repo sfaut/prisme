@@ -236,10 +236,11 @@ pub(crate) enum ServerMessage {
     /// A transaction opened (`open`) or ended on the session's connection,
     /// at the end of a request, before `batch_done`.
     Transaction { open: bool },
-    /// The databases attached to the session's connection changed, after a
-    /// batch that attached or detached one, before `batch_done`, or after an
-    /// `attach` or `detach` request: the main one first, in the order of
-    /// their attachment.
+    /// The databases attached to the session's connection, right after
+    /// `ready` for an engine that attaches databases, then once they
+    /// changed, after a batch that attached or detached one, before
+    /// `batch_done`, or after an `attach` or `detach` request: the main one
+    /// first, in the order of their attachment.
     Databases { databases: Vec<AttachedDatabase> },
     /// Last batch of the session, sent to a WebSocket that reattaches to it.
     Resume {

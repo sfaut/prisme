@@ -776,11 +776,14 @@ watch(
 )
 
 // The session attached or detached a database: the navigator shows its
-// schemas again.
+// schemas again. The first list, told as the session opens, changes
+// nothing.
 watch(
   () => state.databases,
-  () => {
-    catalog.load(props.connection.id, true, props.editorId).catch(() => {})
+  (_, before) => {
+    if (before !== null) {
+      catalog.load(props.connection.id, true, props.editorId).catch(() => {})
+    }
   },
 )
 

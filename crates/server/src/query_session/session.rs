@@ -73,8 +73,16 @@ pub(super) async fn serve(
         return;
     };
     let ready = session.ready(connection.as_mut()).instrument(opening).await;
+    // The databases of the session, told at once: the navigator shows where
+    // each one lies.
+    let ready = match ready {
+        Ok(flavor) => session
+            .tell_databases(connection.as_mut())
+            .await
+            .map(|()| flavor),
+        Err(stopped) => Err(stopped),
+    };
     if let Ok(flavor) = ready {
-        session.follow_databases(connection.as_mut()).await;
         loop {
             let request = tokio::select! {
                 _ = stop.changed() => break,
@@ -416,11 +424,14 @@ impl Session<'_> {
     }
 
     /// Lists the databases of the session's connection again, and tells
-    /// them to the client.
+    /// them to the client; nothing for an engine without attachments.
     async fn tell_databases(
         &self,
         connection: &mut dyn api::Session,
     ) -> Result<(), SessionStopped> {
+        if !connection.info().capabilities.attachments {
+            return Ok(());
+        }
         self.follow_databases(connection).await;
         self.outbox
             .send(ServerMessage::Databases {
