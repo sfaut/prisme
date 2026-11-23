@@ -574,6 +574,7 @@ The update hook (`sqlite3_update_hook`, feature `hooks` of `rusqlite`), called f
 
 The hook tells the rows inserted from the rows updated of an upsert, but it reports nothing for a `WITHOUT ROWID` table nor for a `DELETE` without `WHERE` (truncate optimization), nothing of the rows a replacement deletes, and it mixes the rows of the triggers with those of the statement: its counts would be false without telling it, so the connector does not use it. The pre-update hook (`sqlite3_preupdate_hook`), which would give the depth of a trigger and the old and new values, needs a SQLite built with `SQLITE_ENABLE_PREUPDATE_HOOK`: the feature `preupdate_hook` of `rusqlite` 0.41.1 then generates its bindings with `bindgen`, whose build stops without libclang ("Unable to find libclang"); it is not measured. Cost of the update hook: `docs/PERFORMANCES.md`, chapter 18.
 
+A session stays on `main`: SQLite has no statement that changes the current database. A name without a schema is searched in `temp`, then `main`, then the attached databases in the order of their attachment, and an object created without a schema goes into `main` (`temp` for a temporary one) ([ATTACH DATABASE](https://sqlite.org/lang_attach.html)). The connector refuses `switch_namespace` (`Capabilities::switch_namespace` false), and the navigator shows no **Utiliser cette base** on the schemas of SQLite.
 
 Opening of the databases of a connection, measured on 2026-11-23:
 
