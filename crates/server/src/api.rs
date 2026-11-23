@@ -39,7 +39,7 @@ use axum::response::Response;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use axum_extra::extract::Query;
-use prisme_connectors::api::{Namespace, OpenOptions, SourceInfo};
+use prisme_connectors::api::{Namespace, SourceInfo};
 use prisme_connectors::drivers;
 use prisme_connectors::flavor::Flavor;
 use prisme_dialects::Dialect;
@@ -363,13 +363,7 @@ async fn query_socket(
             Ok::<_, ApiError>((target, read_only, name))
         })
         .await?;
-    let source = Source {
-        target: target.ok_or(ApiError::NotFound)?,
-        options: OpenOptions {
-            read_only,
-            ..OpenOptions::default()
-        },
-    };
+    let source = Source::new(target.ok_or(ApiError::NotFound)?, read_only, None);
     Ok(upgrade.on_upgrade(move |socket| {
         let span = api_log::connection_span(id);
         let history = span.in_scope(|| console::connection_span(user_id, &name));
@@ -426,14 +420,8 @@ async fn editor_session(
         })
         .await?
         .ok_or(ApiError::NotFound)?;
-    let source = Source {
-        target,
-        options: OpenOptions {
-            read_only,
-            namespace: opening_database(query.database, saved_database).map(Namespace::single),
-            ..OpenOptions::default()
-        },
-    };
+    let namespace = opening_database(query.database, saved_database).map(Namespace::single);
+    let source = Source::new(target, read_only, namespace);
     let keep_alive = Duration::from_secs(u64::from(minutes) * 60);
     Ok(upgrade.on_upgrade(move |socket| {
         let span = api_log::editor_span(id);

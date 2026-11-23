@@ -84,7 +84,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::ws::WebSocket;
-use prisme_connectors::api::{OpenOptions, Target};
+
+use prisme_connectors::api::{Namespace, OpenOptions, Target};
+use prisme_connectors::drivers;
 use tokio::sync::{mpsc, watch};
 use tracing::Instrument;
 
@@ -105,6 +107,30 @@ pub(crate) struct Source {
     /// Options of the session's connection; those of its parallel queries
     /// follow, on the session's current namespace.
     pub(crate) options: OpenOptions,
+}
+
+impl Source {
+    /// Source of a session on `target`, read-only or not, opened on
+    /// `namespace` when the engine changes namespaces (`USE`), else on the
+    /// namespace of its settings.
+    pub(crate) fn new(target: Target, read_only: bool, namespace: Option<Namespace>) -> Self {
+        let switches = drivers::of(target.engine).capabilities().switch_namespace;
+        Self {
+            target,
+            options: OpenOptions {
+                read_only,
+                namespace: namespace.filter(|_| switches),
+                ..OpenOptions::default()
+            },
+        }
+    }
+
+    /// Does the engine of the source change namespaces?
+    pub(crate) fn switches_namespace(&self) -> bool {
+        drivers::of(self.target.engine)
+            .capabilities()
+            .switch_namespace
+    }
 }
 
 /// Number of messages waiting to be sent beyond which reading the results waits.

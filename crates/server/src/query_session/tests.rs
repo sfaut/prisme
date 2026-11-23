@@ -8,7 +8,9 @@ use tokio_tungstenite::tungstenite::Message as ClientMessage;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 
 use crate::api::{AppState, Folders, router};
-use crate::connections::{self, NewConnection, NewServerSettings, NewSettings};
+use crate::connections::{
+    self, NewConnection, NewFileDatabase, NewFilesSettings, NewServerSettings, NewSettings,
+};
 use crate::editors::{self, NewEditor};
 use crate::error_detail::ErrorDetail;
 use crate::master_key::MasterKey;
@@ -33,6 +35,27 @@ async fn start(target: &MysqlTarget) -> (String, i64, i64) {
 /// Starts Prisme as `start` does; with `writes`, the sessions are not
 /// read-only and allow these writes.
 async fn start_writing(target: &MysqlTarget, writes: Option<&[WriteKind]>) -> (String, i64, i64) {
+    let new = NewConnection {
+        name: "test".to_string(),
+        engine: Engine::Mysql,
+        settings: NewSettings::Server(NewServerSettings {
+            host: target.host.clone(),
+            port: target.port,
+            username: target.username.clone(),
+            password: target.password.clone(),
+            database_name: target.database_name.clone(),
+        }),
+        // On-connect queries: the variable exists on each open connection,
+        // and double quotes delimit identifiers there.
+        init_sql: "SET @prisme_init = 1; SET SESSION sql_mode = 'ANSI_QUOTES'".to_string(),
+        session_timeout_minutes: 5,
+        show_system_schemas: true,
+    };
+    start_connection(&new, writes).await
+}
+
+/// Starts Prisme as `start_writing` does, with the connection `new`.
+async fn start_connection(new: &NewConnection, writes: Option<&[WriteKind]>) -> (String, i64, i64) {
     let db = store::open_in_memory();
     let key = MasterKey::generate();
     let user_id = store::ensure_user(&db, "test@example.com").unwrap();
@@ -54,23 +77,7 @@ async fn start_writing(target: &MysqlTarget, writes: Option<&[WriteKind]>) -> (S
         };
         settings::update(&db, user_id, &update).unwrap();
     }
-    let new = NewConnection {
-        name: "test".to_string(),
-        engine: Engine::Mysql,
-        settings: NewSettings::Server(NewServerSettings {
-            host: target.host.clone(),
-            port: target.port,
-            username: target.username.clone(),
-            password: target.password.clone(),
-            database_name: target.database_name.clone(),
-        }),
-        // On-connect queries: the variable exists on each open connection,
-        // and double quotes delimit identifiers there.
-        init_sql: "SET @prisme_init = 1; SET SESSION sql_mode = 'ANSI_QUOTES'".to_string(),
-        session_timeout_minutes: 5,
-        show_system_schemas: true,
-    };
-    let id = connections::insert(&db, &key, user_id, &new).unwrap();
+    let id = connections::insert(&db, &key, user_id, new).unwrap();
     let new_editor = NewEditor {
         connection_id: Some(id),
     };
@@ -1016,4 +1023,35 @@ async fn editor_session_ends_when_the_server_closes_its_connection() {
             })
             .await;
     }
+}
+
+/// Connection of SQLite to a main database in memory.
+fn memory_connection() -> NewConnection {
+    NewConnection {
+        name: "memory".to_string(),
+        engine: Engine::Sqlite,
+        settings: NewSettings::Files(NewFilesSettings {
+            databases: vec![NewFileDatabase {
+                schema: "main".to_string(),
+                location: ":memory:".to_string(),
+                create: false,
+            }],
+        }),
+        init_sql: String::new(),
+        session_timeout_minutes: 5,
+        show_system_schemas: true,
+    }
+}
+
+#[tokio::test]
+async fn a_sqlite_session_stays_on_main_whatever_the_database_asked_for() {
+    let (address, _, editor_id) = start_connection(&memory_connection(), None).await;
+    // SQLite changes no database: the one asked for is left aside.
+    let url = format!("ws://{address}/api/editors/{editor_id}/session?database=other");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    next_json(&mut socket).await;
+    assert_eq!(
+        run_all_rows(&mut socket, "SELECT 1; SELECT 2").await,
+        [1, 1]
+    );
 }

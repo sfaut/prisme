@@ -478,10 +478,17 @@ async fn start_export(
         })
         .await?
         .ok_or(ApiError::NotFound)?;
-    // A connection of its own, read-only whatever the settings of the sessions.
+    // A connection of its own, read-only whatever the settings of the
+    // sessions, on the database of the query when the engine changes
+    // databases.
+    let switches = drivers::of(target.engine).capabilities().switch_namespace;
     let options = OpenOptions {
         read_only: true,
-        namespace: request.database.as_deref().map(Namespace::single),
+        namespace: request
+            .database
+            .as_deref()
+            .filter(|_| switches)
+            .map(Namespace::single),
         ..OpenOptions::default()
     };
 

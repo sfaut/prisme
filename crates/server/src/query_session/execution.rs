@@ -164,7 +164,9 @@ impl Session<'_> {
     }
 
     /// Runs a query on a new connection, opened like the session's on the
-    /// database `database` (none when absent), without a `USE` of its own.
+    /// database `database` (none when absent), without a `USE` of its own;
+    /// an engine that does not change namespaces opens it on that of its
+    /// settings.
     pub(super) async fn run_on_new_connection(
         &self,
         flavor: Flavor,
@@ -176,11 +178,11 @@ impl Session<'_> {
         let target = &self.source.target;
         let options = OpenOptions {
             // An empty path opens on no database.
-            namespace: Some(
+            namespace: self.source.switches_namespace().then(|| {
                 database
                     .as_ref()
-                    .map_or_else(|| Namespace(Vec::new()), Namespace::single),
-            ),
+                    .map_or_else(|| Namespace(Vec::new()), Namespace::single)
+            }),
             ..self.source.options.clone()
         };
         let mut connection = match drivers::of(target.engine).open(target, options).await {
