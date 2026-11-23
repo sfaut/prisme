@@ -116,7 +116,7 @@ Architecture:
 - ✅ Step **Vérification** database by database: the test of a source held in files gives the state of each database even without its main one, attached then to a main database in memory in its place; the fixes "Le créer", "L’ouvrir tel quel" and "Retirer" change the input without a new test; the banner of the test warns while a database is to look at again
 - ✅ Saved connection: removal struck through and restorable ("Rétablir") until saving, which closes the sessions; the file stays on the disk, a database in memory goes with its content; a database added since goes at once
 - ✅ List and card: location of `main`, number of attached databases, protocol (protocol pill beside every location field, the protocol alone for a main database in memory)
-- ⬜ Badge SQLite, light and dark
+- ✅ Badge SQLite, light and dark (teal, beside the blue of MySQL and the brown of MariaDB)
 - ⬜ Navigator: schemas, protocol, badge `memdb` (database in memory shared by the session) or `memory` (`ATTACH ':memory:'`, private to its connection), menus, window **Attacher une base**; labels of the namespace levels (`NamespaceLevel`) in the navigator and the completion
 - ⬜ Editor dialect, CTE and `IN` clause in SQLite (literals of the dates, times and bytes)
 - ⬜ Operations on the indexes in the navigator, in SQLite (`CREATE INDEX`, `DROP INDEX`)
