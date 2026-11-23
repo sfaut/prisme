@@ -929,6 +929,24 @@ fn connector_opening(folder: &Path) {
                 }),
         );
     }
+    let file_uri = format!(
+        "file:///{}?vfs={vfs}",
+        plain.replace('\\', "/").trim_start_matches('/')
+    );
+    for (schema, file) in [
+        ("file", file_uri.as_str()),
+        ("private", ":memory:"),
+        ("shared", "file:/prisme-opening-vfs-shared?vfs=memdb"),
+        ("plain", plain),
+    ] {
+        in_memdb
+            .execute("ATTACH ?1 AS ?2", [file, schema])
+            .expect("attachment");
+    }
+    report(
+        "main in memdb, database_list of a file, a private database in memory, a shared one (memdb) and a plain path",
+        list(&in_memdb),
+    );
     drop(in_memdb);
     connection.get_interrupt_handle().interrupt();
     report(
