@@ -29,6 +29,7 @@ mod new_files;
 mod profile;
 mod query_session;
 mod recorder;
+mod remote_cache;
 mod request_guard;
 mod secrets;
 mod session_relay;
@@ -117,6 +118,7 @@ async fn main() -> anyhow::Result<()> {
     let state = api::AppState::new(db, master_key, startup.user_id, folders);
     tokio::spawn(console::write(state.clone(), console_receiver));
     tokio::spawn(console::purge_regularly(state.clone()));
+    tokio::spawn(remote_cache::purge_regularly(state.clone()));
     let app = api::router(state);
 
     let listener = tokio::net::TcpListener::bind(startup.listen)
