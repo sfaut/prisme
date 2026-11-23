@@ -260,7 +260,7 @@ Rules:
 | `Database`, `DatabaseArrowDown`, `DatabaseArrowUp`, `DatabaseCheck`, `DatabaseX` | Exchanges with the internal database: none, reading, writing, synced, failed | top bar (`SyncStatus`) |
 | `Info`, `CircleCheckBig`, `CircleAlert`, `CircleX` | Message: information, success, warning, error | `UiAlert` |
 | `CircleCheckBig`, `CircleX` | Transient message: success, error, as in `UiAlert` | `UiToaster` |
-| `Eye` / `EyeOff` | Show / hide the password | connections manager (`ConnectionForm`) |
+| `Eye` / `EyeOff` | Show / hide the password | connections manager (`ConnectionFormServer`) |
 | `ChevronDown`, `Check` | Open a list; chosen item | `UiSelect` |
 | `Sun`, `Monitor`, `Moon` | Color mode: light, system, dark | top bar (`UiChoiceSwitch`) |
 | `User`, `Server`, `Settings` | Profile, connections, preferences | account menu |

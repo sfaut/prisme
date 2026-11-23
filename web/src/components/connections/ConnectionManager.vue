@@ -9,7 +9,7 @@
   A saved connection shows its card at the top (icon, name, flavor badge,
   server and its version, last connection; the list gives its place), with "Tester", "Dupliquer" and
   "Supprimer" (after confirmation, `ConnectionRemoveDialog`), then its
-  settings on a single page (`ConnectionForm`). "Tester" connects with the
+  settings on a single page (`ConnectionFormServer`). "Tester" connects with the
   settings as typed; unchanged, the test is that of the saved connection,
   whose server and date of connection the server then remembers.
 
@@ -60,7 +60,7 @@ import { SOURCE_FAMILIES } from './sourceTypes'
 import { openTransactionsNotice } from './transactionNotice'
 
 import ConnectionFlavorBadge from './ConnectionFlavorBadge.vue'
-import ConnectionForm from './ConnectionForm.vue'
+import ConnectionFormServer from './ConnectionFormServer.vue'
 import ConnectionManagerList from './ConnectionManagerList.vue'
 import ConnectionManagerSteps from './ConnectionManagerSteps.vue'
 import ConnectionManagerTypes from './ConnectionManagerTypes.vue'
@@ -639,7 +639,7 @@ function onRemoved(id: number): void {
             v-model:type="shownCreation.type"
           />
           <!-- The input is changed in place: the form gets it, without replacing it. -->
-          <connection-form
+          <connection-form-server
             v-else-if="form && (saved || shownCreation?.step === 2)"
             :form="form"
             :password="saved ? 'saved' : shownCreation?.copyOf ? 'copy' : 'new'"
