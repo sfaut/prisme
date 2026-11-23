@@ -903,7 +903,27 @@ fn connector_opening(folder: &Path) {
         "file:///{}?vfs={vfs}",
         plain.replace('\\', "/").trim_start_matches('/')
     );
-    for (label, file) in [("path", plain.to_string()), ("URI naming its vfs", uri)] {
+    // The forms of URI that the classification of ATTACH accepts
+    // (`prisme_dialects::sqlite_files::attached_file`).
+    let forward = plain.replace('\\', "/");
+    let rooted = forward.trim_start_matches('/');
+    let forms = [
+        ("path", plain.to_string()),
+        ("URI naming its vfs", uri),
+        (
+            "URI file:/ naming its vfs",
+            format!("file:/{rooted}?vfs={vfs}"),
+        ),
+        (
+            "URI file: naming its vfs",
+            format!("file:{forward}?vfs={vfs}"),
+        ),
+        (
+            "URI file://localhost/ naming its vfs",
+            format!("file://localhost/{rooted}?vfs={vfs}"),
+        ),
+    ];
+    for (label, file) in forms {
         report(
             &format!("main in memdb, ATTACH of the {label}: rows of t"),
             in_memdb

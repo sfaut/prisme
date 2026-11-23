@@ -52,7 +52,6 @@
 
 use std::collections::BTreeSet;
 use std::ops::ControlFlow;
-use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use sqlparser::ast::{
@@ -66,6 +65,7 @@ use crate::Dialect;
 use crate::limit::returns_rows;
 use crate::mysql_statements::MySqlStatement;
 use crate::parse::{Parsed, parse_statements};
+use crate::sqlite_files::attached_file;
 use crate::sqlite_pragmas::{self, PragmaRole};
 use crate::sqlite_statements::{PragmaForm, SqliteStatement};
 use crate::temporary::{TableName, table_name};
@@ -385,19 +385,17 @@ fn writes_by_pragma_function(statement: &Parsed, dialect: Dialect) -> bool {
         .is_break()
 }
 
-/// Can an `ATTACH` of SQLite name this file? A literal absolute path (with
-/// `\` or `/` on Windows), as the locations of a connection
-/// (`prisme_connectors::location`), or `':memory:'`: neither a computed
-/// name, nor a relative path (read from the folder where Prisme runs), nor
-/// a URI (`file:...?mode=...`).
+/// Can an `ATTACH` of SQLite name this file? A literal that
+/// `sqlite_files::attached_file` accepts: an absolute path, `':memory:'`,
+/// or the URI of a file in the default file system; never a computed name.
 fn attachable(file: &Expr) -> bool {
     let Expr::Value(value) = file else {
         return false;
     };
-    let Value::SingleQuotedString(path) = &value.value else {
+    let Value::SingleQuotedString(name) = &value.value else {
         return false;
     };
-    path == ":memory:" || Path::new(path).is_absolute()
+    attached_file(name).is_some()
 }
 
 /// Variables that set the read-only mode of the session.
@@ -1201,7 +1199,7 @@ mod tests {
     }
 
     #[test]
-    fn attaches_only_files_named_by_a_literal_absolute_path() {
+    fn attaches_only_files_named_by_a_literal_absolute_path_or_uri() {
         #[cfg(windows)]
         let paths = [
             "D:\\data\\sales.db",
@@ -1210,7 +1208,8 @@ mod tests {
         ];
         #[cfg(not(windows))]
         let paths = ["/srv/data/sales.db", "/tmp/s.db", "/s.db"];
-        for path in paths.iter().chain(&[":memory:"]) {
+        let uri = crate::sqlite_files::file_uri(paths[0], false);
+        for path in paths.iter().chain(&[":memory:", uri.as_str()]) {
             for sql in [
                 format!("ATTACH '{path}' AS sales"),
                 format!("ATTACH DATABASE '{path}' AS sales"),
@@ -1226,6 +1225,7 @@ mod tests {
             "ATTACH '' AS sales",
             "ATTACH 'file:sales.db?mode=rwc' AS sales",
             "ATTACH 'file:///D:/data/sales.db' AS sales",
+            "ATTACH 'file:/prisme/session-1/main?vfs=memdb' AS sales",
             "ATTACH '/srv/' || 'sales.db' AS sales",
             "ATTACH sales AS sales",
             "ATTACH (SELECT path FROM files) AS sales",
