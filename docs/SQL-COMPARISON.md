@@ -562,6 +562,8 @@ Opening of the databases of a connection, measured on 2026-11-23:
 
 - A database in memory (`file:/<name>?vfs=memdb`, or `:memory:`) opens without `SQLITE_OPEN_CREATE`, and takes tables. Opened read-only, a new one refuses its first table ("attempt to write a readonly database"); an existing one, opened read-only by another connection, gives its rows and refuses an `INSERT`.
 - `ATTACH ?1 AS ?2` takes the file and the name of the schema as bound parameters: `ATTACH ?1 AS ?2` with the name `other db` gives a schema read as `"other db".t`.
+- An attachment opens in the file system (VFS) of its connection: on a connection whose main database is in `memdb`, `ATTACH` of the path of a file gives an empty database in memory ("no such table" on its tables); the URI `file:///<path>?vfs=win32` (`unix` on Linux and macOS) reads the file.
+- On Windows, the URI `file:////<server>/<share>/<path>` (an empty authority) reads a file of a network share: `file:////localhost/C$/.../opening.db` gives its rows.
 - `pragma_database_list` gives `main` (seq 0, file empty for a database in memory), then `temp` (seq 1) only once the connection created a temporary table, then the attached databases (seq 2 on), with the path of their file.
 - `pragma_table_list` lists the tables and views of every schema, `sqlite_schema` (`sqlite_temp_schema` in `temp`) included, with their type (`table`, `view`, `virtual`, `shadow`) and `wr` (1 for a table `WITHOUT ROWID`).
 - An interruption (`sqlite3_interrupt`) sent while no statement runs stops nothing: the next statement runs.

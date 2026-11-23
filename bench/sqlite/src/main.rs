@@ -890,6 +890,41 @@ fn connector_opening(folder: &Path) {
                     .collect::<rusqlite::Result<Vec<_>>>()
             }),
     );
+    let in_memdb = Connection::open_with_flags("file:/prisme-opening-vfs?vfs=memdb", READ_WRITE)
+        .expect("memdb main");
+    let plain = path.to_str().expect("path");
+    let vfs = if cfg!(windows) { "win32" } else { "unix" };
+    let uri = format!(
+        "file:///{}?vfs={vfs}",
+        plain.replace('\\', "/").trim_start_matches('/')
+    );
+    for (label, file) in [("path", plain.to_string()), ("URI naming its vfs", uri)] {
+        report(
+            &format!("main in memdb, ATTACH of the {label}: rows of t"),
+            in_memdb
+                .execute("ATTACH ?1 AS f", [file.as_str()])
+                .and_then(|_| {
+                    in_memdb.query_row("SELECT count(*) FROM f.t", [], |row| row.get::<_, i64>(0))
+                }),
+        );
+        in_memdb.execute_batch("DETACH f").ok();
+    }
+    if cfg!(windows) {
+        let unc = format!(
+            "//localhost/{}",
+            plain.replacen(':', "$", 1).replace('\\', "/")
+        );
+        let uri = format!("file://{unc}?vfs=win32");
+        report(
+            &format!("ATTACH of the UNC path {unc} as a URI file:////..."),
+            in_memdb
+                .execute("ATTACH ?1 AS u", [uri.as_str()])
+                .and_then(|_| {
+                    in_memdb.query_row("SELECT count(*) FROM u.t", [], |row| row.get::<_, i64>(0))
+                }),
+        );
+    }
+    drop(in_memdb);
     connection.get_interrupt_handle().interrupt();
     report(
         "SELECT 1 after an interruption sent while nothing ran",
