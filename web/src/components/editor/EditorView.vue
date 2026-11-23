@@ -92,6 +92,7 @@ import {
   refreshState,
   useQuerySession,
 } from '@/api/querySession'
+import { innerLevel } from '@/api/namespaceLevels'
 import { useCatalogStore } from '@/stores/catalog'
 import { useSettingsStore } from '@/stores/settings'
 
@@ -925,6 +926,7 @@ defineExpose({
           :version="state.server?.version ?? null"
           :ansi-quotes="state.server?.ansi_quotes ?? false"
           :schemas="catalogSchemas"
+          :level="innerLevel(state.server?.capabilities)"
           :default-schema="state.database"
           :indent-size="indentSize"
           @run="run"

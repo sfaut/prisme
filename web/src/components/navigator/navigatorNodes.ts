@@ -33,6 +33,8 @@ import type { ColumnInfo } from '@/api/generated/ColumnInfo'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
 import type { IndexInfo } from '@/api/generated/IndexInfo'
+import type { NamespaceLevel } from '@/api/generated/NamespaceLevel'
+import { innerLevel } from '@/api/namespaceLevels'
 import type { ObjectKind } from '@/api/generated/ObjectKind'
 import type { TableDetails } from '@/api/generated/TableDetails'
 import type { TriggerInfo } from '@/api/generated/TriggerInfo'
@@ -163,6 +165,10 @@ export interface NavigatorNode extends Place {
    * database node, of a source that changes its namespace.
    */
   usable?: boolean
+  /**
+   * Level of a database node's namespace, which names it (`base`, `schéma`).
+   */
+  level?: NamespaceLevel
   /**
    * Source of the editor, its chosen connection (shown in bold).
    */
@@ -336,6 +342,7 @@ export function catalogNodes(
       role: 'database' as const,
       current: schema.name === currentDatabase,
       usable: capabilities?.switch_namespace ?? true,
+      level: innerLevel(capabilities),
       children:
         schema.objects === null
           ? [loadingNode(key, place)]

@@ -41,6 +41,7 @@ import {
 } from '@lucide/vue'
 import { type Component, computed } from 'vue'
 
+import { LEVEL_NAMES } from '@/api/namespaceLevels'
 import type { SessionStatus } from '@/api/querySession'
 
 import type { EntryKind, NavigatorNode } from './navigatorNodes'
@@ -119,6 +120,11 @@ function disconnectTip(session: SessionStatus | null): Tooltip {
 }
 
 /**
+ * Names of the level of a database node (`cette base`, `ce schéma`).
+ */
+const level = computed(() => LEVEL_NAMES[props.node.level ?? 'database'])
+
+/**
  * Button of the line, shown on hover: on a source or the current database,
  * closes the session of the active editor; on another database, makes it the
  * current database; on a table or a view, shows its content; on an index,
@@ -138,8 +144,11 @@ const action = computed(() => {
   if (props.node.role === 'database' && props.node.usable === true) {
     return {
       icon: DatabaseZap,
-      label: 'Utiliser cette base',
-      tooltip: { title: 'Utiliser cette base', description: 'Base courante de la session (USE)' },
+      label: `Utiliser ${level.value.this}`,
+      tooltip: {
+        title: `Utiliser ${level.value.this}`,
+        description: `${level.value.current} de la session (USE)`,
+      },
     }
   }
   if (props.node.table !== undefined) {

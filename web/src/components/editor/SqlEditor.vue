@@ -48,6 +48,7 @@ import { computed, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch
 import { analyzeSql } from '@/api/analyze'
 import type { DialectSyntax } from '@/api/generated/DialectSyntax'
 import type { Flavor } from '@/api/generated/Flavor'
+import type { NamespaceLevel } from '@/api/generated/NamespaceLevel'
 import type { SelectionRange } from '@/api/generated/SelectionRange'
 import type { SqlPosition } from '@/api/generated/SqlPosition'
 import { fetchDialectSyntax } from '@/api/dialectSyntax'
@@ -92,6 +93,11 @@ const props = defineProps<{
    * Current database: its tables complete without a prefix. `null` if none.
    */
   defaultSchema: string | null
+  /**
+   * Level of the namespaces of the source, which names them in the
+   * completion (`base`, `schéma`).
+   */
+  level: NamespaceLevel
   /**
    * Gap between two tab stops, in spaces.
    */
@@ -209,7 +215,9 @@ const reserved = shallowRef<ReadonlySet<string>>(new Set())
 /**
  * Databases, tables and columns offered by completion, quoted when needed.
  */
-const completion = computed(() => completionSchema(props.schemas, props.ansiQuotes, reserved.value))
+const completion = computed(() =>
+  completionSchema(props.schemas, props.ansiQuotes, reserved.value, props.level),
+)
 
 /**
  * Number of the last request of the syntax: an answer that arrives after a

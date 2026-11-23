@@ -6,6 +6,14 @@ import type { CatalogSchema } from '@/stores/catalog'
 import { completionSchema } from '../sqlCompletion'
 
 describe('completionSchema', () => {
+  it('names a namespace by the level of the source', () => {
+    const schemas: CatalogSchema[] = [schema('main', [])]
+    type Named = Record<string, { self: { detail: string } }>
+    expect((completionSchema(schemas) as Named).main!.self.detail).toBe('base')
+    const sqlite = completionSchema(schemas, false, new Set(), 'schema') as Named
+    expect(sqlite.main!.self.detail).toBe('schéma')
+  })
+
   it('quotes the names that are not plain identifiers, according to ANSI_QUOTES', () => {
     const schemas: CatalogSchema[] = [schema('ma base', [table('clients', 0)])]
     const backticks = completionSchema(schemas) as Record<string, { self: { apply?: string } }>
