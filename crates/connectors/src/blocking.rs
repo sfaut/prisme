@@ -15,6 +15,10 @@
 //! gone. Stopping a running order goes through the interruption of the
 //! engine, which can be called from any thread (`InterruptHandle` of
 //! SQLite).
+//!
+//! An order runs in the `tracing` span of the task that sent it: the
+//! statements it traces (`sql_log`) keep the context the server gives them
+//! (user, connection, action), as on the async side.
 
 use std::sync::mpsc;
 use std::thread;
@@ -52,10 +56,11 @@ impl<T: 'static> Worker<T> {
     ) -> Result<Result<Self, E>, Stopped> {
         let (orders, received) = mpsc::channel::<Order<T>>();
         let (opened, opening) = oneshot::channel();
+        let span = tracing::Span::current();
         thread::Builder::new()
             .name(name.to_string())
             .spawn(move || {
-                let mut connection = match open() {
+                let mut connection = match span.in_scope(open) {
                     Ok(connection) => {
                         let _ = opened.send(Ok(()));
                         connection
@@ -95,13 +100,19 @@ impl<T: 'static> Worker<T> {
     }
 
     /// Sends `order` to the connection, without waiting for it: an order
-    /// that answers through a channel of its own (the rows of a result).
+    /// that answers through a channel of its own (the rows of a result). It
+    /// runs in the current span.
     ///
     /// # Errors
     ///
     /// Fails if the thread stopped.
     pub fn send(&self, order: impl FnOnce(&mut T) + Send + 'static) -> Result<(), Stopped> {
-        self.orders.send(Box::new(order)).map_err(|_| Stopped)
+        let span = tracing::Span::current();
+        self.orders
+            .send(Box::new(move |connection| {
+                span.in_scope(|| order(connection))
+            }))
+            .map_err(|_| Stopped)
     }
 }
 
