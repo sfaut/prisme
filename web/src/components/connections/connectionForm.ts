@@ -54,6 +54,15 @@ export interface DatabaseInput {
    * Location as typed, an absolute path or a URL; unused in memory.
    */
   location: string
+  /**
+   * Does it come from the saved connection? Removed, it then stays in the
+   * input, struck through, until saving.
+   */
+  saved: boolean
+  /**
+   * Removed from the saved connection at saving, and restorable until then.
+   */
+  removed: boolean
 }
 
 /**
@@ -116,7 +125,9 @@ export function emptyForm(engine: Engine = 'mysql'): ConnectionForm {
     init_sql: '',
     session_timeout_minutes: 5,
     show_system_schemas: true,
-    databases: [{ schema: MAIN_SCHEMA, origin: 'existing', location: '' }],
+    databases: [
+      { schema: MAIN_SCHEMA, origin: 'existing', location: '', saved: false, removed: false },
+    ],
   }
 }
 
@@ -134,8 +145,14 @@ export function formOf(connection: ConnectionSummary): ConnectionForm {
     settings.family === 'files'
       ? settings.databases.map(({ schema, location }) =>
           location.scheme === 'memory'
-            ? { schema, origin: 'memory', location: '' }
-            : { schema, origin: 'existing', location: location.address },
+            ? { schema, origin: 'memory', location: '', saved: true, removed: false }
+            : {
+                schema,
+                origin: 'existing',
+                location: location.address,
+                saved: true,
+                removed: false,
+              },
         )
       : empty.databases
   return {
@@ -175,7 +192,10 @@ export function connectionOf(form: ConnectionForm): NewConnection {
   const { host, port, username, password, database_name } = form
   const settings: NewSettings =
     ENGINE_FAMILIES[engine] === 'files'
-      ? { family: 'files', databases: form.databases.map(databaseOf) }
+      ? {
+          family: 'files',
+          databases: form.databases.filter((database) => !database.removed).map(databaseOf),
+        }
       : { family: 'server', host, port, username, password, database_name }
   return {
     name,
@@ -204,8 +224,8 @@ export function isChanged(form: ConnectionForm, connection: ConnectionSummary): 
 }
 
 /**
- * Are two lists of databases the same, in the same order? The location of
- * a database in memory, unused, does not count.
+ * Are two lists of databases the same, in the same order, none removed? The
+ * location of a database in memory, unused, does not count.
  *
  * @param left First list.
  * @param right Second list.
@@ -215,6 +235,7 @@ function sameDatabases(left: DatabaseInput[], right: DatabaseInput[]): boolean {
     left.length === right.length &&
     left.every(
       (database, index) =>
+        database.removed === right[index]!.removed &&
         database.schema === right[index]!.schema &&
         database.origin === right[index]!.origin &&
         (database.origin === 'memory' || database.location === right[index]!.location),
@@ -223,9 +244,9 @@ function sameDatabases(left: DatabaseInput[], right: DatabaseInput[]): boolean {
 }
 
 /**
- * Input of a copy: the same settings, under a name of its own. The password
- * typed in the input goes with it; empty, the server takes that of the
- * copied connection.
+ * Input of a copy: the same settings, under a name of its own, without the
+ * databases removed, the others new to it. The password typed in the input
+ * goes with it; empty, the server takes that of the copied connection.
  *
  * @param form Input of the copied connection.
  */
@@ -233,7 +254,9 @@ export function copyForm(form: ConnectionForm): ConnectionForm {
   return {
     ...form,
     name: `${form.name}-copie`.slice(0, LENGTHS.name),
-    databases: form.databases.map((database) => ({ ...database })),
+    databases: form.databases
+      .filter((database) => !database.removed)
+      .map((database) => ({ ...database, saved: false })),
   }
 }
 

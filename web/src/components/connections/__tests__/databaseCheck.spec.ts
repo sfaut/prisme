@@ -13,7 +13,7 @@ function input(
   origin: DatabaseInput['origin'],
   location = 'D:\\data\\v.db',
 ): DatabaseInput {
-  return { schema, origin, location }
+  return { schema, origin, location, saved: false, removed: false }
 }
 
 /**

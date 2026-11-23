@@ -102,9 +102,21 @@ describe('connectionForm', () => {
   it('starts a source held in files from its databases, and sees any change', () => {
     const form = formOf(savedFiles())
     expect(form.databases).toEqual([
-      { schema: 'main', origin: 'existing', location: 'D:\\data\\ventes.db' },
-      { schema: 'ref', origin: 'existing', location: 'https://example.org/ref.db' },
-      { schema: 'brouillon', origin: 'memory', location: '' },
+      {
+        schema: 'main',
+        origin: 'existing',
+        location: 'D:\\data\\ventes.db',
+        saved: true,
+        removed: false,
+      },
+      {
+        schema: 'ref',
+        origin: 'existing',
+        location: 'https://example.org/ref.db',
+        saved: true,
+        removed: false,
+      },
+      { schema: 'brouillon', origin: 'memory', location: '', saved: true, removed: false },
     ])
     expect(isChanged(form, savedFiles())).toBe(false)
     form.databases[1]!.schema = 'refs'
@@ -115,11 +127,22 @@ describe('connectionForm', () => {
     const shorter = formOf(savedFiles())
     shorter.databases.pop()
     expect(isChanged(shorter, savedFiles())).toBe(true)
+    form.databases[1]!.removed = true
+    expect(isChanged(form, savedFiles())).toBe(true)
+    form.databases[1]!.removed = false
+    expect(isChanged(form, savedFiles())).toBe(false)
   })
 
   it('sends the databases held in files under their family', () => {
     const form = formOf(savedFiles())
-    form.databases.push({ schema: 'stats', origin: 'new', location: 'D:\\data\\stats.db' })
+    form.databases.push({
+      schema: 'stats',
+      origin: 'new',
+      location: 'D:\\data\\stats.db',
+      saved: false,
+      removed: false,
+    })
+    form.databases[2]!.removed = true
     expect(connectionOf(form)).toEqual({
       name: 'ventes',
       engine: 'sqlite',
@@ -128,7 +151,6 @@ describe('connectionForm', () => {
         databases: [
           { schema: 'main', location: 'D:\\data\\ventes.db', create: false },
           { schema: 'ref', location: 'https://example.org/ref.db', create: false },
-          { schema: 'brouillon', location: ':memory:' },
           { schema: 'stats', location: 'D:\\data\\stats.db', create: true },
         ],
       },
@@ -143,6 +165,11 @@ describe('connectionForm', () => {
     const copy = copyForm(form)
     copy.databases[0]!.location = 'D:\\data\\autre.db'
     expect(form.databases[0]!.location).toBe('D:\\data\\ventes.db')
+    form.databases[1]!.removed = true
+    expect(copyForm(form).databases.map(({ schema, saved }) => [schema, saved])).toEqual([
+      ['main', false],
+      ['brouillon', false],
+    ])
   })
 
   it('tells where a connection points', () => {

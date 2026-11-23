@@ -10,6 +10,9 @@
   created empty when the connection is saved, or memory: empty at each
   session, lost when it closes. Each attached database has its schema, its
   origin and its location; every one attaches at each opening of a session.
+  An attached database of the saved connection that is removed stays struck
+  through, its file left on the disk, and "Rétablir" brings it back until
+  saving; one added since goes at once.
   A location is an absolute path on the machine of Prisme's server, or the
   address of a remote file (`https`), copied and read only: the pill beside
   the field shows the protocol read from the typing.
@@ -19,13 +22,14 @@
   whose message the manager shows.
 -->
 <script setup lang="ts">
-import { FileCheck, FilePlus, MemoryStick, Plus, Trash2 } from '@lucide/vue'
+import { FileCheck, FilePlus, MemoryStick, Plus, Trash2, Undo2 } from '@lucide/vue'
 import { RadioGroupItem, RadioGroupRoot } from 'reka-ui'
 import { type Component, computed, useId } from 'vue'
 
 import {
   ATTACHED_MAX,
   type ConnectionForm,
+  type DatabaseInput,
   type DatabaseOrigin,
   LENGTHS,
   MAIN_SCHEMA,
@@ -110,19 +114,70 @@ const main = computed(() => form.value.databases[0]!)
 const attached = computed(() => form.value.databases.slice(1))
 
 /**
+ * Number of the databases attached, those removed left out.
+ */
+const kept = computed(() => attached.value.filter((database) => !database.removed).length)
+
+/**
  * Adds an attached database, to open from an existing file.
  */
 function attach(): void {
-  form.value.databases.push({ schema: '', origin: 'existing', location: '' })
+  form.value.databases.push({
+    schema: '',
+    origin: 'existing',
+    location: '',
+    saved: false,
+    removed: false,
+  })
 }
 
 /**
- * Removes an attached database from the input.
+ * Removes an attached database: struck through if it comes from the saved
+ * connection, dropped from the input otherwise.
  *
  * @param index Rank of the database among the attached ones.
  */
 function remove(index: number): void {
-  form.value.databases.splice(index + 1, 1)
+  const database = form.value.databases[index + 1]!
+  if (database.saved) {
+    database.removed = true
+  } else {
+    form.value.databases.splice(index + 1, 1)
+  }
+}
+
+/**
+ * Protocol of a database as typed: `memory` in memory, else that of its
+ * location.
+ *
+ * @param database Input of the database.
+ */
+function schemeOfInput(database: DatabaseInput): string | null {
+  return database.origin === 'memory' ? 'memory' : schemeOf(database.location)
+}
+
+/**
+ * What the removal of a database does: its file stays on the disk, its
+ * content in memory goes with the sessions.
+ *
+ * @param database Input of the database removed.
+ */
+function removedText(database: DatabaseInput): string {
+  const scheme = schemeOfInput(database)
+  return scheme === 'memory'
+    ? 'Retirée à l’enregistrement, avec son contenu en mémoire.'
+    : scheme === 'file'
+      ? 'Retirée à l’enregistrement ; le fichier reste sur le disque.'
+      : 'Retirée à l’enregistrement.'
+}
+
+/**
+ * Brings back an attached database removed.
+ *
+ * @param index Rank of the database among the attached ones.
+ */
+function restore(index: number): void {
+  form.value.databases[index + 1]!.removed = false
 }
 </script>
 
@@ -197,55 +252,78 @@ function remove(index: number): void {
         Aucune. Une base attachée se lit sous son schéma, comme
         <code class="font-mono">archive.clients</code>.
       </p>
-      <div
-        v-for="(database, index) in attached"
-        :key="index"
-        class="flex items-center gap-3 px-4 py-3"
-      >
-        <ui-input
-          v-model="database.schema"
-          :maxlength="LENGTHS.schema"
-          placeholder="schéma"
-          spellcheck="false"
-          :aria-label="`Schéma de la base attachée ${index + 1}`"
-          class="w-36"
-        />
-        <ui-select
-          v-model="database.origin"
-          :items="ATTACHED_ORIGINS"
-          :label="`Origine de la base attachée ${index + 1}`"
-          class="w-48"
-        />
-        <ui-input
-          v-if="database.origin !== 'memory'"
-          v-model="database.location"
-          :maxlength="LENGTHS.location"
-          :placeholder="database.origin === 'new' ? 'fichier à créer' : 'chemin ou adresse https'"
-          spellcheck="false"
-          :aria-label="`Emplacement de la base attachée ${index + 1}`"
-          class="min-w-0 flex-1"
-        >
-          <template v-if="schemeOf(database.location)" #trailing>
-            <connection-scheme-badge :scheme="schemeOf(database.location)!" />
-          </template>
-        </ui-input>
-        <span v-else class="flex min-w-0 flex-1 items-center gap-2 text-sm text-fg-secondary">
-          <connection-scheme-badge scheme="memory" />
-          vide à chaque session
-        </span>
-        <ui-button
-          :icon="Trash2"
-          variant="ghost"
-          :aria-label="`Retirer la base attachée ${database.schema || index + 1}`"
-          @click="remove(index)"
-        />
-      </div>
+      <template v-for="(database, index) in attached" :key="index">
+        <div v-if="database.removed" class="flex items-center gap-3 px-4 py-3">
+          <div class="flex min-w-0 flex-1 flex-col gap-1">
+            <div class="flex min-w-0 items-center gap-2 text-fg-secondary">
+              <span class="font-mono line-through">{{ database.schema }}</span>
+              <connection-scheme-badge
+                v-if="schemeOfInput(database)"
+                :scheme="schemeOfInput(database)!"
+              />
+              <span
+                v-if="database.origin !== 'memory'"
+                class="min-w-0 truncate font-mono text-sm line-through"
+              >
+                {{ database.location }}
+              </span>
+            </div>
+            <p class="text-sm text-fg-secondary">{{ removedText(database) }}</p>
+          </div>
+          <ui-button
+            :icon="Undo2"
+            label="Rétablir"
+            small
+            :disabled="kept >= ATTACHED_MAX"
+            @click="restore(index)"
+          />
+        </div>
+        <div v-else class="flex items-center gap-3 px-4 py-3">
+          <ui-input
+            v-model="database.schema"
+            :maxlength="LENGTHS.schema"
+            placeholder="schéma"
+            spellcheck="false"
+            :aria-label="`Schéma de la base attachée ${index + 1}`"
+            class="w-36"
+          />
+          <ui-select
+            v-model="database.origin"
+            :items="ATTACHED_ORIGINS"
+            :label="`Origine de la base attachée ${index + 1}`"
+            class="w-48"
+          />
+          <ui-input
+            v-if="database.origin !== 'memory'"
+            v-model="database.location"
+            :maxlength="LENGTHS.location"
+            :placeholder="database.origin === 'new' ? 'fichier à créer' : 'chemin ou adresse https'"
+            spellcheck="false"
+            :aria-label="`Emplacement de la base attachée ${index + 1}`"
+            class="min-w-0 flex-1"
+          >
+            <template v-if="schemeOf(database.location)" #trailing>
+              <connection-scheme-badge :scheme="schemeOf(database.location)!" />
+            </template>
+          </ui-input>
+          <span v-else class="flex min-w-0 flex-1 items-center gap-2 text-sm text-fg-secondary">
+            <connection-scheme-badge scheme="memory" />
+            vide à chaque session
+          </span>
+          <ui-button
+            :icon="Trash2"
+            variant="ghost"
+            :aria-label="`Retirer la base attachée ${database.schema || index + 1}`"
+            @click="remove(index)"
+          />
+        </div>
+      </template>
     </ui-setting-list>
     <div class="flex items-center gap-3">
       <ui-button
         :icon="Plus"
         label="Attacher une base"
-        :disabled="attached.length >= ATTACHED_MAX"
+        :disabled="kept >= ATTACHED_MAX"
         @click="attach"
       />
       <span class="text-sm text-fg-secondary">

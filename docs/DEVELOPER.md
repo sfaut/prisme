@@ -261,6 +261,7 @@ Rules:
 | `Info`, `CircleCheckBig`, `CircleAlert`, `CircleX` | Message: information, success, warning, error | `UiAlert` |
 | `CircleCheckBig`, `CircleX` | Transient message: success, error, as in `UiAlert` | `UiToaster` |
 | `Eye` / `EyeOff` | Show / hide the password | connections manager (`ConnectionFormServer`) |
+| `Undo2` | Restore a database removed from a saved connection, until saving | connections manager (`ConnectionFormFiles`) |
 | `FileCheck`, `FilePlus`, `MemoryStick` | Origin of a database held in files: existing file, new file, memory; fixes "L’ouvrir tel quel" and "Le créer" of the "Vérification" step | connections manager (`ConnectionFormFiles`, `ConnectionCheckFiles`) |
 | `ChevronDown`, `Check` | Open a list; chosen item | `UiSelect` |
 | `Sun`, `Monitor`, `Moon` | Color mode: light, system, dark | top bar (`UiChoiceSwitch`) |
