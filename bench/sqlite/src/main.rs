@@ -64,6 +64,7 @@ fn main() {
     write_outcomes();
     connector_opening(&folder);
     update_hook();
+    literals_of_a_cte();
 
     std::fs::remove_dir_all(&folder).ok();
 }
@@ -1072,5 +1073,56 @@ fn update_hook() {
             if hooked { "set" } else { "absent" },
             best.as_millis()
         );
+    }
+}
+
+/// Literals that the interface writes for the rows of a result (a CTE of
+/// `VALUES`, an `IN` clause of a selection): those SQLite reads, the
+/// storage class of each value, and the forms of other dialects it refuses.
+fn literals_of_a_cte() {
+    println!(
+        "
+16. Literals of a CTE and of an IN clause"
+    );
+    let connection = Connection::open_in_memory().expect("connection");
+    let values = |sql: &str| {
+        connection.prepare(sql).and_then(|mut statement| {
+            let count = statement.column_count();
+            let names: Vec<String> = statement
+                .column_names()
+                .map(|name| name.to_string())
+                .collect();
+            let rows = statement.query_map([], |row| {
+                (0..count)
+                    .map(|index| row.get_ref(index).map(shown))
+                    .collect::<rusqlite::Result<Vec<_>>>()
+            })?;
+            let rows = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+            Ok((names, rows))
+        })
+    };
+    let cte = "WITH ds (id, name, total, ratio, at, t, data) AS (VALUES \
+        (1, 'Ada', 12.50, 1.5E0, '2026-10-12 09:32:00', '12:00:00', X'FF001A'), \
+        (2, NULL, NULL, NULL, NULL, NULL, NULL)) \
+        SELECT ALL id, name, total, ratio, at, t, data FROM ds";
+    report(cte, values(cte));
+    let types = "WITH ds (id, name, total, ratio, at, data) AS (VALUES \
+        (1, 'Ada', 12.50, 1.5E0, '2026-10-12', X'FF')) \
+        SELECT typeof(id), typeof(name), typeof(total), typeof(ratio), typeof(at), typeof(data) FROM ds";
+    report(types, values(types));
+    for sql in [
+        "SELECT DATE '2026-10-12'",
+        "SELECT TIMESTAMP '2026-10-12 09:32:00'",
+        "SELECT TIME '12:00:00'",
+        "SELECT _binary'abc'",
+        "SELECT b'101'",
+        "SELECT X'616263' = CAST('abc' AS BLOB)",
+        r"SELECT length('a\b')",
+        "SELECT 2 IN (1, 2)",
+        "SELECT (1, 'a') IN ((1, 'a'), (2, 'b'))",
+        "SELECT (1, 'a') IN (VALUES (1, 'a'), (2, 'b'))",
+        "SELECT (1, NULL) IN (VALUES (1, NULL))",
+    ] {
+        report(sql, values(sql));
     }
 }

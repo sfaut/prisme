@@ -588,3 +588,19 @@ Opening of the databases of a connection, measured on 2026-11-23:
 - `pragma_table_list` lists the tables and views of every schema, `sqlite_schema` (`sqlite_temp_schema` in `temp`) included, with their type (`table`, `view`, `virtual`, `shadow`) and `wr` (1 for a table `WITHOUT ROWID`).
 - An interruption (`sqlite3_interrupt`) sent while no statement runs stops nothing: the next statement runs.
 - `prepare` takes a statement followed by a comment (`SELECT 1; -- end`); a comment alone prepares a statement without columns.
+
+Literals of the rows of a result that the interface writes (a CTE of `VALUES`, the `IN` clause of a selection, `web/src/components/result/cte.ts`), measured on 2026-11-24 by `bench/sqlite` (section 16):
+
+| Text | SQLite |
+|---|---|
+| `WITH ds (id, name, total, ratio, at, t, data) AS (VALUES (1, 'Ada', 12.50, 1.5E0, '2026-10-12 09:32:00', '12:00:00', X'FF001A'), (2, NULL, …))` | the two rows, rows written `(…)`, without `ROW` |
+| `typeof()` of `1`, `'Ada'`, `12.50`, `1.5E0`, `'2026-10-12'`, `X'FF'` in that CTE | `integer`, `text`, `real`, `real`, `text`, `blob` |
+| `DATE '2026-10-12'`, `TIMESTAMP '…'`, `TIME '12:00:00'` | error: no such column `DATE` (`TIMESTAMP`, `TIME`) |
+| `_binary'abc'`, `b'101'` | error: no such column `_binary` (`b`) |
+| `X'616263' = CAST('abc' AS BLOB)` | `1` |
+| `length('a\b')` | `3`: the backslash is an ordinary character |
+| `2 IN (1, 2)` | `1` |
+| `(1, 'a') IN ((1, 'a'), (2, 'b'))`, `(1, 'a') IN (VALUES (1, 'a'), (2, 'b'))` | `1` |
+| `(1, NULL) IN (VALUES (1, NULL))` | NULL |
+
+SQLite has no typed literal of a date or of a time, nor of a binary string: a date, a date-time and a time are written as texts, which SQLite stores as texts, and bytes as a hexadecimal literal `X'…'`, read as a BLOB. A decimal number (`12.50`) is read as a `REAL`, the class that a `NUMERIC` column gives it too.
