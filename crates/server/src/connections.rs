@@ -36,7 +36,7 @@ use prisme_connectors::api::{
     Target,
 };
 use prisme_connectors::flavor::Flavor;
-use prisme_connectors::location::{Location, Remote, Scheme};
+use prisme_connectors::location::{Location, LocationError, Remote, Scheme};
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{SettingRefusal, session_setting_refusal};
 use rusqlite::types::Type;
@@ -151,6 +151,11 @@ pub struct NewFileDatabase {
     pub schema: String,
     /// Location as typed: absolute path, URL, or `:memory:`.
     pub location: String,
+    /// Is an empty database to be created there when the connection is
+    /// saved? Only for a file, which must not exist yet. Absent: no.
+    #[serde(default)]
+    #[ts(optional, as = "Option<bool>")]
+    pub create: bool,
 }
 
 /// Settings of a server to save, as typed by the user.
@@ -346,15 +351,16 @@ impl NewServerSettings {
 
 impl NewFilesSettings {
     /// Databases of the settings, checked with the same limits as
-    /// `connection_files`, each with its location read.
-    pub fn databases(&self) -> Result<Vec<FileDatabase>, ConnectionsError> {
+    /// `connection_files`, each with its location read; `create` asked only
+    /// for a file.
+    pub fn databases(&self) -> Result<Vec<(FileDatabase, bool)>, ConnectionsError> {
         let invalid = |detail| Err(ConnectionsError::Invalid(detail));
         if self.databases.len() > ATTACHED_MAX + 1 {
             return invalid(ErrorDetail::TooManyDatabases {
                 max: count(ATTACHED_MAX),
             });
         }
-        let mut read: Vec<FileDatabase> = Vec::with_capacity(self.databases.len());
+        let mut read: Vec<(FileDatabase, bool)> = Vec::with_capacity(self.databases.len());
         for (position, database) in self.databases.iter().enumerate() {
             let schema = database.schema.trim();
             check_length(Field::SchemaName, schema, 1, SCHEMA_NAME_MAX_LENGTH)?;
@@ -370,7 +376,7 @@ impl NewFilesSettings {
             // SQLite tells its schemas apart without their case (ASCII).
             if read
                 .iter()
-                .any(|other| other.schema.eq_ignore_ascii_case(schema))
+                .any(|(other, _)| other.schema.eq_ignore_ascii_case(schema))
             {
                 return invalid(ErrorDetail::DuplicateSchema {
                     schema: schema.to_string(),
@@ -383,11 +389,19 @@ impl NewFilesSettings {
                 })
             };
             let location = Location::parse(&database.location).map_err(location_error)?;
+            if database.create && location.scheme != Scheme::File {
+                return Err(location_error(LocationError::NotCreatable {
+                    scheme: location.scheme,
+                }));
+            }
             let schema = if main { MAIN_SCHEMA } else { schema };
-            read.push(FileDatabase {
-                schema: schema.to_string(),
-                location,
-            });
+            read.push((
+                FileDatabase {
+                    schema: schema.to_string(),
+                    location,
+                },
+                database.create,
+            ));
         }
         if read.is_empty() {
             return invalid(ErrorDetail::MainDatabaseFirst);
@@ -557,7 +571,7 @@ fn insert_files(
     id: i64,
     files: &NewFilesSettings,
 ) -> Result<(), ConnectionsError> {
-    for (position, database) in files.databases()?.into_iter().enumerate() {
+    for (position, (database, _)) in files.databases()?.into_iter().enumerate() {
         db.execute(
             "INSERT INTO connection_files (connection_id, position, schema_name, scheme, location)
              VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -937,7 +951,11 @@ pub fn probe_target(
             })
         }
         NewSettings::Files(files) => Settings::Files(FilesSettings {
-            databases: files.databases()?,
+            databases: files
+                .databases()?
+                .into_iter()
+                .map(|(database, _)| database)
+                .collect(),
             remote: remote_of(db, user_id, locations)?,
         }),
     };
@@ -951,7 +969,6 @@ pub fn probe_target(
 #[cfg(test)]
 mod tests {
     use prisme_connectors::api::DialectOptions;
-    use prisme_connectors::location::LocationError;
     use prisme_connectors::mysql::capabilities;
 
     use super::*;
@@ -1319,6 +1336,7 @@ mod tests {
                     .map(|(schema, location)| NewFileDatabase {
                         schema: (*schema).to_string(),
                         location: (*location).to_string(),
+                        create: false,
                     })
                     .collect(),
             }),
@@ -1461,6 +1479,17 @@ mod tests {
             refusal(&files_connection("f", &[("main", "relative.db")])),
             ErrorDetail::Location {
                 error: LocationError::RelativePath { .. },
+                ..
+            }
+        ));
+        let mut remote = files_connection("f", &[("main", "https://example.com/v.db")]);
+        if let NewSettings::Files(files) = &mut remote.settings {
+            files.databases[0].create = true;
+        }
+        assert!(matches!(
+            refusal(&remote),
+            ErrorDetail::Location {
+                error: LocationError::NotCreatable { .. },
                 ..
             }
         ));

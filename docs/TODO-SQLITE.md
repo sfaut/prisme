@@ -96,7 +96,7 @@ Architecture:
 ## 5. Server, SQLite part
 
 - ✅ Connections of the family `files` in the API (`connection_files`), checked as their table: `main` first, 10 attached databases at most, schemas unique whatever their case, `temp` reserved; remote copies in the cache of their user, within the limits of their preferences
-- ⬜ Files created when the connection is saved
+- ✅ Files created when the connection is saved
 - ⬜ API of the attachments of the navigator (session or connection)
 - ⬜ Saving a database in memory to a file
 - ⬜ Schemas read again after `ATTACH` / `DETACH`

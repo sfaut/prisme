@@ -12,4 +12,9 @@ export type NewFileDatabase = {
    * Location as typed: absolute path, URL, or `:memory:`.
    */
   location: string;
+  /**
+   * Is an empty database to be created there when the connection is
+   * saved? Only for a file, which must not exist yet. Absent: no.
+   */
+  create?: boolean;
 };

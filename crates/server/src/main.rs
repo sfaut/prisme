@@ -25,6 +25,7 @@ mod exports;
 mod grid_display;
 mod master_key;
 mod navigator;
+mod new_files;
 mod profile;
 mod query_session;
 mod recorder;

@@ -64,6 +64,7 @@ use crate::error_detail::ErrorDetail;
 use crate::exports::{self, Exports};
 use crate::master_key::MasterKey;
 use crate::navigator;
+use crate::new_files;
 use crate::profile::{self, Profile, ProfileUpdate};
 use crate::query_session::{self, Source};
 use crate::recorder::Recorder;
@@ -251,15 +252,45 @@ async fn list_connections(
     Ok(Json(summaries))
 }
 
+/// Saves `connection` by `save`, once the empty databases it asks for are
+/// created (`new_files`); they are removed again if it is not saved.
+/// `save` returns `None` when the connection to change or copy does not
+/// exist.
+async fn save_with_files<T: Send + 'static>(
+    state: &AppState,
+    connection: NewConnection,
+    save: impl FnOnce(&Connection, &MasterKey, &NewConnection) -> Result<Option<T>, ConnectionsError>
+    + Send
+    + 'static,
+) -> Result<T, ApiError> {
+    connection.validate()?;
+    let files: new_files::NewFiles = new_files::create(&connection).await?;
+    let saved = state
+        .with_db(move |db, key| save(db, key, &connection))
+        .await;
+    match saved {
+        Ok(Some(saved)) => Ok(saved),
+        Ok(None) => {
+            files.discard();
+            Err(ApiError::NotFound)
+        }
+        Err(error) => {
+            files.discard();
+            Err(error)
+        }
+    }
+}
+
 /// `POST /api/connections`: saves a connection and returns its id (201).
 async fn create_connection(
     State(state): State<AppState>,
     user: CurrentUser,
     Json(new): Json<NewConnection>,
 ) -> Result<(StatusCode, Json<Created>), ApiError> {
-    let id = state
-        .with_db(move |db, key| connections::insert(db, key, user.id, &new))
-        .await?;
+    let id = save_with_files(&state, new, move |db, key, new| {
+        connections::insert(db, key, user.id, new).map(Some)
+    })
+    .await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
@@ -272,10 +303,10 @@ async fn copy_connection(
     Path(id): Path<i64>,
     Json(new): Json<NewConnection>,
 ) -> Result<(StatusCode, Json<Created>), ApiError> {
-    let id = state
-        .with_db(move |db, key| connections::insert_copy(db, key, user.id, id, &new))
-        .await?
-        .ok_or(ApiError::NotFound)?;
+    let id = save_with_files(&state, new, move |db, key, new| {
+        connections::insert_copy(db, key, user.id, id, new)
+    })
+    .await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
@@ -287,16 +318,14 @@ async fn update_connection(
     Path(id): Path<i64>,
     Json(changed): Json<NewConnection>,
 ) -> Result<StatusCode, ApiError> {
-    let updated = state
-        .with_db(move |db, key| connections::update(db, key, user.id, id, &changed))
-        .await?;
-    if updated {
-        // The sessions opened with the old settings close.
-        state.sessions.stop_connection(id);
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ApiError::NotFound)
-    }
+    save_with_files(&state, changed, move |db, key, changed| {
+        let updated = connections::update(db, key, user.id, id, changed)?;
+        Ok(updated.then_some(()))
+    })
+    .await?;
+    // The sessions opened with the old settings close.
+    state.sessions.stop_connection(id);
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `DELETE /api/connections/{id}`: deletes a connection of the current user (204).
