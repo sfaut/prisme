@@ -17,6 +17,7 @@ use prisme_dialects::verb::StatementVerb;
 use rusqlite::{Connection, InterruptHandle};
 use tokio::sync::{mpsc, oneshot};
 
+use super::catalog;
 use super::failure::opening;
 use super::open::{Planned, connect, file_name, plan, prepare, private_key};
 use super::statement::{self, Ending, Message, ROWS_AHEAD};
@@ -345,7 +346,7 @@ impl Canceller for SqliteCanceller {
     }
 }
 
-/// Catalog of a SQLite session.
+/// Catalog of a SQLite session, read on its connection (`catalog`).
 struct SqliteCatalog<'a> {
     /// Session whose connection reads the catalog.
     session: &'a mut SqliteSession,
@@ -353,22 +354,32 @@ struct SqliteCatalog<'a> {
 
 impl CatalogReader for SqliteCatalog<'_> {
     fn namespaces(&mut self) -> BoxFuture<'_, Result<Vec<NamespaceInfo>, ConnectorError>> {
-        let _ = &self.session;
-        Box::pin(async { Err(ConnectorError::Unsupported("the catalog of SQLite")) })
+        Box::pin(
+            self.session
+                .run(|connection| Ok(catalog::namespaces(connection)?)),
+        )
     }
 
     fn objects<'a>(
         &'a mut self,
-        _namespace: &'a Namespace,
+        namespace: &'a Namespace,
     ) -> BoxFuture<'a, Result<Vec<ObjectInfo>, ConnectorError>> {
-        Box::pin(async { Err(ConnectorError::Unsupported("the catalog of SQLite")) })
+        let schema = namespace.name().to_string();
+        Box::pin(
+            self.session
+                .run(move |connection| Ok(catalog::objects(connection, &schema)?)),
+        )
     }
 
     fn details<'a>(
         &'a mut self,
-        _namespace: &'a Namespace,
+        namespace: &'a Namespace,
     ) -> BoxFuture<'a, Result<Vec<TableDetails>, ConnectorError>> {
-        Box::pin(async { Err(ConnectorError::Unsupported("the catalog of SQLite")) })
+        let schema = namespace.name().to_string();
+        Box::pin(
+            self.session
+                .run(move |connection| Ok(catalog::details(connection, &schema)?)),
+        )
     }
 }
 

@@ -86,10 +86,10 @@ Architecture:
 ## 4. SQLite connector
 
 - ✅ Module `blocking`
-- ⬜ `Driver`, `Session`, `CatalogReader`, `Rows`, `Canceller`
+- ✅ `Driver`, `Session`, `CatalogReader`, `Rows`, `Canceller`
 - ✅ Attachments, remote copies read-only, databases in `memdb`
 - ⬜ Backup of a database in memory
-- ⬜ Catalog
+- ✅ Catalog
 - ✅ Check database by database
 - ⬜ `Fixture` SQLite in the contract suite
 

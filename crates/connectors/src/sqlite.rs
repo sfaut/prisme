@@ -15,11 +15,12 @@
 //! queries) share them, and they end with the last of these connections.
 //!
 //! Each module holds one part: the opening of a connection (`open`), the
-//! statements and their rows (`statement`), the errors of the library
-//! (`failure`), and the driver behind the contracts of `api` (`driver`). The
-//! behaviours of the library it relies on are measured by `bench/sqlite`
-//! (`docs/SQL-COMPARISON.md`, section 6).
+//! statements and their rows (`statement`), the catalog (`catalog`), the
+//! errors of the library (`failure`), and the driver behind the contracts of
+//! `api` (`driver`). The behaviours of the library it relies on are
+//! measured by `bench/sqlite` (`docs/SQL-COMPARISON.md`, section 6).
 
+mod catalog;
 mod driver;
 mod failure;
 mod open;
