@@ -17,8 +17,9 @@
 //! The interface therefore shows the namespaces almost at once, then the
 //! objects and their details as they arrive. `?editor=` names the editor
 //! whose navigator reads the catalog: its queries go to the console of that
-//! editor, and its connection sees the databases in memory of the session
-//! of that editor (`OpenOptions::session_key`). The namespace chosen in the connection is read first, those the
+//! editor, and its connection opens on the databases of the session of that
+//! editor, its databases in memory and those it attached
+//! (`query_session::Shared`). The namespace chosen in the connection is read first, those the
 //! source provides itself (`information_schema`, `mysql`...) last.
 
 use std::convert::Infallible;
@@ -116,12 +117,10 @@ async fn stream_catalog(
         .ok_or(ApiError::NotFound)?;
     // The queries of the catalog go to the history of the queries.
     let span = console::sql_span(user_id, &name, query.editor, Action::Navigator);
-    let options = OpenOptions {
-        session_key: query
-            .editor
-            .and_then(|editor_id| state.sessions.key_of(editor_id, id)),
-        ..OpenOptions::default()
-    };
+    let (target, options) =
+        state
+            .sessions
+            .for_editor(query.editor, id, target, OpenOptions::default());
     let opening = drivers::of(target.engine).open(&target, options);
     let mut connection = opening.instrument(span.clone()).await?;
     let server = connection.info().clone();
@@ -268,7 +267,9 @@ mod tests {
     use crate::editors::{self, NewEditor};
     use crate::master_key::MasterKey;
     use crate::store;
-    use crate::test_support::{allow_writes, memory_connection, run_on_session, serve};
+    use crate::test_support::{
+        allow_writes, attachable_database, files_connection, run_on_session, serve,
+    };
 
     /// Sends `GET uri` to an application whose connection 1 targets a closed port.
     async fn status_of(uri: &str) -> StatusCode {
@@ -334,12 +335,14 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn reads_the_databases_in_memory_of_the_session_of_its_editor() {
+    async fn reads_the_databases_of_the_session_of_its_editor() {
         let db = store::open_in_memory();
         let key = MasterKey::generate();
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
-        let id = connections::insert(&db, &key, user_id, &memory_connection()).unwrap();
-        allow_writes(&db, user_id, &[WriteKind::CreateTable]);
+        let folder = tempfile::tempdir().unwrap();
+        let connection = files_connection(folder.path());
+        let id = connections::insert(&db, &key, user_id, &connection).unwrap();
+        allow_writes(&db, user_id, &[WriteKind::Attach, WriteKind::CreateTable]);
         let editor = NewEditor {
             connection_id: Some(id),
         };
@@ -348,7 +351,9 @@ mod tests {
         let address = serve(app.clone()).await;
         let url = format!("ws://{address}/api/editors/{editor_id}/session");
         let (mut socket, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
-        run_on_session(&mut socket, "CREATE TABLE t (x INTEGER)").await;
+        run_on_session(&mut socket, "CREATE TABLE scratch.t (x INTEGER)").await;
+        let other = attachable_database(folder.path(), "other");
+        run_on_session(&mut socket, &format!("ATTACH '{other}' AS other")).await;
 
         let request = Request::get(format!("/api/connections/{id}/catalog?editor={editor_id}"))
             .header("host", "localhost:8484")
@@ -359,18 +364,31 @@ mod tests {
         let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
-        let objects: Vec<String> = String::from_utf8(bytes.to_vec())
+        let events: Vec<serde_json::Value> = String::from_utf8(bytes.to_vec())
             .unwrap()
             .lines()
-            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
-            .filter(|event| event["type"] == "objects" && event["namespace"] == json!(["main"]))
-            .flat_map(|event| {
-                let objects = event["objects"].as_array().unwrap().clone();
-                objects.into_iter().map(|object| object["name"].to_string())
-            })
+            .map(|line| serde_json::from_str(line).unwrap())
             .collect();
-        // The table of the session, beside `sqlite_schema`.
-        assert!(objects.contains(&"\"t\"".to_string()), "{objects:?}");
+        let objects = |schema: &str| -> Vec<String> {
+            events
+                .iter()
+                .filter(|event| event["type"] == "objects" && event["namespace"] == json!([schema]))
+                .flat_map(|event| {
+                    let objects = event["objects"].as_array().unwrap().clone();
+                    objects.into_iter().map(|object| object["name"].to_string())
+                })
+                .collect()
+        };
+        // The table of the session in memory, beside `sqlite_schema`, and
+        // that of the database it attached.
+        assert!(
+            objects("scratch").contains(&"\"t\"".to_string()),
+            "{events:?}"
+        );
+        assert!(
+            objects("other").contains(&"\"u\"".to_string()),
+            "{events:?}"
+        );
     }
 
     #[tokio::test]

@@ -480,8 +480,8 @@ async fn start_export(
         .ok_or(ApiError::NotFound)?;
     // A connection of its own, read-only whatever the settings of the
     // sessions, on the database of the query when the engine changes
-    // databases, and sharing the databases in memory of the session of its
-    // editor.
+    // databases, and on the databases of the session of its editor, those in
+    // memory and those it attached.
     let switches = drivers::of(target.engine).capabilities().switch_namespace;
     let options = OpenOptions {
         read_only: true,
@@ -490,10 +490,12 @@ async fn start_export(
             .as_deref()
             .filter(|_| switches)
             .map(Namespace::single),
-        session_key: request
-            .editor_id
-            .and_then(|editor_id| state.sessions.key_of(editor_id, connection_id)),
+        ..OpenOptions::default()
     };
+    let (target, options) =
+        state
+            .sessions
+            .for_editor(request.editor_id, connection_id, target, options);
 
     let editor_id = request.editor_id;
     let span = console::sql_span(user_id, &connection_name, editor_id, Action::Export);

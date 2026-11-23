@@ -126,14 +126,15 @@ impl Source {
     pub(crate) fn new(target: Target, read_only: bool, namespace: Option<Namespace>) -> Self {
         let switches = drivers::of(target.engine).capabilities().switch_namespace;
         let number = SESSIONS.fetch_add(1, Ordering::Relaxed) + 1;
+        let shared = Shared::new(format!("session-{number}"));
         Self {
             target,
-            options: OpenOptions {
+            options: shared.options(OpenOptions {
                 read_only,
                 namespace: namespace.filter(|_| switches),
-                session_key: Some(format!("session-{number}")),
-            },
-            shared: Arc::new(Shared::new()),
+                ..OpenOptions::default()
+            }),
+            shared: Arc::new(shared),
         }
     }
 

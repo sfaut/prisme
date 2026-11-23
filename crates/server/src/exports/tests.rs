@@ -20,7 +20,9 @@ use crate::connections::{self, NewConnection, NewServerSettings, NewSettings};
 use crate::editors::{self, NewEditor};
 use crate::master_key::MasterKey;
 use crate::store;
-use crate::test_support::{allow_writes, memory_connection, run_on_session, serve};
+use crate::test_support::{
+    allow_writes, attachable_database, files_connection, run_on_session, serve,
+};
 use prisme_connectors::api::Engine;
 use prisme_connectors::flavor::Flavor;
 use prisme_connectors::mysql::MysqlTarget;
@@ -475,10 +477,16 @@ async fn stops_refuses_and_fails_exports() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn exports_a_database_in_memory_of_the_session_of_its_editor() {
+async fn exports_from_the_databases_of_the_session_of_its_editor() {
     let mut editor_id = 0;
-    let test = TestApp::with_connection(&memory_connection(), |db, user_id| {
-        allow_writes(db, user_id, &[WriteKind::CreateTable, WriteKind::Insert]);
+    let folder = tempfile::tempdir().unwrap();
+    let connection = files_connection(folder.path());
+    let test = TestApp::with_connection(&connection, |db, user_id| {
+        allow_writes(
+            db,
+            user_id,
+            &[WriteKind::Attach, WriteKind::CreateTable, WriteKind::Insert],
+        );
         let editor = NewEditor {
             connection_id: Some(1),
         };
@@ -487,17 +495,22 @@ async fn exports_a_database_in_memory_of_the_session_of_its_editor() {
     let address = serve(test.app.clone()).await;
     let url = format!("ws://{address}/api/editors/{editor_id}/session");
     let (mut socket, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
-    run_on_session(&mut socket, "CREATE TABLE t (x INTEGER)").await;
-    run_on_session(&mut socket, "INSERT INTO t VALUES (1), (2)").await;
+    run_on_session(&mut socket, "CREATE TABLE scratch.t (x INTEGER)").await;
+    run_on_session(&mut socket, "INSERT INTO scratch.t VALUES (1), (2)").await;
+    let other = attachable_database(folder.path(), "other");
+    run_on_session(&mut socket, &format!("ATTACH '{other}' AS other")).await;
 
-    let mut request = export_request("SELECT x FROM t ORDER BY x", &[]);
-    request["editor_id"] = json!(editor_id);
-    let (status, started) = test.send("POST", "/api/exports", Some(request)).await;
-    assert_eq!(status, StatusCode::ACCEPTED, "{started}");
-    let id = started["id"].as_i64().unwrap();
-    let ended = test
-        .wait_for(id, |export| export["state"] != "running")
-        .await;
-    assert_eq!(ended["state"], "ready", "{ended}");
-    assert_eq!(ended["rows"], 2);
+    // A table in memory of the session, then one of the database it attached.
+    for (sql, rows) in [("SELECT x FROM scratch.t", 2), ("SELECT a FROM other.u", 3)] {
+        let mut request = export_request(sql, &[]);
+        request["editor_id"] = json!(editor_id);
+        let (status, started) = test.send("POST", "/api/exports", Some(request)).await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{started}");
+        let id = started["id"].as_i64().unwrap();
+        let ended = test
+            .wait_for(id, |export| export["state"] != "running")
+            .await;
+        assert_eq!(ended["state"], "ready", "{sql}: {ended}");
+        assert_eq!(ended["rows"], rows, "{sql}");
+    }
 }

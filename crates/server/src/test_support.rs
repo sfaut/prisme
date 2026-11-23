@@ -1,9 +1,11 @@
 //! Helpers of the tests that run queries through a query session: a
-//! connection of SQLite in memory, the writes allowed to a user, an
+//! connection of SQLite in memory or on files, a database to attach, the
+//! writes allowed to a user, an
 //! application served on a free port and the queries sent over the
 //! WebSocket of a session.
 
 use std::net::SocketAddr;
+use std::path::Path;
 
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
@@ -36,6 +38,39 @@ pub fn memory_connection() -> NewConnection {
         session_timeout_minutes: 5,
         show_system_schemas: true,
     }
+}
+
+/// Connection of SQLite to a main database in the file `main.db` of
+/// `folder`, created empty, and a database in memory attached as `scratch`.
+pub fn files_connection(folder: &Path) -> NewConnection {
+    let main = folder.join("main.db");
+    rusqlite::Connection::open(&main).unwrap();
+    let database = |schema: &str, location: String| NewFileDatabase {
+        schema: schema.to_string(),
+        location,
+        create: false,
+    };
+    NewConnection {
+        name: "files".to_string(),
+        settings: NewSettings::Files(NewFilesSettings {
+            databases: vec![
+                database("main", main.to_string_lossy().into_owned()),
+                database("scratch", ":memory:".to_string()),
+            ],
+        }),
+        ..memory_connection()
+    }
+}
+
+/// Creates a database of SQLite in `folder`, named `name`, holding a table
+/// `u` of three rows, and returns the absolute path of its file.
+pub fn attachable_database(folder: &Path, name: &str) -> String {
+    let path = folder.join(format!("{name}.db"));
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute_batch("CREATE TABLE u (a); INSERT INTO u VALUES (1), (2), (3)")
+        .unwrap();
+    path.to_string_lossy().into_owned()
 }
 
 /// Makes the sessions of user `user_id` read-write, allowing `writes`.

@@ -1,4 +1,6 @@
-//! What the connections of a session share: the databases attached to the
+//! What the connections of a session share, with the navigator and the
+//! exports of its editor: the key that names its resources (its databases in
+//! memory, `OpenOptions::session_key`), and the databases attached to the
 //! session's connection, which each of its other connections attaches too.
 //!
 //! The session lists the databases of its connection when it opens, then
@@ -10,10 +12,12 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
-use prisme_connectors::api::{AttachedDatabase, FileDatabase, Settings, Target};
+use prisme_connectors::api::{AttachedDatabase, FileDatabase, OpenOptions, Settings, Target};
 
 /// Resources of a session, shared by its connections.
 pub(crate) struct Shared {
+    /// Key of the session (`OpenOptions::session_key`).
+    key: String,
     /// Databases of the session's connection that another connection can
     /// attach, as last listed; `None` before, and for an engine without
     /// attachments: those of the settings.
@@ -23,11 +27,20 @@ pub(crate) struct Shared {
 }
 
 impl Shared {
-    /// Resources of a session, its databases not listed yet.
-    pub(crate) fn new() -> Self {
+    /// Resources of the session of key `key`, its databases not listed yet.
+    pub(crate) fn new(key: String) -> Self {
         Self {
+            key,
             databases: Mutex::new(None),
             private: AtomicBool::new(false),
+        }
+    }
+
+    /// `options` of a connection of the session: on its key.
+    pub(crate) fn options(&self, options: OpenOptions) -> OpenOptions {
+        OpenOptions {
+            session_key: Some(self.key.clone()),
+            ..options
         }
     }
 
@@ -119,7 +132,7 @@ mod tests {
             }),
             init_statements: Vec::new(),
         };
-        let shared = Shared::new();
+        let shared = Shared::new("session-1".to_string());
         let databases = |target: Target| {
             let Settings::Files(files) = target.settings else {
                 unreachable!("a source held in files");
