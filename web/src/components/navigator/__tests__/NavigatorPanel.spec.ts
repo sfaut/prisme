@@ -126,7 +126,7 @@ function mountNavigator(props: {
   active?: boolean
 }) {
   return mount(NavigatorPanel, {
-    props: { editorId: 1, active: true, ...props, sessionStatus: null },
+    props: { editorId: 1, active: true, ...props, sessionStatus: null, sessionDatabases: null },
     attachTo: document.body,
   })
 }

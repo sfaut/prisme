@@ -30,9 +30,11 @@
 
 import type { Capabilities } from '@/api/generated/Capabilities'
 import type { ColumnInfo } from '@/api/generated/ColumnInfo'
+import type { Engine } from '@/api/generated/Engine'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
 import type { IndexInfo } from '@/api/generated/IndexInfo'
+import type { Location } from '@/api/generated/Location'
 import type { NamespaceLevel } from '@/api/generated/NamespaceLevel'
 import { innerLevel } from '@/api/namespaceLevels'
 import type { ObjectKind } from '@/api/generated/ObjectKind'
@@ -57,6 +59,44 @@ export interface Place {
 }
 
 /**
+ * Where the databases of a source held in files lie, by schema in
+ * lowercase (SQLite tells its schemas apart without their case); `null` for
+ * a database private to its connection (`ATTACH ':memory:'`).
+ */
+export type DatabaseLocations = ReadonlyMap<string, Location | null>
+
+/**
+ * Locations of databases, by schema in lowercase.
+ *
+ * @param databases Databases, each with its schema and its location.
+ */
+export function locationsByName(
+  databases: { schema: string; location: Location | null }[],
+): DatabaseLocations {
+  return new Map(databases.map(({ schema, location }) => [schema.toLowerCase(), location]))
+}
+
+/**
+ * Pill of a database held in files: the protocol of its location, `memdb`
+ * for a database in memory shared by the session, `memory` for one private
+ * to its connection; `undefined` if its location is unknown (`temp`).
+ *
+ * @param locations Locations of the databases of the source.
+ * @param schema Schema of the database.
+ */
+export function placePill(locations: DatabaseLocations, schema: string): string | undefined {
+  const name = schema.toLowerCase()
+  if (!locations.has(name)) {
+    return undefined
+  }
+  const location = locations.get(name)!
+  if (location === null) {
+    return 'memory'
+  }
+  return location.scheme === 'memory' ? 'memdb' : location.scheme
+}
+
+/**
  * Data source, a root of the tree.
  */
 export interface Source {
@@ -68,6 +108,15 @@ export interface Source {
    * Name of the connection, chosen by the user.
    */
   name: string
+  /**
+   * Engine of the connection, which gives the icon of its kind.
+   */
+  engine: Engine
+  /**
+   * Where its databases lie, for a source held in files; `null` for a
+   * server.
+   */
+  locations: DatabaseLocations | null
   /**
    * Catalog of the connection, `undefined` if it was never read.
    */
@@ -169,6 +218,15 @@ export interface NavigatorNode extends Place {
    * Level of a database node's namespace, which names it (`base`, `schéma`).
    */
   level?: NamespaceLevel
+  /**
+   * Engine of a source node, which gives its icon.
+   */
+  engine?: Engine
+  /**
+   * Pill after the label of a database held in files: the protocol of its
+   * location (`file`, `https`), `memdb` or `memory` (`placePill`).
+   */
+  pill?: string
   /**
    * Source of the editor, its chosen connection (shown in bold).
    */
@@ -292,6 +350,7 @@ export function sourceNodes(
       isLeaf: false,
       ...place,
       role: 'source' as const,
+      engine: source.engine,
       chosen: source.chosen,
       receiving: source.receiving,
       badge: source.flavor ?? undefined,
@@ -307,6 +366,7 @@ export function sourceNodes(
               source.currentDatabase,
               tablesByRows,
               catalog.source?.capabilities ?? null,
+              source.locations,
             ),
     }
   })
@@ -322,6 +382,9 @@ export function sourceNodes(
  * @param capabilities
  *     Capabilities of the source, which set the folders and the actions;
  *     `null` while unknown, everything offered.
+ * @param locations
+ *     Where the databases lie, for a source held in files; `null` for a
+ *     server.
  */
 export function catalogNodes(
   connectionId: number,
@@ -329,6 +392,7 @@ export function catalogNodes(
   currentDatabase: string | null = null,
   tablesByRows: ReadonlySet<string> = new Set(),
   capabilities: Capabilities | null = null,
+  locations: DatabaseLocations | null = null,
 ): NavigatorNode[] {
   const references = referencesByTable(schemas)
   return schemas.map((schema) => {
@@ -343,6 +407,7 @@ export function catalogNodes(
       current: schema.name === currentDatabase,
       usable: capabilities?.switch_namespace ?? true,
       level: innerLevel(capabilities),
+      pill: locations === null ? undefined : placePill(locations, schema.name),
       children:
         schema.objects === null
           ? [loadingNode(key, place)]

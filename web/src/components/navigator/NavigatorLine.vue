@@ -47,6 +47,8 @@ import type { SessionStatus } from '@/api/querySession'
 import type { EntryKind, NavigatorNode } from './navigatorNodes'
 import type { TableSort } from '@/stores/navigator'
 import ConnectionFlavorBadge from '@/components/connections/ConnectionFlavorBadge.vue'
+import ConnectionSchemeBadge from '@/components/connections/ConnectionSchemeBadge.vue'
+import { ENGINE_TYPES } from '@/components/connections/sourceTypes'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiDropdownMenu from '@/components/ui/UiDropdownMenu.vue'
 import type { MenuItem } from '@/components/ui/menuItem'
@@ -201,10 +203,12 @@ const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
 function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
   switch (node.role) {
     case 'source':
-      // The icon of its kind of source: every connection is a database
-      // server for now; another kind (CSV) will get its own here. A spinning
-      // circle replaces it while its catalog is being received.
-      return node.receiving ? LoaderCircle : Server
+      // The icon of its kind of source, that of the connections manager; a
+      // spinning circle replaces it while its catalog is being received.
+      if (node.receiving) {
+        return LoaderCircle
+      }
+      return node.engine === undefined ? Server : ENGINE_TYPES[node.engine].icon
     case 'database':
       return Database
   }
@@ -268,8 +272,8 @@ function iconLabel(node: NavigatorNode): string | undefined {
     </span>
   </span>
   <!--
-    Other nodes: label, then the note if any (UNIQUE, row count of a table,
-    its digits of equal width), and for a source the badge of the server's
+    Other nodes: label, the protocol of a database held in files, then the
+    note if any (UNIQUE, row count of a table, its digits of equal width), and for a source the badge of the server's
     flavor, right after the name, whose tooltip gives the name and version
     of the server. The whole takes the room left, which pushes the menu to
     the end of the line.
@@ -284,6 +288,7 @@ function iconLabel(node: NavigatorNode): string | undefined {
       }"
     >
       <span class="truncate text-trim">{{ node.label }}</span>
+      <connection-scheme-badge v-if="node.pill" :scheme="node.pill" />
       <span
         v-if="node.note"
         class="shrink-0 text-sm font-normal text-fg-faint tabular-nums text-trim"

@@ -16,6 +16,8 @@ import {
   foreignKeyLabel,
   indexLabel,
   indexNote,
+  locationsByName,
+  placePill,
   quoteIfNeeded,
   referenceLabel,
   selectAllQuery,
@@ -83,6 +85,8 @@ describe('sourceNodes', () => {
       {
         connectionId: 1,
         name: 'MariaDB Origen 2 (II)',
+        engine: 'mysql' as const,
+        locations: null,
         catalog: {
           schemas: catalog,
           source: null,
@@ -99,6 +103,8 @@ describe('sourceNodes', () => {
       {
         connectionId: 2,
         name: 'Origen 2',
+        engine: 'mysql' as const,
+        locations: null,
         catalog: { schemas: catalog, source: null, done: true, errors: [] },
         receiving: false,
         chosen: false,
@@ -110,6 +116,8 @@ describe('sourceNodes', () => {
       {
         connectionId: 3,
         name: 'Jamais lue',
+        engine: 'mysql' as const,
+        locations: null,
         catalog: undefined,
         receiving: false,
         chosen: false,
@@ -152,6 +160,8 @@ describe('system databases', () => {
     const source = (showSystemSchemas: boolean) => ({
       connectionId: 1,
       name: 'Origen 2',
+      engine: 'mysql' as const,
+      locations: null,
       catalog: { schemas, source: null, done: true, errors: [] },
       receiving: false,
       chosen: false,
@@ -175,6 +185,8 @@ describe('receiving', () => {
     const source = (receiving: boolean) => ({
       connectionId: 1,
       name: 'Origen 2',
+      engine: 'mysql' as const,
+      locations: null,
       catalog: undefined,
       receiving,
       chosen: false,
@@ -186,6 +198,30 @@ describe('receiving', () => {
     expect(sourceNodes([source(true)])[0]?.receiving).toBe(true)
     expect(sourceNodes([source(true)])[0]?.note).toBeUndefined()
     expect(sourceNodes([source(false)])[0]?.receiving).toBe(false)
+  })
+})
+
+describe('placePill', () => {
+  it('tells where each database held in files lies', () => {
+    const locations = locationsByName([
+      { schema: 'main', location: { scheme: 'memory', address: ':memory:' } },
+      { schema: 'Ref', location: { scheme: 'https', address: 'https://example.org/ref.db' } },
+      { schema: 'stats', location: { scheme: 'file', address: 'D:/data/stats.db' } },
+      { schema: 'scratch', location: null },
+    ])
+    expect(
+      ['main', 'ref', 'STATS', 'scratch', 'temp'].map((name) => placePill(locations, name)),
+    ).toEqual(['memdb', 'https', 'file', 'memory', undefined])
+    const [main, temp] = catalogNodes(
+      1,
+      [schema('main', []), schema('temp', [])],
+      null,
+      new Set(),
+      null,
+      locations,
+    )
+    expect([main?.pill, temp?.pill]).toEqual(['memdb', undefined])
+    expect(catalogNodes(1, [schema('shop', [])])[0]?.pill).toBeUndefined()
   })
 })
 

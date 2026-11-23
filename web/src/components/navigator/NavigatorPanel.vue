@@ -36,15 +36,19 @@
   (emits `disconnect`): it is enabled on the editor's source only, once its
   session is ready, and disabled while queries run.
 
-  Each source carries as a badge the flavor of its server (`mysql`,
-  `mariadb`), seen on the last connection or when reading the catalog. Each
+  Each source carries as a badge its flavor (`mysql`, `mariadb`, `sqlite`),
+  seen on the last connection or when reading the catalog. Each database of
+  a source held in files carries the protocol of its location (`file`,
+  `https`), `memdb` for a database in memory shared by the session,
+  `memory` for one private to its connection (`ATTACH ':memory:'`): those
+  of the editor's session on its source, the saved ones otherwise. Each
   table shows after its name its row count estimated by the server, in short
   form (`345`, `1,3 k`); a view has none. Each "Tables" folder sorts its
   tables by name (by default) or by row count, the largest first, with the
   two buttons of its line; the choice is kept per folder with the tree.
 
-  Each line carries the icon of its level: source (that of its kind, a
-  server for a database), database, folder (open or closed), table, view,
+  Each line carries the icon of its level: source (that of its kind of
+  source, as in the connections manager), database, folder (open or closed), table, view,
   procedure, function, column, index, foreign key, trigger, and a spinning
   circle during a load, in place of the source's icon while its catalog
   arrives.
@@ -87,6 +91,7 @@ import {
 import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import { probeConnection, probeMessage } from '@/api/connections'
+import type { AttachedDatabase } from '@/api/generated/AttachedDatabase'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { SessionStatus } from '@/api/querySession'
 import { cssPixels } from '@/utils/cssLength'
@@ -97,7 +102,13 @@ import { useNavigatorStore } from '@/stores/navigator'
 import NavigatorLine from './NavigatorLine.vue'
 import ConnectionRemoveDialog from '@/components/connections/ConnectionRemoveDialog.vue'
 import PanelHeader from '@/components/panel/PanelHeader.vue'
-import { type NavigatorNode, sourceKey, sourceNodes } from './navigatorNodes'
+import {
+  type DatabaseLocations,
+  locationsByName,
+  type NavigatorNode,
+  sourceKey,
+  sourceNodes,
+} from './navigatorNodes'
 import { pinnedRows, visibleRows } from './stickyRows'
 import UiAlert from '@/components/ui/UiAlert.vue'
 import UiButton from '@/components/ui/UiButton.vue'
@@ -127,6 +138,11 @@ const props = defineProps<{
    * session.
    */
   sessionStatus: SessionStatus | null
+  /**
+   * Databases attached to the editor's session, for a source held in
+   * files; `null` if unknown.
+   */
+  sessionDatabases: AttachedDatabase[] | null
 }>()
 
 const emit = defineEmits<{
@@ -222,6 +238,22 @@ const expandedKeys = computed({
 })
 
 /**
+ * Where the databases of a source held in files lie, by schema in lowercase:
+ * those of the editor's session on its source, once told, otherwise those
+ * of the saved connection; `null` for a server.
+ *
+ * @param connection Connection of the source.
+ */
+function locationsOf(connection: ConnectionSummary): DatabaseLocations | null {
+  if (connection.id === props.selectedId && props.sessionDatabases !== null) {
+    return locationsByName(props.sessionDatabases)
+  }
+  return connection.settings.family === 'files'
+    ? locationsByName(connection.settings.databases)
+    : null
+}
+
+/**
  * Last tree built, kept while the editor is not active.
  */
 let built: NavigatorNode[] = []
@@ -238,6 +270,8 @@ const nodes = computed(() => {
         return {
           connectionId: connection.id,
           name: connection.name,
+          engine: connection.engine,
+          locations: locationsOf(connection),
           catalog: read,
           receiving: read !== undefined && !read.done,
           chosen: connection.id === props.selectedId,

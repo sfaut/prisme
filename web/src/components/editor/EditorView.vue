@@ -79,6 +79,7 @@ import {
   reorderResults,
   updateResult,
 } from '@/api/editors'
+import type { AttachedDatabase } from '@/api/generated/AttachedDatabase'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { SelectionRange } from '@/api/generated/SelectionRange'
 import type { TextEnd } from '@/api/generated/TextEnd'
@@ -160,6 +161,11 @@ const emit = defineEmits<{
    * A transaction opened (`true`) or ended on the session.
    */
   transaction: [open: boolean]
+  /**
+   * The databases attached to the session were told, at its opening or
+   * after a change; `null` until then, and for a server.
+   */
+  databases: [databases: AttachedDatabase[] | null]
   /**
    * The progress of the last batch has changed (`null` before the first one).
    */
@@ -772,6 +778,12 @@ watch(
 watch(
   () => state.transaction,
   (open) => emit('transaction', open),
+  { immediate: true },
+)
+
+watch(
+  () => state.databases,
+  (databases) => emit('databases', databases),
   { immediate: true },
 )
 
