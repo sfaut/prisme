@@ -103,7 +103,7 @@ Architecture:
 - ✅ Navigator and exports of an editor: their connection opens on the databases of the session of that editor, those in memory and those it attached
 - ✅ Parallel queries of a session: their connections attach the databases of the session's connection, listed when it opens and after each `ATTACH` / `DETACH`; a database private to it (`ATTACH ':memory:'` in SQL) runs the batches in sequence on it
 - ⬜ API of the attachments of the navigator (session or connection)
-- ⬜ Saving a database in memory to a file
+- ✅ Saving a database in memory to a file: `backup` request of the session, without a switch, allowed in a read-only session; `databases` action of the console
 - ✅ Schemas read again after `ATTACH` / `DETACH` written in SQL: `databases` message, the page reads the catalog again
 - ✅ Switches `attach` and `maintenance` (classification of step 3, migration 0040)
 - ✅ Remote databases read within the preferences of their user (`RemoteLimits`), cache of each user in `cache/locations/<user>`, purged by `location::purge` after `remote_cache_days`

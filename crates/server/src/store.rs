@@ -90,6 +90,9 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         )),
         M::up(include_str!("../migrations/0040_write_kinds_sqlite.sql")),
         M::up(include_str!("../migrations/0041_engine_sqlite.sql")),
+        M::up(include_str!(
+            "../migrations/0042_query_history_databases.sql"
+        )),
     ])
 });
 

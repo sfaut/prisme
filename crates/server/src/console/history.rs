@@ -56,6 +56,9 @@ pub enum Action {
     /// Reading of the warnings a statement raised, right after it
     /// (`SHOW WARNINGS` for MySQL and MariaDB).
     Diagnostics,
+    /// Databases of a session handled from the navigator: copy of a
+    /// database into a file.
+    Databases,
 }
 
 impl Action {
@@ -73,6 +76,7 @@ impl Action {
             Self::Probe => "probe",
             Self::Export => "export",
             Self::Diagnostics => "diagnostics",
+            Self::Databases => "databases",
         }
     }
 
@@ -90,6 +94,7 @@ impl Action {
             Self::Probe,
             Self::Export,
             Self::Diagnostics,
+            Self::Databases,
         ]
         .into_iter()
         .find(|action| action.as_str() == name)

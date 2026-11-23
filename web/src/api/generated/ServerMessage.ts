@@ -4,6 +4,7 @@ import type { BatchQuery } from "./BatchQuery";
 import type { ColumnTypeInfo } from "./ColumnTypeInfo";
 import type { ErrorDetail } from "./ErrorDetail";
 import type { LimitReport } from "./LimitReport";
+import type { Location } from "./Location";
 import type { ResumedQuery } from "./ResumedQuery";
 import type { SourceInfo } from "./SourceInfo";
 import type { StatementOutcome } from "./StatementOutcome";
@@ -85,6 +86,7 @@ export type ServerMessage =
   }
   | { "type": "batch_done" }
   | { "type": "database"; database: string | null }
+  | { "type": "backed_up"; schema: string; location: Location }
   | { "type": "transaction"; open: boolean }
   | { "type": "databases"; databases: Array<AttachedDatabase> }
   | {

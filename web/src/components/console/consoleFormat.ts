@@ -26,6 +26,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   probe: 'Test de connexion',
   export: 'Export',
   diagnostics: 'Diagnostic',
+  databases: 'Bases de la session',
 }
 
 /**

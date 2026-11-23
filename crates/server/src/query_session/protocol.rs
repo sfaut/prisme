@@ -3,6 +3,7 @@
 
 use prisme_connectors::api::{AttachedDatabase, SourceInfo};
 use prisme_connectors::columns::{Cell, ColumnTypeInfo};
+use prisme_connectors::location::Location;
 use prisme_connectors::outcome::StatementOutcome;
 use prisme_dialects::verb::StatementVerb;
 use serde::{Deserialize, Serialize};
@@ -26,6 +27,10 @@ pub(crate) enum ClientMessage {
     CancelQuery { query: u32 },
     /// Change the session's current database, like `USE`, without a result to show.
     Use { database: String },
+    /// Copy the database of the schema `schema` (a database in memory) into
+    /// a new file at `location`, as typed: an absolute path, of a file that
+    /// does not exist.
+    Backup { schema: String, location: String },
 }
 
 /// Request passed to the session by the reading of the client's messages.
@@ -40,6 +45,13 @@ pub(crate) enum SessionRequest {
     },
     /// Change the current database.
     Use(String),
+    /// Copy a database into a new file.
+    Backup {
+        /// Schema of the database.
+        schema: String,
+        /// Location of the file, as typed.
+        location: String,
+    },
 }
 
 /// Run request sent by the client.
@@ -194,6 +206,10 @@ pub(crate) enum ServerMessage {
     BatchDone,
     /// Current database of the session, after a successful `use` request.
     Database { database: Option<String> },
+    /// The database of the schema `schema` was copied into the file at
+    /// `location`, after a `backup` request; a failure comes as a session
+    /// `error`.
+    BackedUp { schema: String, location: Location },
     /// A transaction opened (`open`) or ended on the session's connection,
     /// at the end of a request, before `batch_done`.
     Transaction { open: bool },

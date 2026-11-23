@@ -1127,3 +1127,61 @@ async fn tells_the_databases_of_a_sqlite_session_once_they_change() {
     assert_eq!(message["type"], "databases");
     assert_eq!(message["databases"].as_array().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn copies_a_database_of_a_sqlite_session_into_a_file() {
+    let folder = tempfile::tempdir().unwrap();
+    let copy = folder.path().join("copy.db");
+    let writes = [WriteKind::CreateTable, WriteKind::Insert];
+    let (address, _, editor_id) = start_connection(&memory_connection(), Some(&writes)).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    next_json(&mut socket).await;
+    run_one(&mut socket, "CREATE TABLE t (x INTEGER)", None).await;
+    run_one(&mut socket, "INSERT INTO t VALUES (1), (2)", None).await;
+
+    let mut backup = async |location: &str| -> Value {
+        let request = json!({ "type": "backup", "schema": "main", "location": location });
+        socket
+            .send(ClientMessage::Text(request.to_string().into()))
+            .await
+            .unwrap();
+        next_json(&mut socket).await
+    };
+    let location = copy.to_string_lossy().into_owned();
+    let copied = backup(&location).await;
+    assert_eq!(copied["type"], "backed_up", "{copied}");
+    assert_eq!(copied["location"]["scheme"], "file");
+    let rows: i64 = rusqlite::Connection::open(&copy)
+        .unwrap()
+        .query_row("SELECT count(*) FROM t", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(rows, 2);
+    // A file that exists is never overwritten; a URL is no file to create.
+    for refused in [location.as_str(), "https://example.com/copy.db"] {
+        let message = backup(refused).await;
+        assert_eq!(message["type"], "error", "{message}");
+    }
+}
+
+#[tokio::test]
+async fn a_read_only_sqlite_session_copies_its_databases() {
+    let folder = tempfile::tempdir().unwrap();
+    let copy = folder.path().join("copy.db");
+    let (address, _, editor_id) = start_connection(&memory_connection(), None).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    next_json(&mut socket).await;
+    let request = json!({
+        "type": "backup",
+        "schema": "main",
+        "location": copy.to_string_lossy(),
+    });
+    socket
+        .send(ClientMessage::Text(request.to_string().into()))
+        .await
+        .unwrap();
+    let message = next_json(&mut socket).await;
+    assert_eq!(message["type"], "backed_up", "{message}");
+    assert!(copy.exists());
+}

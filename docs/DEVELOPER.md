@@ -693,7 +693,10 @@ Prisme answers `{"type":"ready",...}` once connected to the target server. Then 
 {"type": "run", "sql": "SELECT 1 FROM DUAL WHERE 1 = 0", "selection": [{"start": 0, "end": 18}], "exact": true}
 {"type": "cancel"}
 {"type": "cancel_query", "query": 1}
+{"type": "backup", "schema": "main", "location": "D:\\data\\copy.db"}
 ```
+
+`backup` copies a database of the session (a database in memory, from the navigator) into a new file, which must not exist: `backed_up` tells the copy, a session `error` its failure. A read-only session copies too: the copy writes no database of the session.
 
 Prisme first announces the queries of the batch (`batch`, each one numbered), then, for each query, messages carrying its number (`query`), in this order:
 

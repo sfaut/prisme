@@ -99,6 +99,7 @@ impl fmt::Display for Received<'_> {
             Some(ClientMessage::Cancel) => f.write_str("cancel"),
             Some(ClientMessage::CancelQuery { query }) => write!(f, "cancel_query, query {query}"),
             Some(ClientMessage::Use { .. }) => f.write_str("use"),
+            Some(ClientMessage::Backup { schema, .. }) => write!(f, "backup, schema {schema}"),
         }
     }
 }
@@ -163,6 +164,7 @@ impl fmt::Display for Sent<'_> {
             ServerMessage::Database { .. } => f.write_str("database"),
             ServerMessage::Transaction { open: true } => f.write_str("transaction, open"),
             ServerMessage::Transaction { open: false } => f.write_str("transaction, ended"),
+            ServerMessage::BackedUp { schema, .. } => write!(f, "backed_up, schema {schema}"),
             ServerMessage::Databases { databases } => {
                 write!(
                     f,

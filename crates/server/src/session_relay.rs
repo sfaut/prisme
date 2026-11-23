@@ -388,6 +388,12 @@ async fn read_messages(
                     break;
                 }
             }
+            Ok(ClientMessage::Backup { schema, location }) => {
+                let request = SessionRequest::Backup { schema, location };
+                if requests.send(request).await.is_err() {
+                    break;
+                }
+            }
             Ok(ClientMessage::Cancel) => cancellation.cancel().await,
             Ok(ClientMessage::CancelQuery { query }) => cancellation.cancel_query(query).await,
             Err(error) => {

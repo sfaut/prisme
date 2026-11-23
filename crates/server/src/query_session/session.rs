@@ -15,9 +15,10 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use prisme_connectors::api::{self, Namespace};
+use prisme_connectors::api::{self, ConnectorError, Namespace};
 use prisme_connectors::drivers;
 use prisme_connectors::flavor::Flavor;
+use prisme_connectors::location::Location;
 use prisme_connectors::outcome::StatementOutcome;
 use prisme_dialects::classify::{StatementKind, WriteKind, classify, ends_transaction};
 use prisme_dialects::temporary::{TableName, temporary_changes};
@@ -92,6 +93,12 @@ pub(super) async fn serve(
                     session
                         .use_database(connection.as_mut(), flavor, &database)
                         .instrument(console::action_span(Action::Use))
+                        .await
+                }
+                SessionRequest::Backup { schema, location } => {
+                    session
+                        .backup(connection.as_mut(), flavor, &schema, &location)
+                        .instrument(console::action_span(Action::Databases))
                         .await
                 }
             };
@@ -270,6 +277,38 @@ impl Session<'_> {
                 let database = database_of(namespace);
                 self.remember_database(&database);
                 self.outbox.send(ServerMessage::Database { database }).await
+            }
+            Err(error) => {
+                let detail = ErrorDetail::of_connector(&error, Some(flavor));
+                self.outbox.error(None, detail).await
+            }
+        }
+    }
+
+    /// Copies the database of the schema `schema` into a new file at
+    /// `location`, as typed, and tells the client; a location refused or a
+    /// copy that fails goes as a session error. Allowed in a read-only
+    /// session: the copy writes no database of the session.
+    async fn backup(
+        &self,
+        connection: &mut dyn api::Session,
+        flavor: Flavor,
+        schema: &str,
+        location: &str,
+    ) -> Result<(), SessionStopped> {
+        let copied = match Location::parse(location) {
+            Ok(location) => connection
+                .backup(schema, &location)
+                .await
+                .map(|()| location),
+            Err(error) => Err(ConnectorError::Location(error)),
+        };
+        match copied {
+            Ok(location) => {
+                let schema = schema.to_string();
+                self.outbox
+                    .send(ServerMessage::BackedUp { schema, location })
+                    .await
             }
             Err(error) => {
                 let detail = ErrorDetail::of_connector(&error, Some(flavor));
