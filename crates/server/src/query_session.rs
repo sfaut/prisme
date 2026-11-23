@@ -81,6 +81,7 @@ pub(crate) use limits::limit_error;
 pub(crate) use protocol::{ClientMessage, LimitReport, ServerMessage, SessionRequest};
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use axum::extract::ws::WebSocket;
@@ -99,7 +100,8 @@ use session::serve;
 
 /// The source of a session, and how its connections open on it: read-only
 /// or not, on the namespace chosen for the session, else on the one of its
-/// settings.
+/// settings, and sharing the resources of the session (its databases in
+/// memory).
 #[derive(Clone)]
 pub(crate) struct Source {
     /// Settings of the source.
@@ -109,18 +111,23 @@ pub(crate) struct Source {
     pub(crate) options: OpenOptions,
 }
 
+/// Number of the last session opened, which names its resources.
+static SESSIONS: AtomicU64 = AtomicU64::new(0);
+
 impl Source {
     /// Source of a session on `target`, read-only or not, opened on
     /// `namespace` when the engine changes namespaces (`USE`), else on the
-    /// namespace of its settings.
+    /// namespace of its settings. The session gets a key of its own, that
+    /// its parallel connections share (`OpenOptions::session_key`).
     pub(crate) fn new(target: Target, read_only: bool, namespace: Option<Namespace>) -> Self {
         let switches = drivers::of(target.engine).capabilities().switch_namespace;
+        let number = SESSIONS.fetch_add(1, Ordering::Relaxed) + 1;
         Self {
             target,
             options: OpenOptions {
                 read_only,
                 namespace: namespace.filter(|_| switches),
-                ..OpenOptions::default()
+                session_key: Some(format!("session-{number}")),
             },
         }
     }

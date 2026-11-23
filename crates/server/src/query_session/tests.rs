@@ -1055,3 +1055,18 @@ async fn a_sqlite_session_stays_on_main_whatever_the_database_asked_for() {
         [1, 1]
     );
 }
+
+#[tokio::test]
+async fn the_queries_of_a_sqlite_session_share_its_databases_in_memory() {
+    let writes = [WriteKind::CreateTable, WriteKind::Insert];
+    let (address, _, editor_id) = start_connection(&memory_connection(), Some(&writes)).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    next_json(&mut socket).await;
+    run_one(&mut socket, "CREATE TABLE t (x INTEGER)", None).await;
+    run_one(&mut socket, "INSERT INTO t VALUES (1), (2)", None).await;
+    // Without a transaction, each query of a batch runs on a connection of
+    // its own, which sees the database in memory of the session.
+    let reads = "SELECT x FROM t; SELECT x FROM t WHERE x = 2";
+    assert_eq!(run_all_rows(&mut socket, reads).await, [2, 1]);
+}
