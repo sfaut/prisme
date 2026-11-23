@@ -88,7 +88,7 @@ Architecture:
 - ✅ Module `blocking`
 - ✅ `Driver`, `Session`, `CatalogReader`, `Rows`, `Canceller`
 - ✅ Attachments, remote copies read-only, databases in `memdb`
-- ⬜ Backup of a database in memory
+- ✅ Backup of a database in memory (and attaching, detaching for the session: `Session::attach`, `detach`, `backup`)
 - ✅ Catalog
 - ✅ Check database by database
 - ⬜ `Fixture` SQLite in the contract suite

@@ -285,6 +285,12 @@ impl ErrorDetail {
                 failure: failure.clone(),
             },
             ConnectorError::MissingVersion => Self::MissingVersion,
+            // A location refused is told as a source that cannot be reached.
+            ConnectorError::Location(error) => Self::Connect {
+                failure: ConnectFailure::Location {
+                    error: error.clone(),
+                },
+            },
             ConnectorError::Init { statement, cause } => Self::InitQueryFailed {
                 statement: statement.clone(),
                 cause: cause.clone(),

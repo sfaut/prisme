@@ -32,7 +32,7 @@ use crate::catalog::{NamespaceInfo, ObjectInfo, ObjectKind, TableDetails};
 use crate::columns::{Cell, ColumnTypeInfo};
 use crate::failure::{ConnectFailure, FailureCause};
 use crate::flavor::Flavor;
-use crate::location::{Location, Remote};
+use crate::location::{Location, LocationError, Remote};
 use crate::outcome::{Notice, StatementOutcome};
 
 /// Name of the schema of the main database of a source held in files.
@@ -358,6 +358,11 @@ pub enum ConnectorError {
     /// An operation the engine cannot do (outside its `Capabilities`).
     #[error("{0} is not supported by this engine")]
     Unsupported(&'static str),
+
+    /// A location refused or out of reach, such as the file of a copy that
+    /// exists already.
+    #[error("{0}")]
+    Location(LocationError),
 }
 
 impl ConnectorError {
@@ -367,7 +372,7 @@ impl ConnectorError {
     pub fn cause(&self) -> FailureCause {
         match self {
             Self::Query(cause) | Self::Init { cause, .. } => cause.clone(),
-            Self::Connect(_) | Self::MissingVersion | Self::Unsupported(_) => {
+            Self::Connect(_) | Self::MissingVersion | Self::Unsupported(_) | Self::Location(_) => {
                 FailureCause::Driver {
                     message: self.to_string(),
                 }
@@ -442,6 +447,33 @@ pub trait Session: Send {
     /// Notices (warnings, notes) of the last statement, which its outcome
     /// only counts: to read before the next statement, which clears them.
     fn notices(&mut self) -> BoxFuture<'_, Result<Vec<Notice>, ConnectorError>>;
+
+    /// Attaches `database` to the session, for the session only, and tells
+    /// its state: open, or why not. Only for an engine with
+    /// `Capabilities::attachments`.
+    fn attach<'a>(
+        &'a mut self,
+        _database: &'a FileDatabase,
+    ) -> BoxFuture<'a, Result<DatabaseState, ConnectorError>> {
+        Box::pin(async { Err(ConnectorError::Unsupported("attaching a database")) })
+    }
+
+    /// Detaches the database of the schema `schema` from the session. Only
+    /// for an engine with `Capabilities::attachments`.
+    fn detach<'a>(&'a mut self, _schema: &'a str) -> BoxFuture<'a, Result<(), ConnectorError>> {
+        Box::pin(async { Err(ConnectorError::Unsupported("detaching a database")) })
+    }
+
+    /// Copies the database of the schema `schema` into a new file at
+    /// `location`, which must not exist (a database in memory saved). Only
+    /// for an engine with `Capabilities::attachments`.
+    fn backup<'a>(
+        &'a mut self,
+        _schema: &'a str,
+        _location: &'a Location,
+    ) -> BoxFuture<'a, Result<(), ConnectorError>> {
+        Box::pin(async { Err(ConnectorError::Unsupported("copying a database")) })
+    }
 
     /// Stops the running statement of the session, from another task.
     fn canceller(&self) -> Arc<dyn Canceller>;

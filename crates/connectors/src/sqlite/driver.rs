@@ -8,6 +8,7 @@
 //! instead of running, even one that arrives after the interruption.
 
 use std::marker::PhantomData;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -19,18 +20,20 @@ use tokio::sync::{mpsc, oneshot};
 
 use super::catalog;
 use super::failure::opening;
-use super::open::{Planned, connect, file_name, plan, prepare, private_key};
+use super::open::{self, Planned, connect, file_name, plan, plan_one, prepare, private_key};
 use super::statement::{self, Ending, Message, ROWS_AHEAD};
 use crate::api::{
     Canceller, Capabilities, CatalogReader, ColumnMeta, ConnectorError, DialectOptions, Driver,
     Engine, MAIN_SCHEMA, Namespace, NamespaceLevel, OpenOptions, Rows, Session, Settings,
     SourceInfo, Target,
 };
+use crate::api::{DatabaseState, FileDatabase};
 use crate::blocking::{Stopped, Worker};
 use crate::catalog::{NamespaceInfo, ObjectInfo, ObjectKind, TableDetails};
 use crate::columns::Cell;
 use crate::failure::FailureCause;
 use crate::flavor::Flavor;
+use crate::location::{Location, LocationError, Remote, locations};
 use crate::outcome::{Notice, StatementOutcome};
 
 /// Driver of SQLite.
@@ -137,9 +140,16 @@ async fn open(target: &Target, options: OpenOptions) -> Result<SqliteSession, Co
     .await??;
     let init_statements = target.init_statements.clone();
     let database = main.database;
+    let order_key = key.clone();
     let prepared = worker
         .run(move |connection: &mut Connection| {
-            prepare(connection, &database, &planned, &key, &init_statements)
+            prepare(
+                connection,
+                &database,
+                &planned,
+                &order_key,
+                &init_statements,
+            )
         })
         .await??;
     let info = SourceInfo {
@@ -153,6 +163,8 @@ async fn open(target: &Target, options: OpenOptions) -> Result<SqliteSession, Co
     Ok(SqliteSession {
         worker,
         info,
+        key,
+        remote: files.remote.clone(),
         canceller: Arc::new(SqliteCanceller {
             handle: prepared.handle,
             ended: Arc::new(AtomicBool::new(false)),
@@ -174,6 +186,10 @@ pub struct SqliteSession {
     /// Identity of the source and state of its databases, read at the
     /// opening.
     info: SourceInfo,
+    /// Name of its databases in memory (`OpenOptions::session_key`).
+    key: String,
+    /// Where its remote databases are copied, and the limits of a download.
+    remote: Remote,
     /// Interruption of the running statement.
     canceller: Arc<SqliteCanceller>,
 }
@@ -252,6 +268,53 @@ impl Session for SqliteSession {
     fn notices(&mut self) -> BoxFuture<'_, Result<Vec<Notice>, ConnectorError>> {
         // SQLite keeps no notices of a statement.
         Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn attach<'a>(
+        &'a mut self,
+        database: &'a FileDatabase,
+    ) -> BoxFuture<'a, Result<DatabaseState, ConnectorError>> {
+        Box::pin(async move {
+            let planned = plan_one(database, &self.remote).await;
+            let key = self.key.clone();
+            let status = self
+                .run(move |connection| Ok(open::attach(connection, &planned, &key)))
+                .await?;
+            Ok(DatabaseState {
+                schema: database.schema.clone(),
+                location: database.location.clone(),
+                status,
+            })
+        })
+    }
+
+    fn detach<'a>(&'a mut self, schema: &'a str) -> BoxFuture<'a, Result<(), ConnectorError>> {
+        let schema = schema.to_string();
+        Box::pin(self.run(move |connection| Ok(open::detach(connection, &schema)?)))
+    }
+
+    fn backup<'a>(
+        &'a mut self,
+        schema: &'a str,
+        location: &'a Location,
+    ) -> BoxFuture<'a, Result<(), ConnectorError>> {
+        Box::pin(async move {
+            let provider = locations::of(location.scheme);
+            if !provider.capabilities().creatable || !provider.capabilities().local {
+                return Err(ConnectorError::Location(LocationError::NotCreatable {
+                    scheme: location.scheme,
+                }));
+            }
+            // The empty file reserves the location: one that exists is refused.
+            provider
+                .create(location)
+                .await
+                .map_err(ConnectorError::Location)?;
+            let schema = schema.to_string();
+            let path = PathBuf::from(&location.address);
+            self.run(move |connection| Ok(open::backup(connection, &schema, &path)?))
+                .await
+        })
     }
 
     fn canceller(&self) -> Arc<dyn Canceller> {
@@ -667,6 +730,71 @@ mod tests {
         for session in [first, second, alone] {
             session.close().await;
         }
+    }
+
+    #[tokio::test]
+    async fn attaches_detaches_and_copies_a_database_for_the_session() {
+        let folder = tempfile::tempdir().unwrap();
+        let other = folder.path().join("other.db");
+        create(&other);
+        let mut session = DRIVER
+            .open(&target(vec![memory("main")], &[]), OpenOptions::default())
+            .await
+            .unwrap();
+        let state = session.attach(&file("other", &other)).await.unwrap();
+        assert!(matches!(state.status, DatabaseStatus::Open { .. }));
+        let missing = folder.path().join("missing.db");
+        let state = session.attach(&file("gone", &missing)).await.unwrap();
+        assert!(matches!(state.status, DatabaseStatus::Unavailable { .. }));
+        assert_eq!(
+            rows_of(session.as_mut(), "SELECT count(*) FROM other.t")
+                .await
+                .unwrap(),
+            [[cell("1")]]
+        );
+        session.detach("other").await.unwrap();
+        assert!(session.execute("SELECT * FROM other.t").await.is_err());
+        assert!(session.detach("other").await.is_err());
+
+        session.attach(&memory("scratch")).await.unwrap();
+        rows_of(session.as_mut(), "CREATE TABLE scratch.m (x)")
+            .await
+            .unwrap();
+        rows_of(session.as_mut(), "INSERT INTO scratch.m VALUES (7)")
+            .await
+            .unwrap();
+        let copy = folder.path().join("copy.db");
+        let location = Location {
+            scheme: Scheme::File,
+            address: copy.to_string_lossy().into_owned(),
+        };
+        session.backup("scratch", &location).await.unwrap();
+        let copied: i64 = Connection::open(&copy)
+            .unwrap()
+            .query_row("SELECT count(*) FROM m", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(copied, 1);
+        // A file that exists is refused, and left as it is.
+        assert!(matches!(
+            session.backup("scratch", &location).await,
+            Err(ConnectorError::Location(
+                LocationError::AlreadyExists { .. }
+            ))
+        ));
+        assert!(
+            session
+                .backup(
+                    "nowhere",
+                    &Location {
+                        scheme: Scheme::File,
+                        address: folder.path().join("none.db").to_string_lossy().into_owned(),
+                    }
+                )
+                .await
+                .is_err()
+        );
+        assert!(!folder.path().join("none.db").exists());
+        session.close().await;
     }
 
     #[tokio::test]

@@ -25,7 +25,7 @@ use crate::api::{
     ConnectorError, DatabaseState, DatabaseStatus, FileDatabase, FilesSettings, MAIN_SCHEMA,
 };
 use crate::failure::ConnectFailure;
-use crate::location::{Local, Location, locations};
+use crate::location::{Local, Location, Remote, locations};
 use crate::sql_log;
 
 /// A database of the settings, in the form the library opens.
@@ -42,24 +42,28 @@ pub(super) struct Planned {
 pub(super) async fn plan(files: &FilesSettings) -> Vec<Planned> {
     let mut planned = Vec::with_capacity(files.databases.len());
     for database in &files.databases {
-        let local = local_form(&database.location, files).await;
-        planned.push(Planned {
-            database: database.clone(),
-            local,
-        });
+        planned.push(plan_one(database, &files.remote).await);
     }
     planned
 }
 
+/// Local form of `database`, its remote file read within `remote`.
+pub(super) async fn plan_one(database: &FileDatabase, remote: &Remote) -> Planned {
+    Planned {
+        database: database.clone(),
+        local: local_form(&database.location, remote).await,
+    }
+}
+
 /// Local form of the database at `location`.
-async fn local_form(location: &Location, files: &FilesSettings) -> Result<Local, ConnectFailure> {
+async fn local_form(location: &Location, remote: &Remote) -> Result<Local, ConnectFailure> {
     let provider = locations::of(location.scheme);
     let unreachable = |error| ConnectFailure::Location { error };
     // A local file is checked first: the library would not tell a missing
     // file from one it cannot open.
     if provider.capabilities().local {
         let report = provider
-            .probe(location, &files.remote)
+            .probe(location, remote)
             .await
             .map_err(unreachable)?;
         if !report.exists {
@@ -69,7 +73,7 @@ async fn local_form(location: &Location, files: &FilesSettings) -> Result<Local,
         }
     }
     provider
-        .materialize(location, &files.remote)
+        .materialize(location, remote)
         .await
         .map_err(unreachable)
 }
@@ -238,6 +242,29 @@ pub(super) fn attach(connection: &Connection, database: &Planned, key: &str) -> 
             }
         }
     }
+}
+
+/// Detaches the database of the schema `schema`.
+pub(super) fn detach(connection: &Connection, schema: &str) -> rusqlite::Result<()> {
+    let sql = "DETACH ?1";
+    traced(&sql_log::bound(sql, &[schema]), || {
+        connection.execute(sql, [schema])
+    })?;
+    Ok(())
+}
+
+/// Copies the database of the schema `schema` into the file at `path`, which
+/// exists, empty (`LocationProvider::create`): the file is removed again if
+/// the copy fails.
+pub(super) fn backup(connection: &Connection, schema: &str, path: &Path) -> rusqlite::Result<()> {
+    let sql = format!("-- backup of {schema} into {}", path.display());
+    let copied = traced(&sql, || {
+        connection.backup(schema, path, None::<fn(rusqlite::backup::Progress)>)
+    });
+    if copied.is_err() {
+        let _ = std::fs::remove_file(path);
+    }
+    copied
 }
 
 /// State of the open database `schema`: its size, its journal, and whether
