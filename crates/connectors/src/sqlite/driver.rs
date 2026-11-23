@@ -71,6 +71,15 @@ impl Driver for SqliteDriver {
     }
 }
 
+/// Lexical settings of every SQLite session: double quotes delimit names,
+/// and the backslash escapes nothing (`docs/SQL-COMPARISON.md`, section 6).
+/// The interface quotes names and writes its literals (CTE, `IN` clause)
+/// accordingly.
+const DIALECT_OPTIONS: DialectOptions = DialectOptions {
+    ansi_quotes: true,
+    no_backslash_escapes: true,
+};
+
 /// What SQLite can do. A session sees only the schemas of its connection,
 /// without changing its current one: `main` stays first for the names it
 /// does not qualify, after `temp`.
@@ -191,7 +200,7 @@ async fn open(target: &Target, options: OpenOptions) -> Result<SqliteSession, Co
     let info = SourceInfo {
         flavor: Flavor::Sqlite,
         version: rusqlite::version().to_string(),
-        dialect_options: DialectOptions::default(),
+        dialect_options: DIALECT_OPTIONS,
         oldest_supported: None,
         capabilities: capabilities(),
         databases: prepared.databases,
@@ -682,6 +691,7 @@ mod tests {
         let info = session.info().clone();
         assert_eq!(info.flavor, Flavor::Sqlite);
         assert_eq!(info.version, rusqlite::version());
+        assert_eq!(info.dialect_options, DIALECT_OPTIONS);
         let open = |bytes, journal: &str| DatabaseStatus::Open {
             bytes,
             journal_mode: journal.to_string(),
