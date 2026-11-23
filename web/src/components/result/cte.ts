@@ -14,10 +14,10 @@
  * ;
  * ```
  *
- * MySQL writes each row `ROW (…)`, from 8.0.19; MariaDB writes it `(…)` and
- * refuses `ROW`. Each value is a literal of its column's type, so that the
- * columns of the CTE keep it (types measured on MySQL 8.0.19 to 9.3.0 and
- * MariaDB 10.6.3 to 11.8.9):
+ * MySQL writes each row `ROW (…)`, from 8.0.19; MariaDB and SQLite write it
+ * `(…)` and refuse `ROW`. Each value is a literal of its column's type, so
+ * that the columns of the CTE keep it (types measured on MySQL 8.0.19 to
+ * 9.3.0 and MariaDB 10.6.3 to 11.8.9):
  *
  * - integers and decimal numbers as the server sent them; floating numbers
  *   with an exponent (`1.5E0`), which makes them `DOUBLE` instead of
@@ -34,6 +34,11 @@
  *   (`_binary'abc'`); bits as a bit-value literal (`b'101'`);
  * - every other value as a string.
  *
+ * SQLite has no typed literal of a date or a time, nor binary strings or bit
+ * values (`docs/SQL-COMPARISON.md`, section 6): dates, date-times and times
+ * are written as strings, which it stores as such, and bytes and bits in
+ * hexadecimal (`X'616263'`), read as a BLOB. Its decimal numbers come back as
+ * `REAL`, the class a `NUMERIC` column gives them too.
  * A value of a numeric column that does not read as a number is written as a
  * string, never as is. Strings double their quotes, and their backslashes
  * unless the `NO_BACKSLASH_ESCAPES` mode is active; names are quoted only
@@ -88,7 +93,7 @@ const HEX_BYTES = /^0x((?:[0-9A-F]{2})*)$/
  */
 export interface LiteralOptions {
   /**
-   * Dialect written: MySQL (`ROW (…)` in a CTE) or MariaDB.
+   * Dialect written (`FLAVORS`, `flavors.ts`).
    */
   flavor: Flavor
   /**
@@ -153,18 +158,31 @@ function bitLiteral(cell: string): string {
 }
 
 /**
- * Typed literal of a date or a date-time; a string for MySQL when its month
- * or day is zero.
+ * Hexadecimal literal of the bytes of a cell (`X'616263'`).
  *
- * @param keyword Type of the literal: `DATE` or `TIMESTAMP`.
+ * @param cell Value of the cell.
+ */
+function hexLiteral(cell: string): string {
+  const hex = [...cellBytes(cell)].map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  return `X'${hex.toUpperCase()}'`
+}
+
+/**
+ * Typed literal of a date, a date-time or a time; a string for a flavor
+ * without such literals, and for MySQL when the month or the day of a date
+ * is zero.
+ *
+ * @param keyword Type of the literal: `DATE`, `TIMESTAMP` or `TIME`.
  * @param cell Value of the cell.
  * @param options How the literal is written.
  */
-function dateLiteral(keyword: string, cell: string, options: LiteralOptions): string {
+function temporalLiteral(keyword: string, cell: string, options: LiteralOptions): string {
   const string = cteString(cell, options.backslashEscapes)
-  return FLAVORS[options.flavor].cte.zeroDatesAsStrings && ZERO_IN_DATE.test(cell)
-    ? string
-    : `${keyword}${string}`
+  const syntax = FLAVORS[options.flavor].cte
+  if (!syntax.typedTemporals || (syntax.zeroDatesAsStrings && ZERO_IN_DATE.test(cell))) {
+    return string
+  }
+  return `${keyword}${string}`
 }
 
 /**
@@ -194,20 +212,20 @@ export function cteLiteral(
       }
       return EXPONENT.test(cell) ? cell : `${cell}E0`
     case 'date':
-      return dateLiteral('DATE', cell, options)
+      return temporalLiteral('DATE', cell, options)
     case 'datetime':
-      return dateLiteral('TIMESTAMP', cell, options)
+      return temporalLiteral('TIMESTAMP', cell, options)
     case 'time':
-      return `TIME${string}`
+      return temporalLiteral('TIME', cell, options)
     case 'json':
       return FLAVORS[options.flavor].cte.castsJson ? `CAST(${string} AS JSON)` : string
     case 'binary':
-    case 'geometry': {
-      const hex = HEX_BYTES.exec(cell)?.[1]
-      return hex === undefined ? `_binary${string}` : `X'${hex}'`
-    }
+    case 'geometry':
+      return HEX_BYTES.test(cell) || !FLAVORS[options.flavor].cte.binaryStrings
+        ? hexLiteral(cell)
+        : `_binary${string}`
     case 'bit':
-      return bitLiteral(cell)
+      return FLAVORS[options.flavor].cte.binaryStrings ? bitLiteral(cell) : hexLiteral(cell)
     default:
       return string
   }

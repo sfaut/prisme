@@ -118,7 +118,7 @@ Architecture:
 - ✅ List and card: location of `main`, number of attached databases, protocol (protocol pill beside every location field, the protocol alone for a main database in memory)
 - ✅ Badge SQLite, light and dark (teal, beside the blue of MySQL and the brown of MariaDB)
 - ✅ Navigator: schemas, protocol, badge `memdb` (database in memory shared by the session) or `memory` (`ATTACH ':memory:'`, private to its connection), menus, window **Attacher une base**; labels of the namespace levels (`NamespaceLevel`) in the navigator and the completion (the session tells its databases as soon as it opens; icon of the source by its kind; menu of a database: "Enregistrer dans un fichier…", "Détacher pour la session", "Retirer de la connexion…"; menu of the source: "Attacher une base…", "Pour cette session" or "Dans la connexion")
-- ⬜ Editor dialect, CTE and `IN` clause in SQLite (literals of the dates, times and bytes)
+- ✅ Editor dialect, CTE and `IN` clause in SQLite (literals of the dates, times and bytes): the editor reads the tokens of its flavor (parameters `:name` and `$name`, square brackets); dates and times written as strings, bytes in hexadecimal; names in double quotes and backslashes left as they are, which the SQLite session tells (`DialectOptions`)
 - ⬜ Operations on the indexes in the navigator, in SQLite (`CREATE INDEX`, `DROP INDEX`)
 - ⬜ Messages of the states of the databases (`DatabaseState`) in the interface
 - ⬜ Switches of the engine in the settings

@@ -56,6 +56,18 @@ export interface CteSyntax {
    */
   castsJson: boolean
   /**
+   * Are dates, date-times and times written as typed literals
+   * (`DATE'2026-10-12'`), rather than as strings (SQLite, which has no such
+   * literal)?
+   */
+  typedTemporals: boolean
+  /**
+   * Are bytes that read as UTF-8 written as binary strings (`_binary'abc'`),
+   * and bits as bit values (`b'101'`), rather than in hexadecimal
+   * (`X'616263'`, SQLite)?
+   */
+  binaryStrings: boolean
+  /**
    * First version of the flavor that reads its CTE (major, minor, patch),
    * `null` when every supported version does.
    */
@@ -102,13 +114,27 @@ export const FLAVORS: Record<Flavor, FlavorSpec> = {
     name: 'MySQL',
     driver: 'mysql_async',
     editor: MYSQL_EDITOR,
-    cte: { rowConstructor: true, zeroDatesAsStrings: true, castsJson: true, readSince: [8, 0, 19] },
+    cte: {
+      rowConstructor: true,
+      zeroDatesAsStrings: true,
+      castsJson: true,
+      typedTemporals: true,
+      binaryStrings: true,
+      readSince: [8, 0, 19],
+    },
   },
   mariadb: {
     name: 'MariaDB',
     driver: 'mysql_async',
     editor: MYSQL_EDITOR,
-    cte: { rowConstructor: false, zeroDatesAsStrings: false, castsJson: false, readSince: null },
+    cte: {
+      rowConstructor: false,
+      zeroDatesAsStrings: false,
+      castsJson: false,
+      typedTemporals: true,
+      binaryStrings: true,
+      readSince: null,
+    },
   },
   sqlite: {
     name: 'SQLite',
@@ -119,7 +145,14 @@ export const FLAVORS: Record<Flavor, FlavorSpec> = {
       unquotedBitLiterals: false,
       specialVar: '@:?$',
     },
-    cte: { rowConstructor: false, zeroDatesAsStrings: false, castsJson: false, readSince: null },
+    cte: {
+      rowConstructor: false,
+      zeroDatesAsStrings: false,
+      castsJson: false,
+      typedTemporals: false,
+      binaryStrings: false,
+      readSince: null,
+    },
   },
 }
 
