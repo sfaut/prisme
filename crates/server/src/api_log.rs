@@ -163,6 +163,13 @@ impl fmt::Display for Sent<'_> {
             ServerMessage::Database { .. } => f.write_str("database"),
             ServerMessage::Transaction { open: true } => f.write_str("transaction, open"),
             ServerMessage::Transaction { open: false } => f.write_str("transaction, ended"),
+            ServerMessage::Databases { databases } => {
+                write!(
+                    f,
+                    "databases, {}",
+                    Count(databases.len(), "database", "databases")
+                )
+            }
             ServerMessage::Resume { running, queries } => {
                 write!(f, "resume, {}", Count(queries.len(), "query", "queries"))?;
                 if *running {

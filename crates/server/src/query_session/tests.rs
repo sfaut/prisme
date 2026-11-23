@@ -15,7 +15,7 @@ use crate::editors::{self, NewEditor};
 use crate::error_detail::ErrorDetail;
 use crate::master_key::MasterKey;
 use crate::store;
-use crate::test_support::{ClientSocket, allow_writes, memory_connection};
+use crate::test_support::{ClientSocket, allow_writes, attachable_database, memory_connection};
 use prisme_connectors::api::Engine;
 use prisme_connectors::flavor::Flavor;
 use prisme_connectors::mysql::MysqlTarget;
@@ -116,7 +116,7 @@ async fn run(socket: &mut ClientSocket, mut request: Value) -> (Value, Vec<Recei
         if kind == "error" && message["query"].is_null() {
             return (message, results);
         }
-        if kind == "transaction" {
+        if kind == "transaction" || kind == "databases" {
             // State of the session, outside the results.
             continue;
         }
@@ -1074,4 +1074,56 @@ async fn the_parallel_queries_of_a_sqlite_session_see_its_attached_databases() {
     run_one(&mut socket, "CREATE TABLE scratch.x (a)", None).await;
     let reads = "SELECT count(*) FROM scratch.x; SELECT a FROM other.t";
     assert_eq!(run_all_rows(&mut socket, reads).await, [1, 1]);
+}
+
+#[tokio::test]
+async fn tells_the_databases_of_a_sqlite_session_once_they_change() {
+    let folder = tempfile::tempdir().unwrap();
+    let other = attachable_database(folder.path(), "other");
+    let writes = [WriteKind::Attach];
+    let (address, _, editor_id) = start_connection(&memory_connection(), Some(&writes)).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    next_json(&mut socket).await;
+
+    // Messages of a batch, from `batch` to `batch_done`, by type.
+    let mut messages_of = async |sql: &str| -> Vec<Value> {
+        let request = json!({ "type": "run", "sql": sql, "cursor": 0 });
+        socket
+            .send(ClientMessage::Text(request.to_string().into()))
+            .await
+            .unwrap();
+        let mut messages = Vec::new();
+        loop {
+            let message = next_json(&mut socket).await;
+            if message["type"] == "batch_done" {
+                return messages;
+            }
+            messages.push(message);
+        }
+    };
+    let databases = |messages: &[Value]| -> Vec<Value> {
+        messages
+            .iter()
+            .filter(|message| message["type"] == "databases")
+            .map(|message| message["databases"].clone())
+            .collect()
+    };
+    let attached = messages_of(&format!("ATTACH '{other}' AS other")).await;
+    let schemas: Vec<Value> = databases(&attached)
+        .iter()
+        .flat_map(|list| list.as_array().unwrap().clone())
+        .map(|database| database["schema"].clone())
+        .collect();
+    assert_eq!(schemas, [json!("main"), json!("other")]);
+    // A read changes nothing: no message.
+    assert!(databases(&messages_of("SELECT 1").await).is_empty());
+    assert_eq!(databases(&messages_of("DETACH other").await).len(), 1);
+
+    // A page that comes back gets them after `ready`.
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    assert_eq!(next_json(&mut socket).await["type"], "ready");
+    let message = next_json(&mut socket).await;
+    assert_eq!(message["type"], "databases");
+    assert_eq!(message["databases"].as_array().unwrap().len(), 1);
 }

@@ -1,7 +1,7 @@
 //! Messages of the query session, as JSON text: what the client sends, and
 //! what the session answers. The types are exported to the interface by `ts-rs`.
 
-use prisme_connectors::api::SourceInfo;
+use prisme_connectors::api::{AttachedDatabase, SourceInfo};
 use prisme_connectors::columns::{Cell, ColumnTypeInfo};
 use prisme_connectors::outcome::StatementOutcome;
 use prisme_dialects::verb::StatementVerb;
@@ -197,6 +197,10 @@ pub(crate) enum ServerMessage {
     /// A transaction opened (`open`) or ended on the session's connection,
     /// at the end of a request, before `batch_done`.
     Transaction { open: bool },
+    /// The databases attached to the session's connection changed, after a
+    /// request that attached or detached one, before `batch_done`: the main
+    /// one first, in the order of their attachment.
+    Databases { databases: Vec<AttachedDatabase> },
     /// Last batch of the session, sent to a WebSocket that reattaches to it.
     Resume {
         /// Is the batch still running?

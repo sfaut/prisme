@@ -30,7 +30,7 @@ use std::time::Duration;
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use prisme_connectors::api::SourceInfo;
+use prisme_connectors::api::{AttachedDatabase, SourceInfo};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep_until};
@@ -88,6 +88,9 @@ struct Replay {
     database: Option<String>,
     /// Is a transaction open on the session's connection?
     transaction: bool,
+    /// Databases attached to the session's connection, once a request
+    /// changed them.
+    databases: Option<Vec<AttachedDatabase>>,
     /// Is a batch running?
     running: bool,
 }
@@ -198,7 +201,8 @@ impl Relay {
     }
 
     /// Sends a reattaching WebSocket the state of the session: `ready` if it
-    /// is ready, then the editor's last batch if there is one, without its
+    /// is ready, its databases if a request changed them, then the editor's
+    /// last batch if there is one, without its
     /// rows, then the rows of each query, a saved chunk per message, sent as
     /// saved, then those received since its last chunk.
     async fn send_replay(
@@ -216,6 +220,12 @@ impl Relay {
             transaction: replay.transaction,
         };
         send(sink, &ready).await?;
+        if let Some(databases) = &replay.databases {
+            let databases = ServerMessage::Databases {
+                databases: databases.clone(),
+            };
+            send(sink, &databases).await?;
+        }
         let Some(recorder) = &self.recorder else {
             return Ok(());
         };
@@ -274,6 +284,7 @@ impl Relay {
                 replay.transaction = *transaction;
             }
             ServerMessage::Transaction { open } => replay.transaction = *open,
+            ServerMessage::Databases { databases } => replay.databases = Some(databases.clone()),
             ServerMessage::Database { database } | ServerMessage::Done { database, .. } => {
                 replay.database = database.clone();
             }

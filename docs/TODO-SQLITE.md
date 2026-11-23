@@ -104,7 +104,7 @@ Architecture:
 - ✅ Parallel queries of a session: their connections attach the databases of the session's connection, listed when it opens and after each `ATTACH` / `DETACH`; a database private to it (`ATTACH ':memory:'` in SQL) runs the batches in sequence on it
 - ⬜ API of the attachments of the navigator (session or connection)
 - ⬜ Saving a database in memory to a file
-- ⬜ Schemas read again after `ATTACH` / `DETACH`
+- ✅ Schemas read again after `ATTACH` / `DETACH` written in SQL: `databases` message, the page reads the catalog again
 - ✅ Switches `attach` and `maintenance` (classification of step 3, migration 0040)
 - ✅ Remote databases read within the preferences of their user (`RemoteLimits`), cache of each user in `cache/locations/<user>`, purged by `location::purge` after `remote_cache_days`
 

@@ -340,8 +340,12 @@ impl Session<'_> {
         let attaches = chosen
             .iter()
             .any(|statement| attaches(&statement.sql, flavor));
-        if attaches {
-            self.follow_databases(connection).await;
+        if attaches && self.follow_databases(connection).await {
+            self.outbox
+                .send(ServerMessage::Databases {
+                    databases: self.source.shared.listed(),
+                })
+                .await?;
         }
         let ends = chosen
             .iter()

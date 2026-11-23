@@ -22,6 +22,9 @@ pub(crate) struct Shared {
     /// attach, as last listed; `None` before, and for an engine without
     /// attachments: those of the settings.
     databases: Mutex<Option<Vec<FileDatabase>>>,
+    /// Databases of the session's connection, as last listed, those private
+    /// to it included.
+    listed: Mutex<Vec<AttachedDatabase>>,
     /// Does the session's connection hold a database private to it?
     private: AtomicBool,
 }
@@ -32,6 +35,7 @@ impl Shared {
         Self {
             key,
             databases: Mutex::new(None),
+            listed: Mutex::new(Vec::new()),
             private: AtomicBool::new(false),
         }
     }
@@ -74,7 +78,20 @@ impl Shared {
         let mut current = self.databases();
         let changed = current.as_ref() != Some(&databases) || was_private != private;
         *current = Some(databases);
+        *self
+            .listed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = listed.to_vec();
         changed
+    }
+
+    /// Databases of the session's connection, as last listed, those private
+    /// to it included.
+    pub(crate) fn listed(&self) -> Vec<AttachedDatabase> {
+        self.listed
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 
     /// Does the session's connection hold a database that no other
@@ -151,7 +168,8 @@ mod tests {
             schema: "scratch".to_string(),
             location: None,
         };
-        assert!(shared.follow(&[listed(&main), private]));
+        assert!(shared.follow(&[listed(&main), private.clone()]));
         assert!(shared.private());
+        assert_eq!(shared.listed(), [listed(&main), private]);
     }
 }

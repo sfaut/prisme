@@ -774,6 +774,15 @@ watch(
   { immediate: true },
 )
 
+// The session attached or detached a database: the navigator shows its
+// schemas again.
+watch(
+  () => state.databases,
+  () => {
+    catalog.load(props.connection.id, true, props.editorId).catch(() => {})
+  },
+)
+
 watch(
   () => batchProgress(state),
   (progress, before) => {

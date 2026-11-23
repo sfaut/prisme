@@ -49,6 +49,7 @@ import { errorMessage } from './errorMessage'
 import { describe } from './messages'
 import { markRaw, onScopeDispose, reactive } from 'vue'
 
+import type { AttachedDatabase } from './generated/AttachedDatabase'
 import type { ColumnTypeInfo } from './generated/ColumnTypeInfo'
 import type { GridDisplay } from './generated/GridDisplay'
 import type { LimitReport } from './generated/LimitReport'
@@ -399,6 +400,11 @@ export interface SessionState {
    */
   transaction: boolean
   /**
+   * Databases attached to the session's connection, told by the server
+   * each time a request changes them; `null` until then.
+   */
+  databases: AttachedDatabase[] | null
+  /**
    * Tabs: the pinned ones of the previous batches, then the queries of the current batch.
    */
   tabs: QueryTab[]
@@ -468,6 +474,7 @@ export function initialState(): SessionState {
     server: null,
     database: null,
     transaction: false,
+    databases: null,
     tabs: [],
     batch: 0,
     nextTabId: 1,
@@ -629,6 +636,9 @@ export function applyMessage(
       break
     case 'transaction':
       state.transaction = message.open
+      break
+    case 'databases':
+      state.databases = message.databases
       break
     case 'resume':
       resumeBatch(state, message.queries, message.running, now)

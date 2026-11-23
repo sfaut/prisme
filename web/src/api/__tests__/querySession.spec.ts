@@ -200,6 +200,18 @@ describe('applyMessage', () => {
     expect(state.status).toBe('ready')
   })
 
+  it('follows the databases attached to the session', () => {
+    const state = readyState()
+    expect(state.databases).toBeNull()
+    const databases = [
+      { schema: 'main', location: { scheme: 'memory' as const, address: '' } },
+      { schema: 'scratch', location: null },
+    ]
+    applyMessage(state, { type: 'databases', databases })
+    expect(state.databases).toEqual(databases)
+    expect(state.status).toBe('ready')
+  })
+
   it('follows the transaction open on the session', () => {
     const state = readyState()
     expect(state.transaction).toBe(false)
