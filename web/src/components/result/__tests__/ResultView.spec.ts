@@ -26,7 +26,18 @@ vi.mock('@/api/exports', () => ({
 }))
 
 vi.mock('@/api/dialectSyntax', () => ({
-  fetchDialectSyntax: async () => ({ reserved: ['SELECT'], keywords: [], types: [], literals: [] }),
+  // The lexical rules that the CTE of another dialect follows: those of
+  // MySQL and MariaDB, or of SQLite.
+  fetchDialectSyntax: async (flavor: string) => {
+    const mysql = flavor !== 'sqlite'
+    return {
+      reserved: ['SELECT'],
+      keywords: [],
+      types: [],
+      literals: [],
+      lexical: { double_quoted_strings: mysql, backslash_escapes: mysql },
+    }
+  },
 }))
 
 beforeEach(() => {

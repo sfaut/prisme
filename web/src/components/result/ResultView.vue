@@ -555,14 +555,16 @@ async function cteOf(flavor: Flavor): Promise<{ query: string; rows: number } | 
     )
     return null
   }
-  const keywords = await fetchDialectSyntax(
-    flavor,
-    flavor === server.flavor ? server.version : null,
-  )
+  const own = flavor === server.flavor
+  const keywords = await fetchDialectSyntax(flavor, own ? server.version : null)
+  // The dialect of the editor follows the modes of its session; another one
+  // is read as by default (double quotes and backslashes of its lexical
+  // rules), its server being unknown.
+  const { lexical } = keywords
   const query = await cteText(frame, result.rows, result.columns, result.columnTypes, {
     flavor,
-    ansiQuotes: server.ansi_quotes,
-    backslashEscapes: !server.no_backslash_escapes,
+    ansiQuotes: own ? server.ansi_quotes : !lexical.double_quoted_strings,
+    backslashEscapes: own ? !server.no_backslash_escapes : lexical.backslash_escapes,
     reserved: new Set(keywords.reserved),
     indentSize: props.indentSize,
   })
