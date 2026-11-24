@@ -10,10 +10,23 @@ import type { Flavor } from './generated/Flavor'
 import type { WriteKind } from './generated/WriteKind'
 
 /**
- * Reads the engines of Prisme, with their flavors and capabilities.
+ * Engines read, kept for the page: they change only with the executable. A
+ * failed reading is forgotten, to be tried again.
+ */
+let read: Promise<EngineInfo[]> | null = null
+
+/**
+ * Reads the engines of Prisme, with their flavors and capabilities, once
+ * for the page.
  */
 export async function fetchEngines(): Promise<EngineInfo[]> {
-  return request<EngineInfo[]>('GET', '/api/engines', undefined, { sync: false })
+  read ??= request<EngineInfo[]>('GET', '/api/engines', undefined, { sync: false }).catch(
+    (failure: unknown) => {
+      read = null
+      throw failure
+    },
+  )
+  return read
 }
 
 /**
