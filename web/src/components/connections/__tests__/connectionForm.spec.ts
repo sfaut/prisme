@@ -58,6 +58,7 @@ function savedFiles(): ConnectionSummary {
         { schema: 'ref', location: { scheme: 'https', address: 'https://example.org/ref.db' } },
         { schema: 'brouillon', location: { scheme: 'memory', address: '' } },
       ],
+      optimize: true,
     },
     init_sql: 'PRAGMA foreign_keys = ON;',
     session_timeout_minutes: 5,
@@ -120,7 +121,9 @@ describe('connectionForm', () => {
       },
       { schema: 'brouillon', origin: 'memory', location: '', saved: true, removed: false },
     ])
+    expect(form.optimize).toBe(true)
     expect(isChanged(form, savedFiles())).toBe(false)
+    expect(isChanged({ ...form, optimize: false }, savedFiles())).toBe(true)
     form.databases[1]!.schema = 'refs'
     expect(isChanged(form, savedFiles())).toBe(true)
     form.databases[1]!.schema = 'ref'
@@ -155,6 +158,7 @@ describe('connectionForm', () => {
           { schema: 'ref', location: 'https://example.org/ref.db', create: false },
           { schema: 'stats', location: 'D:\\data\\stats.db', create: true },
         ],
+        optimize: true,
       },
       init_sql: 'PRAGMA foreign_keys = ON;',
       session_timeout_minutes: 5,

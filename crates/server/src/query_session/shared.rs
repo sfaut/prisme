@@ -142,6 +142,7 @@ mod tests {
             engine: Engine::Sqlite,
             settings: Settings::Files(FilesSettings {
                 databases: vec![main.clone(), file("gone", "/data/gone.db")],
+                optimize: false,
                 remote: Remote {
                     cache_dir: std::env::temp_dir(),
                     limits: RemoteLimits::default(),

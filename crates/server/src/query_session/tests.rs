@@ -1062,6 +1062,7 @@ async fn the_parallel_queries_of_a_sqlite_session_see_its_attached_databases() {
     let new = NewConnection {
         name: "files".to_string(),
         settings: NewSettings::Files(NewFilesSettings {
+            optimize: false,
             databases: vec![NewFileDatabase {
                 schema: "main".to_string(),
                 location: main.to_string_lossy().into_owned(),

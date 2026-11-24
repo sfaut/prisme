@@ -10,4 +10,9 @@ export type NewFilesSettings = {
    * order of their attachment.
    */
   databases: Array<NewFileDatabase>;
+  /**
+   * Does each session refresh the statistics of the query planner of the
+   * files when it opens (`PRAGMA optimize`)? Absent: no.
+   */
+  optimize?: boolean;
 };

@@ -9,4 +9,9 @@ export type SavedFilesSettings = {
    * The main database first, then those attached to it, in their order.
    */
   databases: Array<FileDatabase>;
+  /**
+   * Does each session refresh the statistics of the query planner of the
+   * files when it opens (`PRAGMA optimize`)?
+   */
+  optimize: boolean;
 };

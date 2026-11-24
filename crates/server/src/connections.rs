@@ -23,7 +23,8 @@
 //! saved connection does not change.
 //!
 //! The databases of a source held in files are in `connection_files`, the
-//! main one first: each at a location typed by the user (`Location::parse`),
+//! main one first, the options of the whole connection in
+//! `connection_file_options` (`optimize`, without a row: the default): each at a location typed by the user (`Location::parse`),
 //! under a name of schema. Their remote copies go into the cache of their
 //! user (`cache/locations/<user>` in the data folder), read within the
 //! limits of their preferences (`settings::remote_limits`).
@@ -141,6 +142,11 @@ pub struct NewFilesSettings {
     /// The main database (`main`) first, then those attached to it, in the
     /// order of their attachment.
     pub databases: Vec<NewFileDatabase>,
+    /// Does each session refresh the statistics of the query planner of the
+    /// files when it opens (`PRAGMA optimize`)? Absent: no.
+    #[serde(default)]
+    #[ts(optional, as = "Option<bool>")]
+    pub optimize: bool,
 }
 
 /// Database of a source held in files, as typed by the user.
@@ -243,6 +249,9 @@ pub enum SavedSettings {
 pub struct SavedFilesSettings {
     /// The main database first, then those attached to it, in their order.
     pub databases: Vec<FileDatabase>,
+    /// Does each session refresh the statistics of the query planner of the
+    /// files when it opens (`PRAGMA optimize`)?
+    pub optimize: bool,
 }
 
 /// Saved settings of a server, without its password.
@@ -607,7 +616,25 @@ fn insert_files(
             ],
         )?;
     }
+    db.execute(
+        "INSERT INTO connection_file_options (connection_id, optimize) VALUES (?1, ?2)
+         ON CONFLICT (connection_id) DO UPDATE SET optimize = excluded.optimize",
+        params![id, files.optimize],
+    )?;
     Ok(())
+}
+
+/// Does connection `id` refresh the statistics of its files when a session
+/// opens? No when it has no options saved.
+fn optimize_of(db: &Connection, id: i64) -> rusqlite::Result<bool> {
+    Ok(db
+        .query_row(
+            "SELECT optimize FROM connection_file_options WHERE connection_id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .unwrap_or(false))
 }
 
 /// Adds `database` after the databases of connection `id` of user
@@ -794,9 +821,10 @@ pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, Con
     let mut statement = db.prepare(
         "SELECT c.id, c.name, c.engine, s.host, s.port, s.username, s.database_name, c.init_sql,
                 c.session_timeout_minutes, c.show_system_schemas, p.flavor, p.version,
-                p.connected_at, c.created_at
+                p.connected_at, c.created_at, COALESCE(o.optimize, 0)
          FROM connections c
          LEFT JOIN connection_servers s ON s.connection_id = c.id
+         LEFT JOIN connection_file_options o ON o.connection_id = c.id
          LEFT JOIN connection_probes p ON p.connection_id = c.id
          WHERE c.user_id = ?1 ORDER BY c.name",
     )?;
@@ -824,6 +852,7 @@ pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, Con
             }),
             Family::Files => SavedSettings::Files(SavedFilesSettings {
                 databases: files.remove(&id).unwrap_or_default(),
+                optimize: row.get(14)?,
             }),
         };
         Ok(ConnectionSummary {
@@ -913,6 +942,7 @@ pub fn load_target(
                 .remove(&id)
                 .unwrap_or_default(),
             remote: remote_of(db, user_id, locations)?,
+            optimize: optimize_of(db, id)?,
         }),
     };
     Ok(Some(Target {
@@ -1021,6 +1051,7 @@ pub fn probe_target(
                 .map(|(database, _)| database)
                 .collect(),
             remote: remote_of(db, user_id, locations)?,
+            optimize: files.optimize,
         }),
     };
     Ok(Some(Target {
@@ -1395,6 +1426,7 @@ mod tests {
             name: name.to_string(),
             engine: Engine::Sqlite,
             settings: NewSettings::Files(NewFilesSettings {
+                optimize: false,
                 databases: databases
                     .iter()
                     .map(|(schema, location)| NewFileDatabase {
@@ -1480,17 +1512,33 @@ mod tests {
         assert_eq!(files.databases, saved.databases);
         assert_eq!(files.remote.cache_dir, locations.join(user_id.to_string()));
         assert_eq!(files.remote.limits.max_bytes, 1 << 30);
+        // The statistics are not refreshed by default.
+        assert!(!saved.optimize);
+        assert!(!files.optimize);
 
-        // A change replaces the databases; a copy takes them.
-        let changed = files_connection("files", &[("main", &main)]);
+        // A change replaces the databases and the options; a copy takes them.
+        let mut changed = files_connection("files", &[("main", &main)]);
+        if let NewSettings::Files(files) = &mut changed.settings {
+            files.optimize = true;
+        }
         assert!(update(&db, &key, user_id, id, &changed).unwrap());
-        let copy = files_connection("files (copie)", &[("main", &main)]);
+        let Settings::Files(files) = load_target(&db, &key, user_id, id, &locations)
+            .unwrap()
+            .unwrap()
+            .settings
+        else {
+            panic!("settings of files expected");
+        };
+        assert!(files.optimize);
+        let mut copy = files_connection("files (copie)", &[("main", &main)]);
+        copy.settings = changed.settings;
         insert_copy(&db, &key, user_id, id, &copy).unwrap().unwrap();
         for summary in list(&db, user_id).unwrap() {
             let SavedSettings::Files(saved) = summary.settings else {
                 panic!("settings of files expected");
             };
             assert_eq!(saved.databases.len(), 1, "{}", summary.name);
+            assert!(saved.optimize, "{}", summary.name);
         }
         assert!(
             insert_copy(&db, &key, user_id + 1, id, &copy)

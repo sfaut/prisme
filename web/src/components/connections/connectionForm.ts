@@ -77,6 +77,11 @@ export type ConnectionForm = Required<Omit<NewConnection, 'settings'>> &
      * Databases held in files, the main one first.
      */
     databases: DatabaseInput[]
+    /**
+     * Does each session of databases held in files refresh the statistics
+     * of their query planner when it opens?
+     */
+    optimize: boolean
   }
 
 /**
@@ -129,6 +134,7 @@ export function emptyForm(engine: Engine = 'mysql'): ConnectionForm {
     databases: [
       { schema: MAIN_SCHEMA, origin: 'existing', location: '', saved: false, removed: false },
     ],
+    optimize: false,
   }
 }
 
@@ -168,6 +174,7 @@ export function formOf(connection: ConnectionSummary): ConnectionForm {
     session_timeout_minutes,
     show_system_schemas,
     databases,
+    optimize: settings.family === 'files' ? settings.optimize : false,
   }
 }
 
@@ -196,6 +203,7 @@ export function connectionOf(form: ConnectionForm): NewConnection {
       ? {
           family: 'files',
           databases: form.databases.filter((database) => !database.removed).map(databaseOf),
+          optimize: form.optimize,
         }
       : { family: 'server', host, port, username, password, database_name }
   return {
