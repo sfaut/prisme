@@ -985,7 +985,7 @@ To look at the internal database, open `./tmp/prisme.db` with any SQLite client 
 
 ## SQL keywords
 
-Syntax highlighting and the beautifier share the keywords of each dialect, one file per dialect, edited directly: `crates/dialects/keywords/mysql.yaml`, `mariadb.yaml` and `sqlite.yaml`. They list reserved words, non-reserved keywords, types and values, with, when needed, the version a word appeared in (`since`). The editor only highlights the words of the server's version. The beautifier rules are described in section 2.9 of [V1.md](V1.md).
+Syntax highlighting and the beautifier share the keywords of each dialect, one file per dialect, edited directly: `crates/dialects/keywords/mysql.yaml`, `mariadb.yaml` and `sqlite.yaml`. They list reserved words, non-reserved keywords, types and values, with, when needed, the version a word appeared in (`since`). The editor only highlights the words of the server's version. The beautifier rules are described in section 2.9 of [V1.md](V1.md). A non-reserved word added there (`COMMENT`) goes to capitals in the word-by-word reading of the beautifier, unless it is also the name of a table or a column of the catalog.
 
 ## Continuous integration and releases
 

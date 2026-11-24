@@ -366,6 +366,20 @@ mod tests {
     }
 
     #[test]
+    fn uppercases_comment_unless_a_table_or_column_is_named_so() {
+        let catalog = CatalogNames {
+            tables: vec!["Comment".to_string()],
+            ..CatalogNames::default()
+        };
+        let sql = "alter table comment comment 'Notes'";
+        assert_eq!(pretty(sql), "ALTER TABLE COMMENT COMMENT 'Notes'");
+        assert_eq!(
+            uppercase_keywords(sql, Dialect::MySql, None, &catalog),
+            "ALTER TABLE comment comment 'Notes'"
+        );
+    }
+
+    #[test]
     fn uppercases_keywords() {
         assert_eq!(
             pretty(
