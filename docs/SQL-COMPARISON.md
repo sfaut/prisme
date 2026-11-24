@@ -384,6 +384,29 @@ The table `t (id INT AUTO_INCREMENT PRIMARY KEY, a INT)` holds `(1, 1)`, `(2, 2)
 
 The last auto-increment id of the packet is the id of the first row inserted: generated (`1` for the three rows inserted into the empty table), or written by the statement (`40` for an upsert that inserts `(40, 1)`); absent (0) for an `UPDATE`. MySQL and MariaDB give the same texts and the same counts on their three versions; only the warnings differ (section 4).
 
+### 3.17 Table options of `ALTER TABLE`
+
+What MySQL and MariaDB accept as table options in `ALTER TABLE t <option>`, measured on 2026-11-24 with the `mysql` and `mariadb` clients on the six servers of `compose.yaml`, on an InnoDB table, and read in their grammars ([MySQL `ALTER TABLE`](https://dev.mysql.com/doc/refman/8.4/en/alter-table.html), [MySQL `CREATE TABLE`](https://dev.mysql.com/doc/refman/8.4/en/create-table.html), [MariaDB `CREATE TABLE`, table options](https://mariadb.com/kb/en/create-table/#table-options), [MariaDB `ALTER TABLE`](https://mariadb.com/kb/en/alter-table/)). This is a syntax of MySQL and MariaDB, without a case in `bench/sql/cases.mjs`, which compares expressions. Prisme parses these options in `crates/dialects/src/mysql_table_options.rs`, one list per engine. "Syntax" is error 1064, "Unknown option" error 1911.
+
+| Option | MySQL 8.0.11 | MySQL 9.7.4, 26.10.0 | MariaDB 10.6.3 | MariaDB 12.3.3, 13.0.2 |
+|---|---|---|---|---|
+| `COMMENT = 'x'`, `COMMENT 'x'`, `ENGINE = InnoDB`, `ENGINE = 'InnoDB'` | accepted | accepted | accepted | accepted |
+| `[DEFAULT] {CHARSET \| CHARACTER SET} [=] name [COLLATE name]`, `[DEFAULT] COLLATE [=] 'name'` | accepted | accepted | accepted | accepted |
+| `CONVERT TO {CHARACTER SET \| CHARSET} name [COLLATE name]` | accepted | accepted | accepted | accepted |
+| Two options separated by a space, or by a comma; an option before or after another operation (`ADD c INT, COMMENT = 'z'`) | accepted | accepted | accepted | accepted |
+| `ROW_FORMAT = DYNAMIC`, `STATS_SAMPLE_PAGES = DEFAULT`, `STATS_PERSISTENT = DEFAULT`, `PACK_KEYS = DEFAULT`, `CHECKSUM = 1`, `TABLE_CHECKSUM = 1`, `MAX_ROWS`, `AVG_ROW_LENGTH`, `DELAY_KEY_WRITE`, `INSERT_METHOD = NO`, `PASSWORD = 'x'`, `STATS_AUTO_RECALC`, `AUTO_INCREMENT`, `TABLESPACE innodb_file_per_table` | accepted | accepted | accepted | accepted |
+| `CONNECTION = 'x'` | accepted | accepted | accepted | Unknown option |
+| `ROW_FORMAT = 'DYNAMIC'`, `KEY_BLOCK_SIZE = '8'` (value between quotes) | syntax | syntax | syntax | syntax |
+| `STORAGE ENGINE = InnoDB` | syntax | syntax | syntax | syntax |
+| `AUTOEXTEND_SIZE = 4M`, `AUTOEXTEND_SIZE = 0` | syntax | accepted | Unknown option | Unknown option |
+| `COMPRESSION = 'NONE'`, `ENCRYPTION = 'N'` | accepted | accepted | Unknown option | Unknown option |
+| `ENGINE_ATTRIBUTE = '{}'` | syntax | error 3981: InnoDB does not support it | Unknown option | Unknown option |
+| `PAGE_CHECKSUM = 1`, `TRANSACTIONAL = 0`, `ENCRYPTED = NO`, `PAGE_COMPRESSED = 0`, `SEQUENCE = 0`, `WITH SYSTEM VERSIONING` | syntax | syntax | accepted | accepted |
+| `DROP SYSTEM VERSIONING` | syntax | syntax | error 4124: table not versioned | error 4124 |
+| `IETF_QUOTES = NO`, `ADAPTIVE_HASH_INDEX = DEFAULT` (MariaDB 13.1.1, after 13.0.2), `UNKNOWN_OPTION = 1` | syntax | syntax | Unknown option | Unknown option |
+
+MySQL knows a closed list of options: any other name is a syntax error. MariaDB reads any other `name [=] value` as an option of a storage engine, and refuses it after its grammar ("Unknown option", a warning under the `IGNORE_BAD_TABLE_OPTIONS` mode): its grammar accepts `IETF_QUOTES` or `COMPRESSION` on InnoDB, which does not know them. Prisme follows the grammars: it parses the options of each engine whatever the version, and leaves to the server the options of a version it does not have.
+
 ## 4. Differences between versions of one engine
 
 | Engine | Subject | Versions |
@@ -393,8 +416,10 @@ The last auto-increment id of the packet is the id of the first row inserted: ge
 | MySQL | type of `YEAR('0000-00-00')` | BIGINT on 8.0.11, YEAR on 9.7.4 and 26.10.0 |
 | MySQL | writing of `ROUND(1.005e0, 2)` | `1.00` on 8.0.11, `1` on 9.7.4 and 26.10.0 |
 | MySQL | `PRI_KEY_FLAG` of a column under `GROUP BY` | absent on 8.0.11, present on 9.7.4 and 26.10.0 |
+| MySQL | table options `AUTOEXTEND_SIZE` and `ENGINE_ATTRIBUTE` (section 3.17) | syntax error on 8.0.11, known on 9.7.4 and 26.10.0 |
 | MariaDB | default collation | `utf8mb4_general_ci` on 10.6.3, `utf8mb4_uca1400_ai_ci` on 12.3.3 and 13.0.2 |
 | MariaDB | error of `LISTAGG … WITHIN GROUP` | 1305 (no such function) on 10.6.3, 1064 (syntax) on 12.3.3 and 13.0.2 |
+| MariaDB | table option `CONNECTION` on an InnoDB table (section 3.17) | accepted on 10.6.3, Unknown option on 12.3.3 and 13.0.2 |
 | ClickHouse | `%M` of `formatDateTime` | the minutes before 23.4, the name of the month since |
 | ClickHouse | NULL in `greatest` and `least` | NULL before 24.12, ignored since (`least_greatest_legacy_null_behavior` restores the old behaviour) |
 | ClickHouse | `groupConcat` | since 24.8 |

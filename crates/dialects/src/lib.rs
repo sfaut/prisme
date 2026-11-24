@@ -23,6 +23,7 @@ mod layout;
 pub mod limit;
 mod mysql_parser;
 mod mysql_statements;
+mod mysql_table_options;
 mod offsets;
 mod parse;
 pub mod sqlite_files;

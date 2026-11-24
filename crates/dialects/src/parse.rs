@@ -57,7 +57,7 @@ pub(crate) fn parse_statements(
             return Ok(statements);
         }
         statements.push(match session.dialect.spec().statements {
-            Statements::MySql => parse_mysql_statement(&mut parser)?,
+            Statements::MySql => parse_mysql_statement(&mut parser, session.dialect)?,
             Statements::Sqlite => parse_sqlite(&mut parser)?,
         });
     }
@@ -67,14 +67,16 @@ pub(crate) fn parse_statements(
 /// to its `;` or the end of the text: a routine, an event or a `SET ... TRANSACTION` (whose
 /// scope `sqlparser` drops), else a statement of `sqlparser`, else an
 /// `ALTER TABLE` with an operation on an existing index (`sqlparser` reads
-/// `DROP INDEX IF EXISTS i` as the index `IF`, then stops), a
+/// `DROP INDEX IF EXISTS i` as the index `IF`, then stops) or table options
+/// of the dialect (`COMMENT = '...'`), a
 /// `START TRANSACTION WITH CONSISTENT SNAPSHOT`, a `COMMIT` or `ROLLBACK`
 /// with `RELEASE`, or a statement of an XA transaction.
 ///
 /// Workaround: the bugs of `sqlparser` on `DROP INDEX IF EXISTS` and on the
-/// scope of `SET TRANSACTION`, and the statements it does not parse
+/// scope of `SET TRANSACTION`, and the statements and table options it does
+/// not parse
 /// (`docs/DEVELOPER.md`, section "Workarounds").
-fn parse_mysql_statement(parser: &mut Parser) -> Result<Parsed, ParserError> {
+fn parse_mysql_statement(parser: &mut Parser, dialect: Dialect) -> Result<Parsed, ParserError> {
     if let Some(statement) = mysql_statements::parse_routine_or_event(parser)
         .or_else(|| mysql_statements::parse_set_transaction(parser))
     {
@@ -88,7 +90,7 @@ fn parse_mysql_statement(parser: &mut Parser) -> Result<Parsed, ParserError> {
         })
         .map(Parsed::Sql)
         .or_else(|error| {
-            mysql_statements::parse_alter_table(parser)
+            mysql_statements::parse_alter_table(parser, dialect)
                 .or_else(|| mysql_statements::parse_start_transaction(parser))
                 .or_else(|| mysql_statements::parse_end_transaction(parser))
                 .or_else(|| mysql_statements::parse_xa(parser))
