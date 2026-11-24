@@ -604,3 +604,18 @@ Literals of the rows of a result that the interface writes (a CTE of `VALUES`, t
 | `(1, NULL) IN (VALUES (1, NULL))` | NULL |
 
 SQLite has no typed literal of a date or of a time, nor of a binary string: a date, a date-time and a time are written as texts, which SQLite stores as texts, and bytes as a hexadecimal literal `X'…'`, read as a BLOB. A decimal number (`12.50`) is read as a `REAL`, the class that a `NUMERIC` column gives it too.
+
+Operations on an index, which the navigator writes (`web/src/components/navigator/indexOperations.ts`), measured on 2026-11-24 by `bench/sqlite` (section 17), on a database attached as `other` holding `t (id INTEGER PRIMARY KEY, name TEXT UNIQUE, code TEXT)` and `k (a TEXT, b TEXT, PRIMARY KEY (a, b))`:
+
+| Text | SQLite |
+|---|---|
+| `CREATE INDEX "other"."i" ON "t" (code)` | created: the schema goes on the index, the table stays unqualified |
+| `CREATE INDEX j ON other.t (code)` | error: syntax, near `.` |
+| `CREATE UNIQUE INDEX other.u ON t (code, name)`, `CREATE INDEX other.p ON t (code) WHERE code IS NOT NULL` | created |
+| `CREATE INDEX other.sqlite_mine ON t (code)` | error: object name reserved for internal use |
+| `REINDEX "other"."i"`, `REINDEX other.sqlite_autoindex_t_1` | done |
+| `DROP INDEX "other"."i"` | dropped |
+| `DROP INDEX other.sqlite_autoindex_t_1` (of `UNIQUE`), `DROP INDEX other.sqlite_autoindex_k_1` (of the primary key) | error: index associated with UNIQUE or PRIMARY KEY constraint cannot be dropped |
+| `ALTER INDEX other.u RENAME TO v` | error: syntax, near `INDEX` |
+
+`pragma_index_list` gives the index of a constraint under the name `sqlite_autoindex_<table>_<n>`, with its origin (`u` for `UNIQUE`, `pk` for a primary key that is not an `INTEGER PRIMARY KEY`), and the others with the origin `c` and `partial` 1 for a partial index. SQLite reserves the names that start with `sqlite_`: an index of that name is always one of a constraint. Its `ALTER TABLE` neither adds nor drops a key ([ALTER TABLE](https://sqlite.org/lang_altertable.html)), and an index is neither renamed nor hidden.

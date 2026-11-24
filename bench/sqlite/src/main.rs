@@ -65,6 +65,7 @@ fn main() {
     connector_opening(&folder);
     update_hook();
     literals_of_a_cte();
+    index_operations();
 
     std::fs::remove_dir_all(&folder).ok();
 }
@@ -1125,4 +1126,52 @@ fn literals_of_a_cte() {
     ] {
         report(sql, values(sql));
     }
+}
+
+/// Operations on an index that the navigator writes: where the schema goes,
+/// the indexes of a constraint, the names reserved, `REINDEX`, and the
+/// indexes that `pragma_index_list` gives with their origin.
+fn index_operations() {
+    println!(
+        "
+17. Operations on an index"
+    );
+    let connection = Connection::open_in_memory().expect("connection");
+    connection
+        .execute_batch(
+            "ATTACH ':memory:' AS other;
+             CREATE TABLE other.t (id INTEGER PRIMARY KEY, name TEXT UNIQUE, code TEXT);
+             CREATE TABLE other.k (a TEXT, b TEXT, PRIMARY KEY (a, b));",
+        )
+        .expect("tables");
+    for sql in [
+        "CREATE INDEX \"other\".\"i\" ON \"t\" (code)",
+        "CREATE INDEX j ON other.t (code)",
+        "CREATE UNIQUE INDEX other.u ON t (code, name)",
+        "CREATE INDEX other.p ON t (code) WHERE code IS NOT NULL",
+        "CREATE INDEX other.sqlite_mine ON t (code)",
+        "REINDEX \"other\".\"i\"",
+        "REINDEX other.sqlite_autoindex_t_1",
+        "DROP INDEX \"other\".\"i\"",
+        "DROP INDEX other.sqlite_autoindex_t_1",
+        "DROP INDEX other.sqlite_autoindex_k_1",
+        "ALTER INDEX other.u RENAME TO v",
+    ] {
+        report(sql, connection.execute_batch(sql));
+    }
+    let sql = "SELECT l.name, i.name, i.\"unique\", i.origin, i.partial \
+        FROM pragma_table_list AS l, pragma_index_list(l.name, l.schema) AS i \
+        WHERE l.schema = 'other' ORDER BY 1, 2";
+    report(
+        sql,
+        connection.prepare(sql).and_then(|mut statement| {
+            statement
+                .query_map([], |row| {
+                    (0..5)
+                        .map(|index| row.get_ref(index).map(shown))
+                        .collect::<rusqlite::Result<Vec<_>>>()
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()
+        }),
+    );
 }
