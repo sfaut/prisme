@@ -24,6 +24,7 @@ use super::catalog;
 use super::failure::opening;
 use super::open::{self, Planned, connect, file_name, plan, plan_one, prepare, private_key};
 use super::statement::{self, Ending, Message, ROWS_AHEAD};
+use super::statistics;
 use crate::api::{AttachedDatabase, DatabaseState, DatabaseStatus, FileDatabase};
 use crate::api::{
     Canceller, Capabilities, CatalogReader, ColumnMeta, ConnectorError, DialectOptions, Driver,
@@ -66,7 +67,14 @@ impl Driver for SqliteDriver {
         options: OpenOptions,
     ) -> BoxFuture<'a, Result<Box<dyn Session>, ConnectorError>> {
         Box::pin(async move {
+            let refresh = options.refresh_statistics;
             let session: Box<dyn Session> = Box::new(open(target, options).await?);
+            if let Settings::Files(files) = &target.settings
+                && refresh
+                && files.optimize
+            {
+                statistics::refresh(files.databases.clone());
+            }
             Ok(session)
         })
     }
@@ -600,6 +608,7 @@ impl CatalogReader for SqliteCatalog<'_> {
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+    use std::time::Duration;
 
     use super::*;
     use crate::api::{DatabaseStatus, FileDatabase, FilesSettings};
@@ -634,6 +643,7 @@ mod tests {
             engine: Engine::Sqlite,
             settings: Settings::Files(FilesSettings {
                 databases,
+                optimize: false,
                 remote: Remote {
                     cache_dir: std::env::temp_dir(),
                     limits: RemoteLimits::default(),
@@ -734,6 +744,55 @@ mod tests {
             [[cell("1")]]
         );
         session.close().await;
+    }
+
+    #[tokio::test]
+    async fn refreshes_the_statistics_when_a_session_opens_if_asked() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("main.db");
+        create(&path);
+        let analyzed = || {
+            Connection::open(&path)
+                .unwrap()
+                .query_row(
+                    "SELECT count(*) FROM sqlite_schema WHERE name = 'sqlite_stat1'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap()
+                == 1
+        };
+        let mut source = target(vec![file("main", &path)], &[]);
+        let read_only = OpenOptions {
+            read_only: true,
+            ..OpenOptions::default()
+        };
+        let session = OpenOptions {
+            refresh_statistics: true,
+            ..read_only.clone()
+        };
+
+        // Asked by the opening only, or by the settings only: nothing.
+        DRIVER
+            .open(&source, session.clone())
+            .await
+            .unwrap()
+            .close()
+            .await;
+        if let Settings::Files(files) = &mut source.settings {
+            files.optimize = true;
+        }
+        DRIVER.open(&source, read_only).await.unwrap().close().await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(!analyzed());
+
+        // Both: the statistics are written, the session being read-only.
+        DRIVER.open(&source, session).await.unwrap().close().await;
+        let started = std::time::Instant::now();
+        while !analyzed() && started.elapsed() < Duration::from_secs(10) {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(analyzed());
     }
 
     #[tokio::test]

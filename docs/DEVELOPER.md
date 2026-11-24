@@ -628,6 +628,8 @@ A protocol Prisme knows without serving it yet (`s3`, `ftp`...) is refused by a 
 
 A read-only session (**Sessions en lecture seule**) opens its connection with `SQLITE_OPEN_READ_ONLY`, which its attachments inherit: the library refuses every write ("attempt to write a readonly database"), whatever the switches.
 
+**Statistics of the query planner.** When the connection asks for it (**Mettre à jour les statistiques**, `FilesSettings::optimize`, off by default), the opening of a query session (`OpenOptions::refresh_statistics`, set by the server for the session's own connection only, not for its parallel connections, the navigator, the exports or a test) also runs `PRAGMA optimize=0x10002` on each file of the source, the form SQLite recommends when a connection that lasts opens: it analyzes the tables that need it, within a limit of rows it sets itself, and writes `sqlite_stat1`, where the catalog reads the row counts. `PRAGMA optimize` fails on a read-only connection, as the sessions are by default (`docs/SQL-COMPARISON.md`, section 6): each file is refreshed on a read-write connection of its own, opened for that alone, on a thread of its own, without delaying the session (`crates/connectors/src/sqlite/statistics.rs`). Only the statistics are written there. The databases in memory and the copies of the remote databases are left out; a failure (file read-only on the disk, locked beyond 5 seconds) only shows in the history of the queries, where the statement is traced.
+
 Testing a connection (`probe`) opens it the same way, then reads the identity. A main database that cannot be opened gets its state, the other databases theirs, attached to a database in memory in its place; a session, though, does not open without its main database.
 
 ### Sessions and connections
@@ -762,6 +764,7 @@ A connection is split by family of settings (migration `0037_connections_by_fami
 | `connections` | Name, engine, SQL run at connection (`init_sql`), session kept (`session_timeout_minutes`), system namespaces shown (`show_system_schemas`), date of creation. |
 | `connection_servers` | Family `server` (MySQL, MariaDB): host, port, account, password encrypted (AES-256-GCM, `password_secret`), database. Only the password is encrypted, so that the connections are listed without decrypting anything. |
 | `connection_files` | Family `files` (SQLite): one row per database, `main` at position 0, then the databases attached, in their order of attachment; schema (unique in the connection whatever its case, `temp` refused), protocol, location (empty for `memory`). |
+| `connection_file_options` | Family `files`: the options of the whole connection, one row per connection (migration `0043_connection_file_options.sql`): statistics refreshed when a session opens (`optimize`). A connection without a row has the defaults. |
 | `connection_probes` | Last successful connection of each connection: flavor, version, date. A connection never connected has no row. |
 | `write_kinds` | Kinds of write that a switch allows (`WriteKind`), `attach` and `maintenance` of SQLite included (migration `0040_write_kinds_sqlite.sql`); `user_allowed_writes` holds those a user allows. |
 

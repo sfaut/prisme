@@ -28,6 +28,7 @@ pub fn memory_connection() -> NewConnection {
         name: "memory".to_string(),
         engine: Engine::Sqlite,
         settings: NewSettings::Files(NewFilesSettings {
+            optimize: false,
             databases: vec![NewFileDatabase {
                 schema: "main".to_string(),
                 location: ":memory:".to_string(),
@@ -53,6 +54,7 @@ pub fn files_connection(folder: &Path) -> NewConnection {
     NewConnection {
         name: "files".to_string(),
         settings: NewSettings::Files(NewFilesSettings {
+            optimize: false,
             databases: vec![
                 database("main", main.to_string_lossy().into_owned()),
                 database("scratch", ":memory:".to_string()),

@@ -400,6 +400,13 @@ function restore(index: number): void {
       />
       <span class="text-fg-secondary">min</span>
     </ui-setting-row>
+    <ui-setting-row
+      label="Mettre à jour les statistiques"
+      description="À l’ouverture de chaque session, Prisme lance PRAGMA optimize sur les fichiers : les tables qui en ont besoin sont analysées (ANALYZE), et le navigateur affiche leur nombre de lignes. Seules les statistiques sont écrites, même en session en lecture seule ; ni les bases en mémoire, ni les copies des bases distantes."
+      :for="`${id}-optimize`"
+    >
+      <ui-switch :id="`${id}-optimize`" v-model="form.optimize" />
+    </ui-setting-row>
   </ui-setting-list>
 
   <ui-setting-list title="Navigateur">

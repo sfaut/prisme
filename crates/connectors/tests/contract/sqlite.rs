@@ -54,6 +54,7 @@ impl Fixture for Sqlite {
             engine: Engine::Sqlite,
             settings: Settings::Files(FilesSettings {
                 databases: vec![file(MAIN_SCHEMA, &main), file(OTHER_SCHEMA, &other)],
+                optimize: false,
                 remote: Remote {
                     cache_dir: folder.path().join("cache"),
                     limits: RemoteLimits::default(),

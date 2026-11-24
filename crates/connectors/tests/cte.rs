@@ -195,6 +195,7 @@ async fn sqlite_reads_back_the_cte() {
     let target = Target {
         engine: Engine::Sqlite,
         settings: Settings::Files(FilesSettings {
+            optimize: false,
             databases: vec![FileDatabase {
                 schema: MAIN_SCHEMA.to_string(),
                 location: Location {

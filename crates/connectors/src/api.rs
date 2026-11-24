@@ -151,6 +151,9 @@ pub struct FilesSettings {
     pub databases: Vec<FileDatabase>,
     /// Where the remote databases are copied, and the limits of a download.
     pub remote: Remote,
+    /// Does a session refresh the statistics of the query planner of its
+    /// local files when it opens (`OpenOptions::refresh_statistics`)?
+    pub optimize: bool,
 }
 
 /// Database of a source held in files: its schema in the sessions, and where
@@ -191,6 +194,11 @@ pub struct OpenOptions {
     /// Name of the resources that the connections of one session share (a
     /// database in memory), so that its parallel queries see them.
     pub session_key: Option<String>,
+    /// Is this the opening of a query session, the moment its source
+    /// refreshes the statistics of its query planner when its settings ask
+    /// for it (`FilesSettings::optimize`)? Not for its other connections,
+    /// nor for a test of the source.
+    pub refresh_statistics: bool,
 }
 
 /// Path of a namespace of a source, from the outermost level to the

@@ -71,6 +71,7 @@ mod tests {
             name: "files".to_string(),
             engine: Engine::Sqlite,
             settings: NewSettings::Files(NewFilesSettings {
+                optimize: false,
                 databases: vec![
                     NewFileDatabase {
                         schema: "main".to_string(),

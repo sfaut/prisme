@@ -25,5 +25,6 @@ mod driver;
 mod failure;
 mod open;
 mod statement;
+mod statistics;
 
 pub use driver::{DRIVER, SqliteDriver, capabilities};

@@ -239,10 +239,16 @@ impl Session<'_> {
         }
     }
 
-    /// Opens the session's connection; on failure, the error goes to the client.
+    /// Opens the session's connection; on failure, the error goes to the
+    /// client. Its source refreshes the statistics of its query planner if
+    /// its settings ask for it (`OpenOptions::refresh_statistics`).
     async fn open(&self) -> Option<Box<dyn api::Session>> {
         let target = &self.source.target;
-        let opening = drivers::of(target.engine).open(target, self.source.options.clone());
+        let options = api::OpenOptions {
+            refresh_statistics: true,
+            ..self.source.options.clone()
+        };
+        let opening = drivers::of(target.engine).open(target, options);
         match opening.await {
             Ok(connection) => Some(connection),
             Err(error) => {

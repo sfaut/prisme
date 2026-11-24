@@ -518,6 +518,7 @@ Statistics of `ANALYZE` (`sqlite_stat1`), measured on 2026-11-24 with SQLite 3.5
 - `sqlite_stat1` exists only once a first `ANALYZE` ran in the database (in each schema: `main`, an attached database).
 - A table with indexes gets one row per index (`indexed`, `indexed_b`, `5000 100`); a table without an index gets one row without index (`plain`, `NULL`, `300`). The first number of `stat` is the count of the rows of the table; `CAST(stat AS INTEGER)` reads it.
 - The count is that of the last `ANALYZE`: a row inserted after it does not change `sqlite_stat1`. A table never analyzed has no row.
+- `PRAGMA optimize=0x10002` ([`PRAGMA optimize`](https://www.sqlite.org/pragma.html#pragma_optimize), the form recommended when a connection that lasts opens, since SQLite 3.46.0 the recommended way to run `ANALYZE`, with a limit of rows it sets itself) analyzes a table never analyzed: on a table of 2,000 rows with an index, `sqlite_stat1` then holds `2000 200`. On a connection opened read-only, it fails: "attempt to write a readonly database". Measured by the test `refreshes_the_statistics_of_the_local_files_only` of `crates/connectors/src/sqlite/statistics.rs`.
 
 Interruption (`sqlite3_interrupt`, `InterruptHandle` of `rusqlite`), from another thread:
 
