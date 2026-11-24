@@ -858,7 +858,7 @@ Invoke-RestMethod "$api/connections" -Method Post -ContentType "application/json
 # List the connections (the password never appears)
 Invoke-RestMethod "$api/connections"
 
-# Connect: returns the flavor (mysql or mariadb) and the server version
+# Connect: returns the flavor (mysql, mariadb or sqlite) and the version
 Invoke-RestMethod "$api/connections/1/probe" -Method Post
 
 # Settings: read, then change (row limit 1000, 2000, 5000, 10000 or 50000; retentions 1 to 3650 days; indentation 1 to 8 spaces; longest GROUP_CONCAT 100 to 1048576 bytes; delay of the Pivoteur 200 to 60000 milliseconds)
@@ -950,7 +950,7 @@ To look at the internal database, open `./tmp/prisme.db` with any SQLite client 
 
 ## SQL keywords
 
-Syntax highlighting and the beautifier share the keywords of each dialect, one file per dialect, edited directly: `crates/dialects/keywords/mysql.yaml` and `mariadb.yaml`. They list reserved words, non-reserved keywords, types and values, with, when needed, the version a word appeared in (`since`). The editor only highlights the words of the server's version. The beautifier rules are described in section 2.9 of [V1.md](V1.md).
+Syntax highlighting and the beautifier share the keywords of each dialect, one file per dialect, edited directly: `crates/dialects/keywords/mysql.yaml`, `mariadb.yaml` and `sqlite.yaml`. They list reserved words, non-reserved keywords, types and values, with, when needed, the version a word appeared in (`since`). The editor only highlights the words of the server's version. The beautifier rules are described in section 2.9 of [V1.md](V1.md).
 
 ## Continuous integration and releases
 
