@@ -60,7 +60,9 @@ const MAINTENANCE_PRAGMAS: [&str; 3] = ["incremental_vacuum", "optimize", "wal_c
 
 /// Pragmas that only read (`PragmaRole::Read`): lists, counters, and the
 /// settings of the file or of the library. `shrink_memory` frees the cache
-/// of the connection, and writes nothing.
+/// of the connection, and writes nothing. `data_store_directory` exists in
+/// the SQLite of Windows only: elsewhere, the library ignores it, as any
+/// unknown pragma, and its bare form, the only one allowed, reads nothing.
 const READ_PRAGMAS: [&str; 47] = [
     "analysis_limit",
     "application_id",
@@ -161,11 +163,13 @@ mod tests {
         ]
         .concat()
         .iter()
+        // A pragma of the SQLite of Windows only.
+        .filter(|name| cfg!(windows) || **name != "data_store_directory")
         .map(|name| name.to_string())
         .collect();
         assert_eq!(listed, library);
         assert_eq!(
-            listed.len(),
+            listed.len() + usize::from(!cfg!(windows)),
             SESSION_PRAGMAS.len()
                 + ARGUMENT_PRAGMAS.len()
                 + MAINTENANCE_PRAGMAS.len()

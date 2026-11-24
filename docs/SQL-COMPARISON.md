@@ -532,7 +532,7 @@ A `LIMIT` follows a `SELECT` only: a query whose last term is a `VALUES` takes n
 
 Pragmas, which the classification gives a role by a closed list of those of the library (`crates/dialects/src/sqlite_pragmas.rs`):
 
-- `pragma_list` names 67 pragmas; 59 of them have a table function `pragma_<name>`, all but `case_sensitive_like`, `data_store_directory`, `incremental_vacuum`, `mmap_size`, `shrink_memory`, `temp_store_directory`, `wal_autocheckpoint` and `wal_checkpoint`. Of the three pragmas that write in the file (`optimize`, `wal_checkpoint`, `incremental_vacuum`), only `optimize` has one: `SELECT * FROM pragma_optimize` runs it.
+- `pragma_list` names 67 pragmas on Windows, 66 on Linux (measured on 2026-11-24 by the tests of the CI): `data_store_directory` exists in the SQLite of Windows only ([PRAGMA statements](https://sqlite.org/pragma.html#pragma_data_store_directory)). 59 of them have a table function `pragma_<name>`, all but `case_sensitive_like`, `data_store_directory`, `incremental_vacuum`, `mmap_size`, `shrink_memory`, `temp_store_directory`, `wal_autocheckpoint` and `wal_checkpoint`. Of the three pragmas that write in the file (`optimize`, `wal_checkpoint`, `incremental_vacuum`), only `optimize` has one: `SELECT * FROM pragma_optimize` runs it.
 - `PRAGMA no_such_pragma` and `PRAGMA no_such_pragma = 1` run without an error, and return nothing.
 - `PRAGMA table_info = t` and `PRAGMA table_info(t)` return the same rows: the value of a pragma that reads is its argument, in either form.
 - `PRAGMA foreign_keys(1)` sets the pragma as `PRAGMA foreign_keys = 1` does (`PRAGMA foreign_keys` then gives `1`); `PRAGMA main.cache_size(-100)` likewise.
