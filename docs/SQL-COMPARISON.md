@@ -513,6 +513,12 @@ Values written into an `INT`, a `NUMERIC` and a `REAL` column: the storage class
 
 `INT` and `NUMERIC` columns behave alike: a real number without a fractional part that fits in 64 bits is kept as an integer (`1e2` gives `100`, never `1e2`); a fractional or larger number is kept as a real number (`1.5`, `1.0e+20`); a text that reads as a number is converted, another text stays as it is. A `REAL` column keeps every number as a real number, written with a decimal point (`100.0`).
 
+Statistics of `ANALYZE` (`sqlite_stat1`), measured on 2026-11-24 with SQLite 3.54.1 by the test `estimates_the_rows_of_the_analyzed_tables` of `crates/connectors/src/sqlite/catalog.rs` ([`ANALYZE`](https://www.sqlite.org/lang_analyze.html), [`sqlite_stat1`](https://www.sqlite.org/fileformat2.html#stat1tab)):
+
+- `sqlite_stat1` exists only once a first `ANALYZE` ran in the database (in each schema: `main`, an attached database).
+- A table with indexes gets one row per index (`indexed`, `indexed_b`, `5000 100`); a table without an index gets one row without index (`plain`, `NULL`, `300`). The first number of `stat` is the count of the rows of the table; `CAST(stat AS INTEGER)` reads it.
+- The count is that of the last `ANALYZE`: a row inserted after it does not change `sqlite_stat1`. A table never analyzed has no row.
+
 Interruption (`sqlite3_interrupt`, `InterruptHandle` of `rusqlite`), from another thread:
 
 - An endless `WITH RECURSIVE` stops at once (0.2 ms after the call) with the error "interrupted"; the connection stays usable.

@@ -60,6 +60,7 @@ pub(super) fn namespaces(connection: &Connection) -> rusqlite::Result<Vec<Namesp
 /// virtual tables are tables of the system.
 pub(super) fn objects(connection: &Connection, schema: &str) -> rusqlite::Result<Vec<ObjectInfo>> {
     let texts = create_texts(connection, schema)?;
+    let estimates = row_estimates(connection, schema)?;
     query(
         connection,
         "SELECT name, type FROM pragma_table_list WHERE schema = ?1 ORDER BY name",
@@ -79,10 +80,14 @@ pub(super) fn objects(connection: &Connection, schema: &str) -> rusqlite::Result
                 (ObjectKind::Table, Some(sql)) => table_comments(sql).table,
                 _ => String::new(),
             };
+            let rows = match kind {
+                ObjectKind::Table => estimates.get(&name).copied(),
+                _ => None,
+            };
             Ok(ObjectInfo {
                 name,
                 kind,
-                rows: None,
+                rows,
                 enabled: None,
                 comment,
             })
@@ -132,6 +137,34 @@ struct ForeignKeyRow {
     referenced_table: String,
     /// Column referenced, `None` for the primary key of the table referenced.
     referenced_column: Option<String>,
+}
+
+/// Row counts of the tables of the schema `schema` that `ANALYZE` measured,
+/// by name: the first number of their rows of `sqlite_stat1`, the count of
+/// the rows of the table, or the largest when they differ. The count is that
+/// of the last `ANALYZE`: the changes made since do not show. A table never
+/// analyzed has none, nor do the tables of a schema without `sqlite_stat1`
+/// (`docs/SQL-COMPARISON.md`, section 6).
+fn row_estimates(connection: &Connection, schema: &str) -> rusqlite::Result<BTreeMap<String, u64>> {
+    let exists = format!(
+        "SELECT 1 FROM {}.sqlite_schema WHERE type = 'table' AND name = 'sqlite_stat1'",
+        quoted(schema)
+    );
+    if query(connection, &exists, &[], |_| Ok(()))?.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    // `CAST` reads the leading integer of `stat` ("5000 100" gives 5000).
+    let sql = format!(
+        "SELECT tbl, MAX(CAST(stat AS INTEGER)) FROM {}.sqlite_stat1 \
+         WHERE stat IS NOT NULL GROUP BY tbl",
+        quoted(schema)
+    );
+    Ok(query(connection, &sql, &[], |row| {
+        let rows: i64 = row.get(1)?;
+        Ok((row.get(0)?, u64::try_from(rows).unwrap_or(0)))
+    })?
+    .into_iter()
+    .collect())
 }
 
 /// Texts of the `CREATE` statements of the tables, views and indexes of the
@@ -781,5 +814,72 @@ mod tests {
         assert_eq!(customer.triggers[0].comment, "Audit of the inserts");
         let plain = tables.iter().find(|table| table.table == "plain").unwrap();
         assert_eq!(plain.columns[0].comment, "");
+    }
+
+    #[test]
+    fn estimates_the_rows_of_the_analyzed_tables() {
+        let connection = Connection::open_in_memory().unwrap();
+        let rows = |connection: &Connection| -> Vec<(String, Option<u64>)> {
+            objects(connection, "main")
+                .unwrap()
+                .into_iter()
+                .filter(|object| object.kind != ObjectKind::SystemTable)
+                .map(|object| (object.name, object.rows))
+                .collect()
+        };
+        connection
+            .execute_batch(
+                "CREATE TABLE indexed (a INTEGER PRIMARY KEY, b TEXT);
+                 CREATE INDEX indexed_b ON indexed (b);
+                 CREATE TABLE plain (x);
+                 CREATE TABLE never (y);
+                 CREATE VIEW v AS SELECT * FROM plain;
+                 WITH RECURSIVE n (i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 5000)
+                 INSERT INTO indexed (b) SELECT i % 50 FROM n;
+                 WITH RECURSIVE n (i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 300)
+                 INSERT INTO plain SELECT i FROM n;
+                 INSERT INTO never VALUES (1);",
+            )
+            .unwrap();
+        // No sqlite_stat1 yet: no estimate.
+        let none = |name: &str| (name.to_string(), None);
+        assert_eq!(
+            rows(&connection),
+            [none("indexed"), none("never"), none("plain"), none("v")]
+        );
+
+        connection
+            .execute_batch("ANALYZE indexed; ANALYZE plain; INSERT INTO plain VALUES (0);")
+            .unwrap();
+        let stats: Vec<(String, Option<String>, String)> = connection
+            .prepare("SELECT tbl, idx, stat FROM sqlite_stat1 ORDER BY tbl, idx")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        // A table with an index has a row per index, without one a row
+        // without index; the first number is the count of the rows.
+        assert_eq!(
+            stats,
+            [
+                (
+                    "indexed".to_string(),
+                    Some("indexed_b".to_string()),
+                    "5000 100".to_string()
+                ),
+                ("plain".to_string(), None, "300".to_string()),
+            ]
+        );
+        // The row inserted after ANALYZE does not show.
+        assert_eq!(
+            rows(&connection),
+            [
+                ("indexed".to_string(), Some(5000)),
+                none("never"),
+                ("plain".to_string(), Some(300)),
+                none("v"),
+            ]
+        );
     }
 }

@@ -110,7 +110,7 @@ pub fn capabilities() -> Capabilities {
             Maintenance,
         ],
         notices: false,
-        rows_estimate: false,
+        rows_estimate: true,
         session_settings: SESSION_PRAGMAS.map(String::from).to_vec(),
     }
 }
