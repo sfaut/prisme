@@ -17,6 +17,7 @@
 import { SQLDialect } from '@codemirror/lang-sql'
 
 import { FLAVORS } from '@/api/flavors'
+import type { DialectOptions } from '@/api/generated/DialectOptions'
 import type { DialectSyntax } from '@/api/generated/DialectSyntax'
 import type { Flavor } from '@/api/generated/Flavor'
 
@@ -39,20 +40,21 @@ function wordList(words: string[]): string {
  *
  * With the session's `ANSI_QUOTES` mode, double quotes delimit identifiers
  * (and completion uses them to quote a name), as in a dialect whose double
- * quotes are never those of a string.
+ * quotes are never those of a string. With its `NO_BACKSLASH_ESCAPES` mode,
+ * the backslash is an ordinary character of a string.
  *
  * @param syntax Keywords of the dialect, by category, and lexical rules.
  * @param flavor Flavor of the source, which gives the other tokens.
- * @param ansiQuotes Is the `ANSI_QUOTES` mode active on the session?
+ * @param options Lexical settings of the session; none by default.
  */
 export function editorDialect(
   syntax: DialectSyntax,
   flavor: Flavor,
-  ansiQuotes = false,
+  options: DialectOptions = { ansi_quotes: false, no_backslash_escapes: false },
 ): SQLDialect {
   const { lexical } = syntax
   const tokens = FLAVORS[flavor].editor
-  const doubleQuotedStrings = lexical.double_quoted_strings && !ansiQuotes
+  const doubleQuotedStrings = lexical.double_quoted_strings && !options.ansi_quotes
   const quotes =
     doubleQuotedStrings || lexical.identifier_quotes.includes('"')
       ? lexical.identifier_quotes
@@ -64,7 +66,7 @@ export function editorDialect(
     unquotedBitLiterals: tokens.unquotedBitLiterals,
     hashComments: lexical.hash_comments,
     spaceAfterDashes: lexical.space_after_dashes,
-    backslashEscapes: lexical.backslash_escapes,
+    backslashEscapes: lexical.backslash_escapes && !options.no_backslash_escapes,
     specialVar: tokens.specialVar,
     identifierQuotes: lexical.bracket_identifiers ? `${quotes}[` : quotes,
     keywords: wordList([...syntax.reserved, ...syntax.keywords]),

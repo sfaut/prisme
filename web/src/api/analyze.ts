@@ -15,8 +15,9 @@ import type { Flavor } from './generated/Flavor'
  * @param sql Whole text of the editor.
  * @param flavor Flavor of the server, which sets the dialect of the analysis.
  * @param options
- *     Lexical settings of the session (`ANSI_QUOTES`): double quotes then
- *     delimit names.
+ *     Lexical settings of the session: double quotes delimit names under
+ *     `ANSI_QUOTES`, the backslash escapes nothing under
+ *     `NO_BACKSLASH_ESCAPES`.
  */
 export function analyzeSql(
   sql: string,

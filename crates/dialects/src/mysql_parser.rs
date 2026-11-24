@@ -1,6 +1,8 @@
 //! `sqlparser` dialect for MySQL and MariaDB: that of `sqlparser`, plus the
-//! compound time units and the `ANSI_QUOTES` mode of the session, under which
-//! double quotes delimit a name (`CREATE TABLE t ("col" INT)`).
+//! compound time units and the modes of the session: `ANSI_QUOTES`, under
+//! which double quotes delimit a name (`CREATE TABLE t ("col" INT)`), and
+//! `NO_BACKSLASH_ESCAPES`, under which the backslash is an ordinary character
+//! of a string (`'C:\'`).
 //!
 //! Workaround: `sqlparser` does not parse the compound units, and has no
 //! MariaDB dialect (`docs/DEVELOPER.md`, section "Workarounds").
@@ -27,6 +29,8 @@ use sqlparser::keywords::Keyword;
 use sqlparser::parser::{Parser, ParserError};
 use sqlparser::tokenizer::Token;
 
+use crate::DialectOptions;
+
 /// Compound time units of `EXTRACT` and `INTERVAL`, the same in MySQL and
 /// MariaDB.
 const COMPOUND_UNITS: [&str; 11] = [
@@ -44,7 +48,7 @@ const COMPOUND_UNITS: [&str; 11] = [
 ];
 
 /// MySQL dialect of `sqlparser`, with the compound time units and the
-/// `ANSI_QUOTES` mode of the session.
+/// `ANSI_QUOTES` and `NO_BACKSLASH_ESCAPES` modes of the session.
 #[derive(Debug, Default)]
 pub(crate) struct MySqlParserDialect {
     /// Dialect of `sqlparser` that this one extends.
@@ -52,14 +56,19 @@ pub(crate) struct MySqlParserDialect {
     /// Do double quotes delimit identifiers (`ANSI_QUOTES` mode)? `sqlparser`
     /// reads them as strings, as MySQL does without the mode.
     ansi_quotes: bool,
+    /// Is the backslash an ordinary character of a string
+    /// (`NO_BACKSLASH_ESCAPES` mode)? `sqlparser` reads it as an escape, as
+    /// MySQL does without the mode.
+    no_backslash_escapes: bool,
 }
 
 impl MySqlParserDialect {
-    /// Dialect of a session, with its `ANSI_QUOTES` mode or without it.
-    pub(crate) fn new(ansi_quotes: bool) -> Self {
+    /// Dialect of a session, with its modes.
+    pub(crate) fn new(options: DialectOptions) -> Self {
         Self {
             base: MySqlDialect {},
-            ansi_quotes,
+            ansi_quotes: options.ansi_quotes,
+            no_backslash_escapes: options.no_backslash_escapes,
         }
     }
 }
@@ -102,7 +111,7 @@ impl Dialect for MySqlParserDialect {
     }
 
     fn supports_string_literal_backslash_escape(&self) -> bool {
-        self.base.supports_string_literal_backslash_escape()
+        !self.no_backslash_escapes && self.base.supports_string_literal_backslash_escape()
     }
 
     fn supports_string_literal_concatenation(&self) -> bool {
@@ -371,7 +380,10 @@ mod tests {
     fn reads_double_quotes_as_names_under_ansi_quotes() {
         let sql = r#"CREATE TABLE t ("col" VARCHAR(10))"#;
         assert!(parse(sql).is_err());
-        let ansi = MySqlParserDialect::new(true);
+        let ansi = MySqlParserDialect::new(DialectOptions {
+            ansi_quotes: true,
+            no_backslash_escapes: false,
+        });
         assert_eq!(
             Parser::parse_sql(&ansi, sql).unwrap()[0].to_string(),
             r#"CREATE TABLE t ("col" VARCHAR(10))"#
@@ -379,6 +391,21 @@ mod tests {
         assert_eq!(
             Parser::parse_sql(&ansi, r#"SELECT "a", 'b', `c` FROM t"#).unwrap()[0].to_string(),
             r#"SELECT "a", 'b', `c` FROM t"#
+        );
+    }
+
+    #[test]
+    fn reads_the_backslash_as_a_character_under_no_backslash_escapes() {
+        // Without the mode, `\'` escapes the quote: the string is not closed.
+        let sql = r"SELECT 'C:\' AS path, 'a''b'";
+        assert!(parse(sql).is_err());
+        let plain = MySqlParserDialect::new(DialectOptions {
+            ansi_quotes: false,
+            no_backslash_escapes: true,
+        });
+        assert_eq!(
+            Parser::parse_sql(&plain, sql).unwrap()[0].to_string(),
+            r"SELECT 'C:\' AS path, 'a''b'"
         );
     }
 

@@ -92,9 +92,16 @@ describe('editorDialect', () => {
   })
 
   it('quotes identifiers with double quotes in ANSI_QUOTES', () => {
-    const ansi = editorDialect(syntaxOf(MYSQL), 'mysql', true)
+    const options = { ansi_quotes: true, no_backslash_escapes: false }
+    const ansi = editorDialect(syntaxOf(MYSQL), 'mysql', options)
     expect(ansi.spec.identifierQuotes).toBe('"`')
     expect(ansi.spec.doubleQuotedStrings).toBe(false)
-    expect(editorDialect(syntaxOf(SQLITE), 'sqlite', true).spec.identifierQuotes).toBe('"`[')
+    expect(editorDialect(syntaxOf(SQLITE), 'sqlite', options).spec.identifierQuotes).toBe('"`[')
+  })
+
+  it('reads the backslash as a character in NO_BACKSLASH_ESCAPES', () => {
+    expect(editorDialect(syntaxOf(MYSQL), 'mysql').spec.backslashEscapes).toBe(true)
+    const options = { ansi_quotes: false, no_backslash_escapes: true }
+    expect(editorDialect(syntaxOf(MYSQL), 'mysql', options).spec.backslashEscapes).toBe(false)
   })
 })

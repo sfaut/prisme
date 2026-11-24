@@ -153,7 +153,7 @@ fn action_of(request: &QueryRequest) -> Action {
 
 /// Language of the source of a session: its flavor, and the dialect its
 /// texts are read in, with the lexical settings of the session
-/// (`ANSI_QUOTES`), read when it opens.
+/// (`ANSI_QUOTES`, `NO_BACKSLASH_ESCAPES`), read when it opens.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Language {
     /// Flavor of the source.
