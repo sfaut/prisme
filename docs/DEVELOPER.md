@@ -803,6 +803,18 @@ Documentation:
 
 17. A section of this guide on the specifics of the engine, as "SQLite engine"; `docs/V1.md` (sections 2.4, 2.5, 2.10, 3.2 for its crate), `README.md` (connections, navigator, writes, transactions), `docs/SQL-COMPARISON.md`.
 
+## Adding a protocol
+
+A protocol is a way to reach a database held in files (`crates/connectors/src/location.rs`): `file`, `http`, `https` and `memory` today.
+
+1. `Scheme`: its variant, its key, its place in `Scheme::ALL`; its key leaves `KNOWN_SCHEMES` (the protocols known but not served, refused by a message that names them), and `Location::parse` reads its address.
+2. A provider (`src/location/<protocol>.rs`) that implements `LocationProvider`: its capabilities (writable, creatable, read where it is), the state of a location (`probe`: exists, size, date, version tag, read-only), the creation of an empty database when it can (`create`), and the local form an engine opens (`materialize`): a path, a copy in the cache of the data folder, revalidated as the web copies are, or a database in memory.
+3. Its line in the registry `locations::of`.
+4. A migration that inserts it into `schemes`. A protocol that needs secrets (`s3`, `sftp`) gets a table of them per location, encrypted as the passwords (`crates/server/src/secrets.rs`), never in clear nor in the logs.
+5. Tests of the provider, on a local server of the tests when the protocol is remote (`axum` serves the web files of the tests of `prisme-connectors`: `ETag`, redirects, missing file).
+6. Interface: its pill shows as it is (`ConnectionSchemeBadge.vue`), read from the typing by `schemeOf` (`src/components/connections/connectionForm.ts`); **Nouveau fichier** stays reserved to a creatable protocol.
+7. Documentation: the table of the locations of "SQLite engine", `README.md`, `docs/V1.md` (section 3.2 for a crate).
+
 ## Testing the API by hand
 
 Start Prisme on a throwaway data folder, to delete to start from scratch:
