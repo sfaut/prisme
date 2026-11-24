@@ -126,7 +126,7 @@ Architecture:
 
 ## 7. Documentation
 
-- ⬜ `docs/DEVELOPER.md`: "Adding an engine", "Adding a protocol", schema, API, tests
+- ✅ `docs/DEVELOPER.md`: "Adding an engine", "Adding a protocol", schema, API, tests, and the specifics of the engine ("SQLite engine")
 - ⬜ `docs/V1.md`: SQLite, sections 2.4, 2.5 and 3.2
 - ⬜ `README.md`, `docs/QUESTIONS.md`
 
