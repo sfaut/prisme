@@ -764,6 +764,45 @@ A connection is split by family of settings (migration `0037_connections_by_fami
 
 The API sends the settings tagged by their family (`"family": "server"`, `"family": "files"`, see "Testing the API by hand"); `crates/server/src/connections.rs` reads and writes them, and repeats the lengths of the `CHECK`s in its validation.
 
+## Adding an engine
+
+An engine fills the contracts that MySQL and SQLite fill: the server asks its driver to the registry, and the components read its capabilities. SQLite is the model of an engine held in files and whose library blocks (DuckDB), MySQL that of a server reached over the network (PostgreSQL, ClickHouse). Its plan is decided with the maintainer first: contracts, procedures, design canvas.
+
+Measures, first:
+
+1. Each behaviour of the engine that a rule of Prisme will rely on is measured (`bench/sql/cases.mjs` for a behaviour compared between engines, a benchmark of its own for its library, as `bench/sqlite`) or quoted from a source, then recorded in `docs/SQL-COMPARISON.md` (rule 11 of `CLAUDE.md`).
+
+Connector (`crates/connectors`):
+
+2. `Engine` (`src/api.rs`): its variant, its key, its place in `Engine::ALL`. `Flavor` (`src/flavor.rs`): the flavors it detects, their key, their engine (`Flavor::engine`), their oldest supported version (`Flavor::oldest_supported`).
+3. A module `src/<engine>/` (with `src/<engine>.rs`, its module comment) that implements `Driver` (`probe`, `open`), `Session`, `Rows`, `CatalogReader` and `Canceller`, behind boxed futures; `capabilities()`, and `DialectOptions` read from the source. An operation the engine does not have answers `ConnectorError::Unsupported`. A library that blocks runs on the threads of `src/blocking.rs`.
+4. The values in the neutral forms: `ColumnMeta` and its `TypeFamily` (a new family only as a new variant: the saved tabs keep theirs), numbers in plain decimal (`src/number_text.rs`), `StatementOutcome`, errors in `FailureCause` and `ConnectFailure`, the catalog in `Namespace`, `NamespaceLevel` and `ObjectKind`.
+5. Its line in the registry `drivers::of` (`src/drivers.rs`).
+6. Its `Fixture` in the contract suite (`tests/contract/<engine>.rs`) and its line of `contract_tests!` (`tests/contract/main.rs`); a server engine also gets its development servers (`compose.yaml`, `src/test_servers.rs`, section "Development servers").
+
+Dialect (`crates/dialects`, `crates/splitter`):
+
+7. `Dialect`: its variant, its place in `Dialect::ALL`, its `DialectSpec` (`src/lib.rs`): `LexicalRules` (comments, quotes, escapes, `DELIMITER`, bodies), `sqlparser` dialect, statements Prisme parses itself, `LIMIT` after `VALUES`, schema of the temporary tables. The splitter and the editor read its lexical rules, without code of their own.
+8. Its keyword file (`keywords/<dialect>.yaml`), with a test against the list of the engine when it gives one (`sqlite_keywords_are_those_of_the_library`).
+9. Its rules in the default limit (`src/limit.rs`), the classification (`src/classify.rs`: its writes, its session settings, `ends_transaction`) and the verbs (`src/verb.rs`), each with its tests. A kind of write of its own is a variant of `WriteKind`.
+10. The dialect of its flavors in `dialect_of` (`crates/server/src/analyze.rs`).
+
+Internal database (`crates/server/migrations/`):
+
+11. A migration that inserts its rows into `engines` and `flavors`, and its kinds of write into `write_kinds`. A new family of settings gets its row in `setting_families`, its table `connection_<family>` (each column with its comment, its length and its `CHECK`), its variant of `Settings` (`crates/connectors/src/api.rs`) and its reading and writing in `crates/server/src/connections.rs`.
+
+Interface (`web/`), where the compiler names each missing entry (`Record<Flavor, …>`, `Record<Engine, …>`):
+
+12. `FLAVORS` (`src/api/flavors.ts`): name, driver, tokens of the editor, syntax of the CTE; `FALLBACK_DIALECTS` (`src/components/editor/SqlEditor.vue`), `CTE_HINTS` (`src/components/result/ResultView.vue`), the operations on an index (`src/components/navigator/indexOperations.ts`).
+13. `ENGINE_FAMILIES` (`src/components/connections/connectionForm.ts`) and `ENGINE_TYPES` (`src/components/connections/sourceTypes.ts`): its family of settings and its kind of source, ready to create; a new family gets its form (`ConnectionForm<Family>.vue`) and its check.
+14. Its badge: two colors of the theme (`--badge-<flavor>`, `--badge-<flavor>-bg`, `src/assets/main.css`) and its rule in `ConnectionFlavorBadge.vue`, checked in both modes.
+15. Its kinds of write in `WRITE_KIND_STATEMENTS`, `WRITE_KIND_GROUPS` and, when needed, `WRITE_KIND_NOTES` (`src/api/writeKinds.ts`).
+16. A component tests a capability, never a flavor: a behaviour of the engine missing from `Capabilities` becomes a field of it.
+
+Documentation:
+
+17. A section of this guide on the specifics of the engine, as "SQLite engine"; `docs/V1.md` (sections 2.4, 2.5, 2.10, 3.2 for its crate), `README.md` (connections, navigator, writes, transactions), `docs/SQL-COMPARISON.md`.
+
 ## Testing the API by hand
 
 Start Prisme on a throwaway data folder, to delete to start from scratch:
