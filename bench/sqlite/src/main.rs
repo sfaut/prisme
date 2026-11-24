@@ -46,7 +46,7 @@ fn main() {
         std::env::temp_dir().join(format!("prisme-sqlite-measures-{}", std::process::id()));
     std::fs::create_dir_all(&folder).expect("temporary folder");
 
-    println!("SQLite {} (rusqlite 0.41.1, bundled)", rusqlite::version());
+    println!("SQLite {} (rusqlite 0.43.0, bundled)", rusqlite::version());
     println!("Folder: {}", folder.display());
 
     read_only_attachments(&folder);

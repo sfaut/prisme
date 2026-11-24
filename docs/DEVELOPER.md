@@ -598,7 +598,7 @@ The program works in a temporary folder of its own, deleted at the end, and prin
 
 ## SQLite engine
 
-SQLite is the library that Prisme embeds (`rusqlite` 0.41.1, `bundled`: SQLite 3.54.1), the first engine of the family of the sources held in files. Its connector is `crates/connectors/src/sqlite/`, its dialect the `Dialect::Sqlite` of `crates/dialects`. Each behaviour of the library that a rule below relies on is measured by `bench/sqlite` and recorded in `docs/SQL-COMPARISON.md`, section 6; the decisions are in `docs/TODO-SQLITE.md`.
+SQLite is the library that Prisme embeds (`rusqlite` 0.43.0, `bundled`: SQLite 3.54.1), the first engine of the family of the sources held in files. Its connector is `crates/connectors/src/sqlite/`, its dialect the `Dialect::Sqlite` of `crates/dialects`. Each behaviour of the library that a rule below relies on is measured by `bench/sqlite` and recorded in `docs/SQL-COMPARISON.md`, section 6; the decisions are in `docs/TODO-SQLITE.md`.
 
 ### Version
 
@@ -982,7 +982,7 @@ Most dependencies accept any compatible version (`^` in `web/package.json`, the 
 | `sqlparser` | `=0.64.0` | `crates/dialects/src/mysql_parser.rs` takes over methods of `MySqlDialect` written for this version, to parse the compound time units of MySQL and MariaDB (`YEAR_MONTH`...). An upgrade compares them first (see its module comment and [V1.md](V1.md), section 3.2). |
 | `prettier` | `3.10.1` | Exact version, as Prettier recommends: a new version, even a patch, can format differently, and the CI checks the formatting. |
 | `typescript` | `~6.0.0` | TypeScript does not follow semantic versioning: a minor version can add type errors. `typescript-eslint` also requires a version below 6.1. |
-| `oxlint`, `eslint-plugin-oxlint` | `~1.93.0` | Both are released together and must keep the same version: the plugin turns off in ESLint the rules that Oxlint checks. A minor version adds rules. |
+| `oxlint`, `eslint-plugin-oxlint` | `~1.95.0` | Both are released together and must keep the same version: the plugin turns off in ESLint the rules that Oxlint checks. A minor version adds rules. |
 | `eslint-plugin-vue` | `~10.12.1` | A minor version can report more errors (new rules, rule fixes, as ESLint's versioning policy allows). |
 | `@types/node` | `^24` | The types follow Node 24, the version of the TypeScript configuration (`@tsconfig/node24`) and of `engines` (`web/package.json`): the types of Node 26 would offer APIs that Node 24 lacks. |
 
@@ -994,8 +994,7 @@ Before each release, the dependencies go to their latest version, major versions
 
 | Dependency | Version kept | Version tried | Cause | Date |
 |---|---|---|---|---|
-| `typescript` | 6.0 | 7.0.2 | TypeScript 7, rewritten in Go, no longer provides the JavaScript API of the compiler. `vue-tsc` 3.3.11 crashes on start (`ERR_PACKAGE_PATH_NOT_EXPORTED: ./lib/tsc`), its support comes with Vue Language Tools v4 ([language-tools #5381](https://github.com/vuejs/language-tools/issues/5381)). `typescript-eslint` requires TypeScript `>=4.8.4 <6.1.0` ([typescript-eslint #12518](https://github.com/typescript-eslint/typescript-eslint/issues/12518)). Both expect TypeScript 7.1. | 2026-10-20 |
-| `rusqlite` | 0.41.1 | 0.42.0 | `rusqlite_migration` 2.7.0, its latest version, requires `rusqlite` 0.41, and two versions of `rusqlite` cannot live in one build: both link the SQLite library (`libsqlite3-sys`, `links = "sqlite3"`). Held at 0.40.2 from 2026-10-26 (0.41.0, then 0.41.1 tried) until `rusqlite_migration` 2.7.0 accepted 0.41. 0.43.0 checked on 2026-11-16 and 2026-11-20, not tried: `rusqlite_migration` 2.7.0, still its latest version, requires `^0.41.0`. To try again with a version of `rusqlite_migration` that accepts a newer `rusqlite`. | 2026-11-11 |
+| `typescript` | 6.0 | 7.0.2 | TypeScript 7, rewritten in Go, no longer provides the JavaScript API of the compiler. `vue-tsc` 3.3.11 crashes on start (`ERR_PACKAGE_PATH_NOT_EXPORTED: ./lib/tsc`), its support comes with Vue Language Tools v4 ([language-tools #5381](https://github.com/vuejs/language-tools/issues/5381)). `typescript-eslint` requires TypeScript `>=4.8.4 <6.1.0` ([typescript-eslint #12518](https://github.com/typescript-eslint/typescript-eslint/issues/12518)). Both expect TypeScript 7.1. 7.0.2, still the latest version on 2026-11-24, not tried again. | 2026-10-20 |
 
 The versions fixed on purpose, for another reason than a failed upgrade, are in "Pinned versions".
 

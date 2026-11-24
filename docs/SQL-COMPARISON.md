@@ -13,7 +13,7 @@ Measured on 2026-11-02, and on 2026-11-05 for the cases of `GROUP_CONCAT` added 
 | MySQL | 8.0.11, 9.7.4, 26.10.0 | servers `mysql-oldest`, `mysql-lts`, `mysql-latest` of `compose.yaml` |
 | MariaDB | 10.6.3, 12.3.3, 13.0.2 | servers `mariadb-oldest`, `mariadb-lts`, `mariadb-latest` of `compose.yaml` |
 | PostgreSQL | 18.6 | container `prisme-probe-postgres-18.6` (image `postgres:latest` of 2026-10-06) |
-| SQLite | 3.53.4 | `node:sqlite` of Node 26.7.0, in memory; Prisme bundles SQLite 3.54.1 (`libsqlite3-sys` 0.39.1), measured in section 6 |
+| SQLite | 3.53.4 | `node:sqlite` of Node 26.7.0, in memory; Prisme bundles SQLite 3.54.1 (`libsqlite3-sys` 0.40.0), measured in section 6 |
 | DuckDB | 2.0.0 | `@duckdb/node-api` 2.0.0-r.1, in memory |
 
 Settings the values depend on, as the engines start (cases `info.*`):
@@ -423,7 +423,7 @@ Left out, found only on third-party sites: the value of `'12' + 1` in ClickHouse
 
 ## 6. SQLite embedded in Prisme
 
-Behaviours of the SQLite library that the SQLite connector relies on (`docs/TODO-SQLITE.md`): those of the engine Prisme ships, measured through `rusqlite` as the connector will call it, rather than SQL compared between engines. Measured on 2026-11-22 with SQLite 3.54.1 (`rusqlite` 0.41.1, `bundled`), on Windows 11, by `bench/sqlite/` (`docs/DEVELOPER.md`, section "SQLite embedded in Prisme").
+Behaviours of the SQLite library that the SQLite connector relies on (`docs/TODO-SQLITE.md`): those of the engine Prisme ships, measured through `rusqlite` as the connector will call it, rather than SQL compared between engines. Measured on 2026-11-22 with SQLite 3.54.1 (`rusqlite` 0.41.1, `bundled`), on Windows 11, by `bench/sqlite/` (`docs/DEVELOPER.md`, section "SQLite embedded in Prisme"). Measured again on 2026-11-24 with `rusqlite` 0.43.0 (`libsqlite3-sys` 0.40.0, the same SQLite 3.54.1): the same results, but for the `prepare` of a comment alone (below).
 
 Read-only and attachments:
 
@@ -579,7 +579,7 @@ A session stays on `main`: SQLite has no statement that changes the current data
 Opening of the databases of a connection, measured on 2026-11-23:
 
 - A database in memory (`file:/<name>?vfs=memdb`, or `:memory:`) opens without `SQLITE_OPEN_CREATE`, and takes tables. Opened read-only, a new one refuses its first table ("attempt to write a readonly database"); an existing one, opened read-only by another connection, gives its rows and refuses an `INSERT`.
-- A connection attaches 10 databases at most besides `main` (`SQLITE_MAX_ATTACHED`, 10 unless SQLite is built with another value: `#define SQLITE_MAX_ATTACHED 10` in the `sqlite3.c` of `libsqlite3-sys` 0.39.1, which `rusqlite` 0.41.1 builds; [Limits In SQLite](https://sqlite.org/limits.html), section 11). A connection of Prisme saves as many.
+- A connection attaches 10 databases at most besides `main` (`SQLITE_MAX_ATTACHED`, 10 unless SQLite is built with another value: `#define SQLITE_MAX_ATTACHED 10` in the `sqlite3.c` of `libsqlite3-sys` 0.40.0, which `rusqlite` 0.43.0 builds; [Limits In SQLite](https://sqlite.org/limits.html), section 11). A connection of Prisme saves as many.
 - `ATTACH ?1 AS ?2` takes the file and the name of the schema as bound parameters: `ATTACH ?1 AS ?2` with the name `other db` gives a schema read as `"other db".t`.
 - An attachment opens in the file system (VFS) of its connection: on a connection whose main database is in `memdb`, `ATTACH` of the path of a file gives an empty database in memory ("no such table" on its tables); the URI `file:///<path>?vfs=win32` (`unix` on Linux and macOS) reads the file, and so do `file:/<path>?vfs=win32`, `file:<path>?vfs=win32` and `file://localhost/<path>?vfs=win32` (`<path>` written `D:/data/v.db` on Windows), the forms of URI that the classification of `ATTACH` accepts.
 - On Windows, the URI `file:////<server>/<share>/<path>` (an empty authority) reads a file of a network share: `file:////localhost/C$/.../opening.db` gives its rows.
@@ -587,7 +587,7 @@ Opening of the databases of a connection, measured on 2026-11-23:
 - On a connection whose main database is in `memdb`, `pragma_database_list` gives an empty file for `main`, for a database in memory private to the connection (`:memory:`), for one shared (`file:/<name>?vfs=memdb`) and for a plain path, opened in memory; only a URI naming its file system gives the path of the file (`C:\...\opening.db`, and `\\localhost\C$\...` for a network share). An empty file does not tell a private database in memory from a shared one.
 - `pragma_table_list` lists the tables and views of every schema, `sqlite_schema` (`sqlite_temp_schema` in `temp`) included, with their type (`table`, `view`, `virtual`, `shadow`) and `wr` (1 for a table `WITHOUT ROWID`).
 - An interruption (`sqlite3_interrupt`) sent while no statement runs stops nothing: the next statement runs.
-- `prepare` takes a statement followed by a comment (`SELECT 1; -- end`); a comment alone prepares a statement without columns.
+- `prepare` takes a statement followed by a comment (`SELECT 1; -- end`). A comment alone prepared a statement without columns with `rusqlite` 0.41.1; with 0.43.0, it fails ("SQL is empty or comment only"). Prisme never sends one: the editor answers **Aucune requête à exécuter** (No query to run).
 
 Literals of the rows of a result that the interface writes (a CTE of `VALUES`, the `IN` clause of a selection, `web/src/components/result/cte.ts`), measured on 2026-11-24 by `bench/sqlite` (section 16):
 

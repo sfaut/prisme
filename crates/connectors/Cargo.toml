@@ -15,7 +15,7 @@ prisme-dialects = { path = "../dialects" }
 # Driver of SQLite, the library compiled in (`bundled`), at the version of the
 # internal database of the server (a single libsqlite3-sys): declared types
 # and origins of the columns of a result, copy of a database into a file.
-rusqlite = { version = "0.41.1", features = ["backup", "bundled", "column_decltype", "column_metadata"] }
+rusqlite = { version = "0.43.0", features = ["backup", "bundled", "column_decltype", "column_metadata"] }
 # Client of the web files (location/http.rs), TLS by rustls: nothing to install on the system.
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls"] }
 secrecy = "0.10.3"
