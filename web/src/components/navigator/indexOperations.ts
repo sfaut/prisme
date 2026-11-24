@@ -1,9 +1,9 @@
 /**
  * Operations on an index, written from the object navigator (ticket #21): the
- * button of an index's line appends to the editor the `ALTER TABLE`
- * statements that add an index or act on this one, commented out. The user
- * uncomments the one to run, then fills in the names left as placeholders
- * (`column_name`, `new_index_name`).
+ * button of an index's line appends to the editor the statements that add an
+ * index or act on this one, commented out. The user uncomments the one to
+ * run, then fills in the names left as placeholders (`column_name`,
+ * `new_index_name`).
  *
  * The block follows the flavor and the version of the server, as measured on
  * MySQL 8.0.11 and 9.3.0, MariaDB 10.5.29, 10.6.3 and 11.8.9:
@@ -15,6 +15,14 @@
  * - primary key: neither invisible (MySQL error 3522) nor ignored (MariaDB
  *   error 4174), and named `PRIMARY` for good: it is removed by
  *   `DROP PRIMARY KEY`.
+ *
+ * SQLite has no `ALTER TABLE` of the keys (`docs/SQL-COMPARISON.md`, section
+ * 6): its block adds a unique index or an index by `CREATE [UNIQUE] INDEX`,
+ * the schema on the index and the table unqualified, which it requires, then
+ * rebuilds this one (`REINDEX`, under the "Maintenance" switch) and drops it
+ * (`DROP INDEX`). The primary key of a table is never added afterwards; an
+ * index of a constraint (`sqlite_autoindex_…`, a name SQLite reserves) is
+ * never dropped; no index is renamed nor hidden.
  */
 
 import type { Flavor } from '@/api/generated/Flavor'
@@ -99,6 +107,27 @@ function knows(server: IndexServer, since: Version | null): boolean {
 }
 
 /**
+ * Name of the primary key in the catalog, whatever the flavor.
+ */
+const PRIMARY = 'PRIMARY'
+
+/**
+ * Prefix of the names that SQLite reserves: an index of such a name is that
+ * of a `UNIQUE` or `PRIMARY KEY` constraint, which it never drops.
+ */
+const SQLITE_RESERVED = 'sqlite_'
+
+/**
+ * Statements of the operations of each flavor, before they are commented
+ * out.
+ */
+const STATEMENTS: Record<Flavor, (target: IndexTarget, server: IndexServer) => string[]> = {
+  mysql: alterTableOperations,
+  mariadb: alterTableOperations,
+  sqlite: createIndexOperations,
+}
+
+/**
  * Is a server version at least `minimum`? A version that cannot be read is
  * not: the statements that need it are left out.
  *
@@ -117,9 +146,7 @@ export function versionAtLeast(version: string, minimum: Version): boolean {
 
 /**
  * Commented-out operations on an index, one statement per line, each ended
- * by the separator in force: adding a primary key, a unique index, an index,
- * then, for the primary key, its removal; for another index, its
- * visibility, its removal and its renaming, when the server knows them.
+ * by the separator in force, in the form of the server's flavor.
  *
  * @param target Index the operations act on.
  * @param server Server the operations are written for.
@@ -130,6 +157,21 @@ export function indexOperations(
   server: IndexServer,
   delimiter: string,
 ): string {
+  return STATEMENTS[server.flavor](target, server)
+    .map((statement) => `-- ${statement}${delimiter}`)
+    .join('\n')
+}
+
+/**
+ * Operations of MySQL and MariaDB, by `ALTER TABLE`: adding a primary key, a
+ * unique index, an index, then, for the primary key, its removal; for
+ * another index, its visibility, its removal and its renaming, when the
+ * server knows them.
+ *
+ * @param target Index the operations act on.
+ * @param server Server the operations are written for.
+ */
+function alterTableOperations(target: IndexTarget, server: IndexServer): string[] {
   const quote = (name: string) => quoteIdentifier(name, server.ansiQuotes)
   const alter = `ALTER TABLE ${quote(target.schema)}.${quote(target.table)}`
   const index = quote(target.name)
@@ -138,7 +180,7 @@ export function indexOperations(
     `${alter} ADD UNIQUE KEY (column_name /* , ... */)`,
     `${alter} ADD KEY (column_name /* , ... */)`,
   ]
-  if (target.name === 'PRIMARY') {
+  if (target.name === PRIMARY) {
     statements.push(`${alter} DROP PRIMARY KEY`)
   } else {
     const keywords = VISIBILITY_KEYWORDS[server.flavor]
@@ -152,5 +194,31 @@ export function indexOperations(
       statements.push(`${alter} RENAME KEY ${index} TO new_index_name`)
     }
   }
-  return statements.map((statement) => `-- ${statement}${delimiter}`).join('\n')
+  return statements
+}
+
+/**
+ * Operations of SQLite: adding a unique index, an index, then, for an index
+ * other than the primary key, its rebuilding and, unless it is that of a
+ * constraint, its removal.
+ *
+ * @param target Index the operations act on.
+ * @param server Server the operations are written for.
+ */
+function createIndexOperations(target: IndexTarget, server: IndexServer): string[] {
+  const quote = (name: string) => quoteIdentifier(name, server.ansiQuotes)
+  const schema = quote(target.schema)
+  const on = `ON ${quote(target.table)} (column_name /* , ... */)`
+  const statements = [
+    `CREATE UNIQUE INDEX ${schema}.new_index_name ${on}`,
+    `CREATE INDEX ${schema}.new_index_name ${on}`,
+  ]
+  if (target.name !== PRIMARY) {
+    const index = `${schema}.${quote(target.name)}`
+    statements.push(`REINDEX ${index}`)
+    if (!target.name.toLowerCase().startsWith(SQLITE_RESERVED)) {
+      statements.push(`DROP INDEX ${index}`)
+    }
+  }
+  return statements
 }
