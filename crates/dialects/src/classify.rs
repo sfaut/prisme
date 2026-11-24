@@ -919,6 +919,10 @@ mod tests {
             ("ALTER TABLE t ADD b INT", vec![AlterTable]),
             ("ALTER TABLE t ALTER INDEX i INVISIBLE", vec![AlterTable]),
             ("ALTER TABLE t RENAME KEY i TO j", vec![AlterTable]),
+            (
+                "ALTER TABLE t COMMENT = 'x', ENGINE = InnoDB",
+                vec![AlterTable],
+            ),
             ("CREATE INDEX i ON t (a)", vec![AlterTable]),
             ("DROP INDEX i ON t", vec![AlterTable]),
             ("RENAME TABLE t TO u", vec![RenameTable]),

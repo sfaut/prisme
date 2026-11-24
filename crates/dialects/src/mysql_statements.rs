@@ -2,7 +2,8 @@
 //! stored routines (`CREATE PROCEDURE`, `CREATE FUNCTION`), scheduled events
 //! (`CREATE EVENT`, `ALTER EVENT`, `DROP EVENT`), the operations of
 //! `ALTER TABLE` on an existing index (`ALTER INDEX i VISIBLE`, MariaDB's
-//! `IGNORED`, `RENAME KEY i TO j`, `DROP KEY i`),
+//! `IGNORED`, `RENAME KEY i TO j`, `DROP KEY i`) and its table options
+//! (`COMMENT = '...'`, `ENGINE = InnoDB`: `mysql_table_options.rs`),
 //! `START TRANSACTION WITH CONSISTENT SNAPSHOT`, the `RELEASE` of
 //! `COMMIT` and `ROLLBACK`, and the statements of XA transactions, only
 //! recognised, as Prisme refuses them. Also
@@ -34,6 +35,8 @@ use sqlparser::ast::{ObjectName, TransactionAccessMode, TransactionMode};
 use sqlparser::parser::{Parser, ParserError};
 use sqlparser::tokenizer::{Token, TokenWithSpan};
 
+use crate::Dialect;
+use crate::mysql_table_options::parse_table_options;
 use crate::words::{
     expect_end, expect_word, expect_words, expected, parse_word, parse_words, word_is,
 };
@@ -90,8 +93,8 @@ pub enum MySqlStatement {
         /// Name of the event.
         name: ObjectName,
     },
-    /// `ALTER TABLE` with at least one operation on an existing index that
-    /// `sqlparser` does not know.
+    /// `ALTER TABLE` with at least one operation that `sqlparser` does not
+    /// know: on an existing index, or a table option.
     AlterTable {
         /// Name of the table.
         name: ObjectName,
@@ -134,12 +137,13 @@ pub(crate) fn parse_routine_or_event(
     })
 }
 
-/// Parses an `ALTER TABLE` at the position of the parser, its operations
-/// left to `sqlparser` except those on an existing index. Called after
-/// `sqlparser` failed: `None` (nothing consumed) if the statement is not an
-/// `ALTER TABLE`.
+/// Parses an `ALTER TABLE` of the dialect at the position of the parser,
+/// its operations left to `sqlparser` except those on an existing index and
+/// the table options. Called after `sqlparser` failed: `None` (nothing
+/// consumed) if the statement is not an `ALTER TABLE`.
 pub(crate) fn parse_alter_table(
     parser: &mut Parser,
+    dialect: Dialect,
 ) -> Option<Result<MySqlStatement, ParserError>> {
     parser
         .try_parse(|parser| {
@@ -149,7 +153,7 @@ pub(crate) fn parse_alter_table(
             expect_word(parser, "TABLE")
         })
         .ok()?;
-    Some(alter_table(parser))
+    Some(alter_table(parser, dialect))
 }
 
 /// Parses a `SET [GLOBAL | SESSION | LOCAL] TRANSACTION` at the position of
@@ -282,11 +286,11 @@ pub(crate) fn parse_xa(parser: &mut Parser) -> Option<Result<MySqlStatement, Par
 }
 
 /// `ALTER TABLE` after its keywords: `[IF EXISTS] name operation, ...`.
-fn alter_table(parser: &mut Parser) -> Result<MySqlStatement, ParserError> {
+fn alter_table(parser: &mut Parser, dialect: Dialect) -> Result<MySqlStatement, ParserError> {
     parse_words(parser, &["IF", "EXISTS"]);
     let name = parser.parse_object_name(false)?;
     loop {
-        index_operation(parser)?;
+        operation(parser, dialect)?;
         if !parser.consume_token(&Token::Comma) {
             break;
         }
@@ -295,9 +299,28 @@ fn alter_table(parser: &mut Parser) -> Result<MySqlStatement, ParserError> {
     Ok(MySqlStatement::AlterTable { name })
 }
 
-/// One operation of `ALTER TABLE`: on an existing index, or any other, left
-/// to `sqlparser`.
-fn index_operation(parser: &mut Parser) -> Result<(), ParserError> {
+/// One operation of `ALTER TABLE`: on an existing index, table options of
+/// the dialect, or any other, left to `sqlparser`; in MariaDB, options of
+/// its storage engines last, as they take any name.
+fn operation(parser: &mut Parser, dialect: Dialect) -> Result<(), ParserError> {
+    if index_operation(parser)? || parse_table_options(parser, dialect, false)? {
+        return Ok(());
+    }
+    match parser.try_parse(|parser| parser.parse_alter_table_operation()) {
+        Ok(_) => Ok(()),
+        Err(error) => {
+            if dialect == Dialect::MariaDb && parse_table_options(parser, dialect, true)? {
+                Ok(())
+            } else {
+                Err(error)
+            }
+        }
+    }
+}
+
+/// One operation of `ALTER TABLE` on an existing index: `Ok(false)` (nothing
+/// consumed) if none starts there.
+fn index_operation(parser: &mut Parser) -> Result<bool, ParserError> {
     let on_index = |parser: &Parser| word_is(parser, 1, "INDEX") || word_is(parser, 1, "KEY");
     if word_is(parser, 0, "ALTER") && on_index(parser) {
         // ALTER {INDEX | KEY} [IF EXISTS] name {VISIBLE | INVISIBLE | IGNORED | NOT IGNORED}
@@ -326,9 +349,9 @@ fn index_operation(parser: &mut Parser) -> Result<(), ParserError> {
         parse_words(parser, &["IF", "EXISTS"]);
         parser.parse_identifier()?;
     } else {
-        parser.parse_alter_table_operation()?;
+        return Ok(false);
     }
-    Ok(())
+    Ok(true)
 }
 
 /// Beginning of a routine or an event, up to its object.

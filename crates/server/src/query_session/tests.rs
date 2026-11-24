@@ -490,6 +490,7 @@ async fn runs_the_writes_the_settings_allow() {
             "ALTER TABLE w ADD KEY k (a)",
             "ALTER TABLE w RENAME KEY k TO j",
             "ALTER TABLE w DROP KEY j",
+            "ALTER TABLE w COMMENT = 'My comment', ENGINE = InnoDB ROW_FORMAT = DYNAMIC",
         ] {
             let result = run_one(&mut socket, sql, None).await;
             assert_eq!(result.end["type"], "done", "{sql}: {:?}", result.end);
