@@ -132,4 +132,4 @@ Architecture:
 
 ## Open points, settled at their step
 
-- Switch needed by **Enregistrer dans un fichier…**, and its fate in a read-only session.
+- Switch needed by **Enregistrer dans un fichier…**, and its fate in a read-only session: settled at step 5, no switch, read-only sessions included, as the copy writes a new file and no database of the session (`crates/server/src/query_session/session.rs`, `backup`).
