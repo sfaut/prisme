@@ -152,7 +152,7 @@ Header **Navigateur d’objets** (Object navigator), then a tree with virtual sc
 - Rows all of the same height (`--row-height`, 8 steps), `rounded-control`, `gap-1`, hover `bg-surface-sunken`; each level indented by 4 steps. A row: chevron (`ChevronRight` / `ChevronDown`, `size-4 fg-faint`; an empty box of the same size without children), icon of its level (`size-5 fg-secondary`), label truncated with "…", optional note (`text-sm fg-faint`: `PRIMARY KEY` or `UNIQUE` on an index, `chargement…` (loading) on the root), then the buttons that show on hover.
 - Structure and icons:
   - **Sources de données** (Data sources, `Server`, bold): one branch per saved connection;
-    - source (`Cable`), with its flavor badge right after the name (`mysql`, `mariadb`: `rounded-full px-1 text-xs` medium, in the engine's colors; tooltip: name and version of the server); the source of the active editor is highlighted (`bg-surface-raised`);
+    - source (`Cable`), with its flavor badge right after the name (`mysql`, `mariadb`, `sqlite`: `rounded-full px-2 text-xs` medium, as tall as its line height, in the engine's colors; tooltip: name and version of the server; the pill of a protocol, `file`, `https`, `memdb`..., has the same dimensions and font, `text-fg-secondary` on `bg-fg-secondary/15`); the source of the active editor is highlighted (`bg-surface-raised`);
       - database (`Database`); the current database of the active editor in bold;
         - folders (`Folder` / `FolderOpen`) with their count: **Tables (n)**, **Vues (n)** (Views), **Procédures (n)**, **Fonctions (n)** (Functions), **Événements (n)** (Events);
         - table (`Table`), view (`Eye`), procedure (`ScrollText`), function (`SquareFunction`), event (`CalendarClock`);

@@ -2,7 +2,8 @@
   Badge of the flavor of a connection's source (`mysql`, `mariadb`,
   `sqlite`): a pill tinted in the engine's colors, whose tooltip gives the
   name and the version of the source. Shown after the name of a source in
-  the navigator, and of the connection in the connections manager.
+  the navigator, and of the connection in the connections manager. Same
+  dimensions and font as the pill of a protocol (`ConnectionSchemeBadge.vue`).
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
@@ -32,7 +33,7 @@ const tooltip = computed(() => serverName(props.flavor, props.version))
 <template>
   <span
     v-tooltip="tooltip"
-    class="flavor-badge inline-flex shrink-0 items-center rounded-full px-1 text-xs font-medium"
+    class="flavor-badge inline-block shrink-0 rounded-full px-2 text-xs font-medium"
     :data-flavor="flavor"
   >
     <span class="text-trim">{{ flavor }}</span>
