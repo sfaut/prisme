@@ -559,8 +559,14 @@ fn write_kinds(
             AlterTable,
             AlterTemporaryTable,
         )],
+        // SQLite names the schema on the index (`CREATE INDEX temp.i ON x`),
+        // its table staying unqualified.
         Statement::CreateIndex(index) => vec![on(
-            all_temporary([&index.table_name], temporary),
+            all_temporary([&index.table_name], temporary)
+                || index
+                    .name
+                    .as_ref()
+                    .is_some_and(|name| named_in_temporary_schema(name, dialect)),
             AlterTable,
             AlterTemporaryTable,
         )],
@@ -585,8 +591,13 @@ fn write_kinds(
                 DropTemporaryTable,
             )],
             ObjectType::View => vec![DropView],
+            // SQLite drops an index without its table: `DROP INDEX temp.i`.
             ObjectType::Index => vec![on(
-                all_temporary(table, temporary),
+                all_temporary(table, temporary)
+                    || (!names.is_empty()
+                        && names
+                            .iter()
+                            .all(|name| named_in_temporary_schema(name, dialect))),
                 AlterTable,
                 AlterTemporaryTable,
             )],
@@ -1129,6 +1140,21 @@ mod tests {
         }
         // `temp` is a database like any other in MySQL.
         assert_eq!(kind("CREATE TABLE temp.x (a INT)"), writes(&[CreateTable]));
+    }
+
+    #[test]
+    fn classifies_the_operations_on_an_index_written_by_the_navigator() {
+        use WriteKind::*;
+        for (sql, kind) in [
+            ("CREATE INDEX \"other\".i ON \"t\" (a)", AlterTable),
+            ("CREATE UNIQUE INDEX other.i ON t (a, b)", AlterTable),
+            ("DROP INDEX \"other\".\"i\"", AlterTable),
+            ("CREATE INDEX temp.i ON x (a)", AlterTemporaryTable),
+            ("DROP INDEX temp.i", AlterTemporaryTable),
+        ] {
+            assert_eq!(sqlite(sql), writes(&[kind]), "query: {sql}");
+        }
+        assert_eq!(sqlite("REINDEX \"other\".i"), writes(&[Maintenance]));
     }
 
     #[test]
