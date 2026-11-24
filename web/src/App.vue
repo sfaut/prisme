@@ -488,7 +488,12 @@ function selectSource(editorId: number, connectionId: number): void {
 </script>
 
 <template>
-  <div class="flex h-full flex-col">
+  <!--
+    Clipped at the edges of the window: the split groups let their content
+    go beyond them by the width of the focus ring (`overflow-clip-margin`),
+    which, at the edge of the window, would give the page a scrollbar.
+  -->
+  <div class="flex h-full flex-col overflow-clip">
     <top-bar />
     <!--
       Each panel of the splitters has an id of its own: the line that
