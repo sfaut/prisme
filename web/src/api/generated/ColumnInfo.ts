@@ -24,4 +24,9 @@ export type ColumnInfo = {
    * Value assigned automatically on insert (`AUTO_INCREMENT`)?
    */
   auto_increment: boolean;
+  /**
+   * Comment the source keeps for it, empty if none (`docs/DEVELOPER.md`,
+   * section "Comments of the objects").
+   */
+  comment: string;
 };

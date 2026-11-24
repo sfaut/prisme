@@ -40,7 +40,7 @@ const LEGACY_PREFIXES = ['prisme.navigator.', 'prisme.editor.layout.', 'prisme.e
 
 /**
  * Display of a new editor: the navigator open, at the width of the theme,
- * its sources closed; the editor alone in the view, the results and
+ * its sources closed, the comments of the objects hidden; the editor alone in the view, the results and
  * the Pivoteur closed; the data explorer closed; the console open, at the
  * height of the theme; no result tab chosen; the start of the SQL text.
  */
@@ -54,7 +54,7 @@ export function defaultEditorDisplay(): EditorDisplay {
       pivot: { open: false, size: null },
       console: { open: true, size: null },
     },
-    navigator: { expanded: [], scroll_top: 0, tables_by_rows: [] },
+    navigator: { expanded: [], scroll_top: 0, tables_by_rows: [], comments: false },
     active_result: null,
     sql: startPosition(),
   }

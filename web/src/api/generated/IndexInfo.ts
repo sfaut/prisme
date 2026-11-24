@@ -17,4 +17,9 @@ export type IndexInfo = {
    * Unique index?
    */
   unique: boolean;
+  /**
+   * Comment the source keeps for it, empty if none (`docs/DEVELOPER.md`,
+   * section "Comments of the objects").
+   */
+  comment: string;
 };

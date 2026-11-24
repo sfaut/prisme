@@ -17,4 +17,9 @@ export type NavigatorTree = {
    * the other folders are sorted by name.
    */
   tables_by_rows: Array<string>;
+  /**
+   * Are the comments of the objects shown after their name and row
+   * count? Hidden by default.
+   */
+  comments: boolean;
 };

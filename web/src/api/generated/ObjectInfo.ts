@@ -23,4 +23,9 @@ export type ObjectInfo = {
    * paused? `None` for an object without a schedule.
    */
   enabled: boolean | null;
+  /**
+   * Comment the source keeps for it, empty if none (`docs/DEVELOPER.md`,
+   * section "Comments of the objects").
+   */
+  comment: string;
 };

@@ -8,7 +8,10 @@
   closes the session of the active editor (emits `disconnect`), enabled once
   that session is ready on this source. A "Tables" folder of two tables or
   more has two buttons instead, which sort its tables by name or by row
-  count (emits `sort-tables`), the one pressed showing the order. Shared by
+  count (emits `sort-tables`), the one pressed showing the order. When the
+  navigator shows the comments (`comments`), the comment of the object
+  follows its label and its note, in the room left, cut by an ellipsis when
+  too long. Shared by
   the lines of the tree and by the lines pinned at the top of the tree while
   it scrolls (`NavigatorPanel.vue`), which only differ by their container.
 -->
@@ -72,6 +75,10 @@ const props = defineProps<{
    * source; `null` otherwise.
    */
   session?: SessionStatus | null
+  /**
+   * Does the navigator show the comments of the objects?
+   */
+  comments?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -269,12 +276,19 @@ function iconLabel(node: NavigatorNode): string | undefined {
       <span class="truncate text-sm text-fg-faint text-trim" v-tooltip="node.column.details">
         {{ node.column.details }}
       </span>
+      <span
+        v-if="comments && node.comment"
+        class="min-w-0 flex-1 basis-0 truncate text-sm text-fg-faint italic text-trim"
+      >
+        {{ node.comment }}
+      </span>
     </span>
   </span>
   <!--
     Other nodes: label, the protocol of a database held in files, then the
-    note if any (UNIQUE, row count of a table, its digits of equal width), and for a source the badge of the server's
-    flavor, right after the name, whose tooltip gives the name and version
+    note if any (UNIQUE, row count of a table, its digits of equal width), the
+    comment when shown, in the room the label leaves, and for a source the
+    badge of the server's flavor, right after the name, whose tooltip gives the name and version
     of the server. The whole takes the room left, which pushes the menu to
     the end of the line.
   -->
@@ -295,6 +309,12 @@ function iconLabel(node: NavigatorNode): string | undefined {
       >
         {{ node.note }}
       </span>
+    </span>
+    <span
+      v-if="comments && node.comment"
+      class="min-w-0 flex-1 basis-0 truncate text-sm text-fg-faint italic text-trim"
+    >
+      {{ node.comment }}
     </span>
     <connection-flavor-badge
       v-if="node.badge"

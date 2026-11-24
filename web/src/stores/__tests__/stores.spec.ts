@@ -39,7 +39,11 @@ vi.mock('@/api/navigator', () => ({
     onEvent({
       type: 'namespaces',
       source: MYSQL_SOURCE,
-      namespaces: ['app', 'logs'].map((name) => ({ namespace: [name], system: false })),
+      namespaces: ['app', 'logs'].map((name) => ({
+        namespace: [name],
+        system: false,
+        comment: '',
+      })),
     })
     onEvent({ type: 'done' })
   },

@@ -407,6 +407,23 @@ What MySQL and MariaDB accept as table options in `ALTER TABLE t <option>`, meas
 
 MySQL knows a closed list of options: any other name is a syntax error. MariaDB reads any other `name [=] value` as an option of a storage engine, and refuses it after its grammar ("Unknown option", a warning under the `IGNORE_BAD_TABLE_OPTIONS` mode): its grammar accepts `IETF_QUOTES` or `COMPRESSION` on InnoDB, which does not know them. Prisme follows the grammars: it parses the options of each engine whatever the version, and leaves to the server the options of a version it does not have.
 
+### 3.18 Comments of the objects
+
+Where each engine keeps the comment of an object, read by the navigator (`docs/DEVELOPER.md`, section "Comments of the objects"). Measured on 2026-11-24: MySQL and MariaDB with their clients on the six servers of `compose.yaml`, and by the test `reads_the_catalog_schema_by_schema` of `crates/connectors/tests/mysql.rs`; SQLite 3.54.1 (`rusqlite` 0.43.0, `bundled`) by the test `reads_the_comments_of_the_create_statements` of `crates/connectors/src/sqlite/catalog.rs`. Sources: [MySQL `INFORMATION_SCHEMA` tables](https://dev.mysql.com/doc/refman/8.4/en/information-schema-introduction.html), [MariaDB `CREATE DATABASE`, `COMMENT`](https://mariadb.com/kb/en/create-database/#comment), [SQLite `sqlite_schema`](https://www.sqlite.org/schematab.html).
+
+| Object | MySQL 8.0.11, 9.7.4, 26.10.0 | MariaDB 10.6.3, 12.3.3, 13.0.2 | SQLite 3.54.1 |
+|---|---|---|---|
+| Database (schema) | none: `SCHEMATA.SCHEMA_COMMENT` is an unknown column (1054) | `SCHEMATA.SCHEMA_COMMENT` | none |
+| Table | `TABLES.TABLE_COMMENT` | `TABLES.TABLE_COMMENT` | in the text of its `CREATE` |
+| View | none: `TABLE_COMMENT` reads `VIEW` | none: `TABLE_COMMENT` reads `VIEW` | in the text of its `CREATE` |
+| Column | `COLUMNS.COLUMN_COMMENT` | `COLUMNS.COLUMN_COMMENT` | in the text of the `CREATE` of its table |
+| Index | `STATISTICS.INDEX_COMMENT` | `STATISTICS.INDEX_COMMENT` | in the text of its `CREATE INDEX` |
+| Procedure, function | `ROUTINES.ROUTINE_COMMENT` | `ROUTINES.ROUTINE_COMMENT` | none (no routines) |
+| Event | `EVENTS.EVENT_COMMENT` | `EVENTS.EVENT_COMMENT` | none (no events) |
+| Trigger | none | none | in the text of its `CREATE TRIGGER` |
+
+SQLite has no `COMMENT` clause. It keeps in `sqlite_schema.sql` the text of each `CREATE` statement as written, its comments included, from the word `CREATE` to the last token of the statement: a comment written before `CREATE`, or after the closing parenthesis of a table or the `END` of a trigger, is not kept. The comments `-- ...` and `/* ... */` are kept alike, on one line or several.
+
 ## 4. Differences between versions of one engine
 
 | Engine | Subject | Versions |

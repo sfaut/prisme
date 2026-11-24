@@ -178,6 +178,19 @@ In the navigator and the editor:
 - **Errors** name their SQLite code: **SQLite a répondu (SQLITE_CONSTRAINT_UNIQUE, code 2067)** (SQLite answered).
 - The **CTE** and the **`IN` clause** copied from a result are written for SQLite: dates and times as texts, bytes in hexadecimal (`X'FF001A'`).
 - On an index, the navigator writes `CREATE INDEX`, `REINDEX` and `DROP INDEX`; SQLite cannot rename an index, nor drop that of a primary key or of a `UNIQUE` constraint.
+- **Comments**: SQLite has no `COMMENT` clause, but keeps the text of each `CREATE` with its comments. The navigator reads, as `-- …` or `/* … */`, on one line or several: for a table, a view, an index or a trigger, the comments written right after its name (and for a table, after its opening parenthesis, on the same line); for a column, those written after its definition on the same line, comma included, and those on the lines just before it. A comment written before `CREATE`, or after the closing parenthesis of a table, is not kept by SQLite.
+
+  ```sql
+  CREATE TABLE customer -- Customers of the shop
+  (
+      id INTEGER PRIMARY KEY, -- Identifier
+      /* Name, as written
+         by the customer */
+      name TEXT NOT NULL
+  );
+  CREATE INDEX customer_name -- Search by name
+  ON customer (name);
+  ```
 
 ### Object navigator
 
@@ -197,6 +210,7 @@ How it behaves:
 - The catalog loads progressively, and the source of the editor opens by itself, in a new navigator and when the editor changes its connection. The **refresh** button of **Navigateur d’objets** (Object navigator), **Rafraîchir** (Refresh), reloads the catalogs already read.
 - The current database is in **bold**.
 - Each table shows, after its name, its row count as estimated by the server: exact below 1,000 (`345`), shortened above (`1,3 k`, `4,5 M`). The estimate can differ from the real count, and on MySQL can be up to a day old. Views show none.
+- **Afficher les commentaires** (Show the comments), the speech bubble of **Navigateur d’objets**, shows the comment of each object after its name and its row count: databases (MariaDB), tables, columns, indexes, procedures, functions, events, and the triggers of SQLite; a view has none on MySQL and MariaDB. The comments are hidden by default; your choice is kept with the editor, and **Réinitialiser l’affichage** (Reset the display) hides them again.
 - On hovering a **Tables** folder of two tables or more, two buttons sort its tables: by name (A to Z, the default), or by row count, the largest first, tables without an estimate last. Sorted by row count, its button stays shown. Each folder keeps its order, with the editor.
 - While the tree scrolls, the source, the database and the table of the rows on screen stay pinned at the top; they open, close and act like the rows of the tree.
 

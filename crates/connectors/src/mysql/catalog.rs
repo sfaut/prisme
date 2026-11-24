@@ -10,6 +10,11 @@
 //! 3. `details`: columns, indexes, foreign keys and triggers of each table of
 //!    a database.
 //!
+//! Each element carries the comment the server keeps for it (`COMMENT` of a
+//! table, a column, an index, a routine or an event; of a database in
+//! MariaDB, which MySQL does not have); a trigger has none. A view has no
+//! comment either: `TABLE_COMMENT` reads `VIEW` there.
+//!
 //! Each read filters on a database, which saves the server from walking all
 //! the tables at once. The objects carry the row count estimated by the
 //! server (`TABLE_ROWS`): fast while the tables are warm, it costs seconds on
@@ -32,11 +37,12 @@ use crate::catalog::{
 use crate::sql_log;
 
 /// Row of `information_schema.COLUMNS`: table, column, type, nullability,
-/// index, extra information (`auto_increment`...).
-type ColumnRow = (String, String, String, String, String, String);
+/// index, extra information (`auto_increment`...), comment.
+type ColumnRow = (String, String, String, String, String, String, String);
 
-/// Row of `information_schema.STATISTICS`: table, index, non unique, column.
-type IndexRow = (String, String, i64, Option<String>);
+/// Row of `information_schema.STATISTICS`: table, index, non unique, column,
+/// comment of the index.
+type IndexRow = (String, String, i64, Option<String>, String);
 
 /// Row of `information_schema.KEY_COLUMN_USAGE`: table, constraint, column,
 /// referenced database, table and column.
@@ -53,24 +59,31 @@ const SYSTEM_SCHEMAS: [&str; 4] = ["information_schema", "mysql", "performance_s
 pub struct MysqlCatalog<'a> {
     /// Connection of the session.
     connection: &'a mut Connection,
+    /// Is the server a MariaDB, whose databases have a comment?
+    mariadb: bool,
 }
 
 impl<'a> MysqlCatalog<'a> {
-    /// Reader on the connection of a session, which it borrows.
-    pub fn new(connection: &'a mut Connection) -> Self {
-        Self { connection }
+    /// Reader on the connection of a session, which it borrows, to a MariaDB
+    /// server or not.
+    pub fn new(connection: &'a mut Connection, mariadb: bool) -> Self {
+        Self {
+            connection,
+            mariadb,
+        }
     }
 }
 
 impl CatalogReader for MysqlCatalog<'_> {
     fn namespaces(&mut self) -> BoxFuture<'_, Result<Vec<NamespaceInfo>, ConnectorError>> {
         Box::pin(async move {
-            let schemas = schemas(self.connection).await?;
+            let schemas = commented_schemas(self.connection, self.mariadb).await?;
             Ok(schemas
                 .into_iter()
-                .map(|schema| NamespaceInfo {
+                .map(|(schema, comment)| NamespaceInfo {
                     system: SYSTEM_SCHEMAS.contains(&schema.as_str()),
                     namespace: Namespace::single(schema),
+                    comment,
                 })
                 .collect())
         })
@@ -91,9 +104,17 @@ impl CatalogReader for MysqlCatalog<'_> {
     }
 }
 
-/// Lists the server's databases, by name.
-pub async fn schemas(connection: &mut Connection) -> Result<Vec<String>, MysqlError> {
-    let sql = "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME";
+/// Lists the server's databases, by name, with their comment: that of
+/// `SCHEMA_COMMENT` in MariaDB, empty in MySQL, which has none.
+pub async fn commented_schemas(
+    connection: &mut Connection,
+    mariadb: bool,
+) -> Result<Vec<(String, String)>, MysqlError> {
+    let sql = if mariadb {
+        "SELECT SCHEMA_NAME, SCHEMA_COMMENT FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME"
+    } else {
+        "SELECT SCHEMA_NAME, '' FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME"
+    };
     Ok(sql_log::traced(sql, connection.query(sql), |rows| Some(rows.len() as u64)).await?)
 }
 
@@ -120,53 +141,62 @@ pub async fn objects(
     connection: &mut Connection,
     schema: &str,
 ) -> Result<Vec<ObjectInfo>, MysqlError> {
-    let tables: Vec<(String, String, Option<u64>)> = rows_of(
+    let tables: Vec<(String, String, Option<u64>, String)> = rows_of(
         connection,
-        "SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS FROM information_schema.TABLES
+        "SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS, TABLE_COMMENT FROM information_schema.TABLES
              WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME",
         schema,
     )
     .await?;
-    let routines: Vec<(String, String)> = rows_of(
+    let routines: Vec<(String, String, String)> = rows_of(
         connection,
-        "SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES
+        "SELECT ROUTINE_NAME, ROUTINE_TYPE, ROUTINE_COMMENT FROM information_schema.ROUTINES
              WHERE ROUTINE_SCHEMA = ? ORDER BY ROUTINE_NAME",
         schema,
     )
     .await?;
-    let events: Vec<(String, String)> = rows_of(
+    let events: Vec<(String, String, String)> = rows_of(
         connection,
-        "SELECT EVENT_NAME, STATUS FROM information_schema.EVENTS
+        "SELECT EVENT_NAME, STATUS, EVENT_COMMENT FROM information_schema.EVENTS
              WHERE EVENT_SCHEMA = ? ORDER BY EVENT_NAME",
         schema,
     )
     .await?;
-    let tables = tables.into_iter().map(|(name, table_type, rows)| {
+    let tables = tables.into_iter().map(|(name, table_type, rows, comment)| {
         let kind = table_kind(&table_type);
+        let view = kind == ObjectKind::View;
         ObjectInfo {
             name,
             kind,
             // A view has no estimate: NULL, but 0 up to MySQL 8.0.16.
-            rows: rows.filter(|_| kind != ObjectKind::View),
+            rows: rows.filter(|_| !view),
             enabled: None,
+            // The comment of a view reads `VIEW`.
+            comment: if view { String::new() } else { comment },
         }
     });
-    let routines = routines.into_iter().map(|(name, routine_type)| ObjectInfo {
-        name,
-        kind: if routine_type == "FUNCTION" {
-            ObjectKind::Function
-        } else {
-            ObjectKind::Procedure
-        },
-        rows: None,
-        enabled: None,
-    });
-    let events = events.into_iter().map(|(name, status)| ObjectInfo {
-        name,
-        kind: ObjectKind::Event,
-        rows: None,
-        enabled: Some(status == "ENABLED"),
-    });
+    let routines = routines
+        .into_iter()
+        .map(|(name, routine_type, comment)| ObjectInfo {
+            name,
+            kind: if routine_type == "FUNCTION" {
+                ObjectKind::Function
+            } else {
+                ObjectKind::Procedure
+            },
+            rows: None,
+            enabled: None,
+            comment,
+        });
+    let events = events
+        .into_iter()
+        .map(|(name, status, comment)| ObjectInfo {
+            name,
+            kind: ObjectKind::Event,
+            rows: None,
+            enabled: Some(status == "ENABLED"),
+            comment,
+        });
     Ok(tables.chain(routines).chain(events).collect())
 }
 
@@ -177,7 +207,8 @@ pub async fn details(
 ) -> Result<Vec<TableDetails>, MysqlError> {
     let columns: Vec<ColumnRow> = rows_of(
         connection,
-        "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, EXTRA
+        "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, EXTRA,
+                    COLUMN_COMMENT
              FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, ORDINAL_POSITION",
         schema,
@@ -185,7 +216,7 @@ pub async fn details(
     .await?;
     let indexes: Vec<IndexRow> = rows_of(
         connection,
-        "SELECT TABLE_NAME, INDEX_NAME, NON_UNIQUE, COLUMN_NAME
+        "SELECT TABLE_NAME, INDEX_NAME, NON_UNIQUE, COLUMN_NAME, INDEX_COMMENT
              FROM information_schema.STATISTICS
              WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX",
         schema,
@@ -225,7 +256,7 @@ fn assemble_details(
     triggers: Vec<TriggerRow>,
 ) -> Vec<TableDetails> {
     let mut tables: BTreeMap<String, TableDetails> = BTreeMap::new();
-    for (name, column, column_type, is_nullable, key, extra) in columns {
+    for (name, column, column_type, is_nullable, key, extra, comment) in columns {
         table(&mut tables, &name).columns.push(ColumnInfo {
             name: column,
             column_type,
@@ -233,9 +264,10 @@ fn assemble_details(
             key,
             // EXTRA can combine several mentions ("auto_increment", "on update...").
             auto_increment: extra.to_lowercase().contains("auto_increment"),
+            comment,
         });
     }
-    for (name, index, non_unique, column) in indexes {
+    for (name, index, non_unique, column, comment) in indexes {
         let column = column.unwrap_or_else(|| "(expression)".to_string());
         let indexes = &mut table(&mut tables, &name).indexes;
         match indexes.last_mut() {
@@ -244,6 +276,7 @@ fn assemble_details(
                 name: index,
                 columns: vec![column],
                 unique: non_unique == 0,
+                comment,
             }),
         }
     }
@@ -270,6 +303,7 @@ fn assemble_details(
             name: trigger,
             timing,
             event,
+            comment: String::new(),
         });
     }
 
@@ -320,6 +354,7 @@ mod tests {
                 text("NO"),
                 text("PRI"),
                 text("auto_increment"),
+                text("Identifier"),
             ),
             (
                 text("t"),
@@ -327,6 +362,7 @@ mod tests {
                 text("int"),
                 text("YES"),
                 text("MUL"),
+                text(""),
                 text(""),
             ),
             (
@@ -336,14 +372,27 @@ mod tests {
                 text("NO"),
                 text("PRI"),
                 text(""),
+                text(""),
             ),
         ];
         let indexes = vec![
-            (text("t"), text("idx_parent"), 1, Some(text("parent"))),
-            (text("t"), text("PRIMARY"), 0, Some(text("id"))),
-            (text("t"), text("uq_pair"), 0, Some(text("id"))),
-            (text("t"), text("uq_pair"), 0, Some(text("parent"))),
-            (text("u"), text("idx_expr"), 1, None),
+            (
+                text("t"),
+                text("idx_parent"),
+                1,
+                Some(text("parent")),
+                text("By parent"),
+            ),
+            (text("t"), text("PRIMARY"), 0, Some(text("id")), text("")),
+            (text("t"), text("uq_pair"), 0, Some(text("id")), text("")),
+            (
+                text("t"),
+                text("uq_pair"),
+                0,
+                Some(text("parent")),
+                text(""),
+            ),
+            (text("u"), text("idx_expr"), 1, None, text("")),
         ];
         let foreign_keys = vec![(
             text("t"),
@@ -362,12 +411,15 @@ mod tests {
         assert_eq!(t.table, "t");
         assert_eq!(t.columns.len(), 2);
         assert!(t.columns[0].auto_increment);
+        assert_eq!(t.columns[0].comment, "Identifier");
+        assert_eq!(t.columns[1].comment, "");
         assert!(!t.columns[1].auto_increment);
         let names: Vec<_> = t.indexes.iter().map(|index| index.name.as_str()).collect();
         assert_eq!(names, ["PRIMARY", "idx_parent", "uq_pair"]);
         assert_eq!(t.indexes[2].columns, ["id", "parent"]);
         assert!(t.indexes[2].unique);
         assert!(!t.indexes[1].unique);
+        assert_eq!(t.indexes[1].comment, "By parent");
         assert_eq!(t.foreign_keys[0].referenced_table, "u");
         assert_eq!(t.triggers[0].name, "t_bi");
         assert_eq!(tables[1].indexes[0].columns, ["(expression)"]);

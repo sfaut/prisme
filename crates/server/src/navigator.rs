@@ -316,6 +316,7 @@ mod tests {
         .map(|(name, system)| NamespaceInfo {
             namespace: Namespace::single(name),
             system,
+            comment: String::new(),
         })
         .to_vec();
         let order = super::reading_order(&namespaces, Some(&Namespace::single("xlist")));

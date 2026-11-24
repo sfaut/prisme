@@ -1,6 +1,6 @@
 //! Display of an editor, saved with it: its panels (open or closed, their
 //! size), the tree of its object navigator (open nodes, scroll, "Tables"
-//! folders sorted by row count), its result tab shown and its position in
+//! folders sorted by row count, comments shown or not), its result tab shown and its position in
 //! the SQL text (cursor, scroll, folded passages). It survives a page reload, and the closing
 //! of the editor followed by its reopening ("Rouvrir").
 //!
@@ -88,6 +88,10 @@ pub struct NavigatorTree {
     /// Keys of the "Tables" folders sorted by row count, the largest first;
     /// the other folders are sorted by name.
     pub tables_by_rows: Vec<String>,
+    /// Are the comments of the objects shown after their name and row
+    /// count? Hidden by default.
+    #[serde(default)]
+    pub comments: bool,
 }
 
 #[cfg(test)]

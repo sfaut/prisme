@@ -23,6 +23,7 @@ use crate::api::{
 use crate::catalog::ObjectKind;
 use crate::columns::Cell;
 use crate::failure::FailureCause;
+use crate::flavor::Flavor;
 use crate::outcome::{Notice, StatementOutcome};
 
 /// Driver of MySQL and MariaDB, for the registry (`drivers::of`).
@@ -227,7 +228,8 @@ impl Session for MysqlSession {
     }
 
     fn catalog(&mut self) -> Box<dyn CatalogReader + '_> {
-        Box::new(MysqlCatalog::new(&mut self.connection))
+        let mariadb = self.info.flavor == Flavor::MariaDb;
+        Box::new(MysqlCatalog::new(&mut self.connection, mariadb))
     }
 
     fn close(self: Box<Self>) -> BoxFuture<'static, ()> {

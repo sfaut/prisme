@@ -31,13 +31,21 @@ const catalog: CatalogSchema[] = [
     table('orders', 1300, {
       table: 'orders',
       columns: [
-        { name: 'id', column_type: 'int', nullable: false, key: 'PRI', auto_increment: true },
+        {
+          name: 'id',
+          column_type: 'int',
+          nullable: false,
+          key: 'PRI',
+          auto_increment: true,
+          comment: '',
+        },
         {
           name: 'note',
           column_type: 'varchar(20)',
           nullable: true,
           key: '',
           auto_increment: false,
+          comment: '',
         },
         {
           name: 'client_id',
@@ -45,11 +53,12 @@ const catalog: CatalogSchema[] = [
           nullable: false,
           key: 'MUL',
           auto_increment: false,
+          comment: '',
         },
       ],
       indexes: [
-        { name: 'PRIMARY', columns: ['id'], unique: true },
-        { name: 'client_id', columns: ['client_id'], unique: false },
+        { name: 'PRIMARY', columns: ['id'], unique: true, comment: '' },
+        { name: 'client_id', columns: ['client_id'], unique: false, comment: '' },
       ],
       foreign_keys: [
         {
@@ -257,6 +266,45 @@ describe('catalogNodes', () => {
     expect(views?.children?.[0]?.note).toBeUndefined()
   })
 
+  it('carries the comment of each object', () => {
+    const commented = <T extends object>(value: T, comment: string) => ({ ...value, comment })
+    const details = {
+      table: 't',
+      columns: [
+        commented(
+          { name: 'id', column_type: 'int', nullable: false, key: 'PRI', auto_increment: true },
+          'Identifier',
+        ),
+      ],
+      indexes: [commented({ name: 'PRIMARY', columns: ['id'], unique: true }, 'Key')],
+      foreign_keys: [],
+      triggers: [commented({ name: 'tr', timing: 'AFTER', event: 'INSERT' }, 'Audit')],
+    }
+    const schemas: CatalogSchema[] = [
+      commented(
+        schema('shop', [
+          commented(table('t', 1, details), 'Orders'),
+          commented(view('v'), 'Open orders'),
+          commented(routine('p', 'procedure'), 'Purge'),
+          commented(event('e', true), 'Nightly'),
+        ]),
+        'Shop',
+      ),
+    ]
+    const [shop] = catalogNodes(1, schemas)
+    expect(shop?.comment).toBe('Shop')
+    const [tables, views, procedures, , events] = shop?.children ?? []
+    const t = tables?.children?.[0]
+    expect(t?.comment).toBe('Orders')
+    expect(views?.children?.[0]?.comment).toBe('Open orders')
+    expect(procedures?.children?.[0]?.comment).toBe('Purge')
+    expect(events?.children?.[0]?.comment).toBe('Nightly')
+    const [columns, indexes, , , triggers] = t?.children ?? []
+    expect(columns?.children?.[0]?.comment).toBe('Identifier')
+    expect(indexes?.children?.[0]?.comment).toBe('Key')
+    expect(triggers?.children?.[0]?.comment).toBe('Audit')
+  })
+
   it('sorts the tables of a folder by name, or by row count when chosen', () => {
     const schemas: CatalogSchema[] = [
       schema('shop', [table('a', 10), table('b', null), table('c', 500), table('d', 10)]),
@@ -372,11 +420,17 @@ describe('catalogNodes', () => {
   })
 
   it('labels indexes, foreign keys and triggers', () => {
-    expect(indexLabel({ name: 'PRIMARY', columns: ['id'], unique: true })).toBe('PRIMARY (id)')
-    expect(indexLabel({ name: 'uq', columns: ['a', 'b'], unique: true })).toBe('uq (a, b)')
-    expect(indexNote({ name: 'PRIMARY', columns: ['id'], unique: true })).toBe('PRIMARY KEY')
-    expect(indexNote({ name: 'uq', columns: ['a', 'b'], unique: true })).toBe('UNIQUE')
-    expect(indexNote({ name: 'idx', columns: ['a'], unique: false })).toBeUndefined()
+    expect(indexLabel({ name: 'PRIMARY', columns: ['id'], unique: true, comment: '' })).toBe(
+      'PRIMARY (id)',
+    )
+    expect(indexLabel({ name: 'uq', columns: ['a', 'b'], unique: true, comment: '' })).toBe(
+      'uq (a, b)',
+    )
+    expect(indexNote({ name: 'PRIMARY', columns: ['id'], unique: true, comment: '' })).toBe(
+      'PRIMARY KEY',
+    )
+    expect(indexNote({ name: 'uq', columns: ['a', 'b'], unique: true, comment: '' })).toBe('UNIQUE')
+    expect(indexNote({ name: 'idx', columns: ['a'], unique: false, comment: '' })).toBeUndefined()
     const key = {
       name: 'fk_customer',
       columns: ['customer_id'],
@@ -386,9 +440,9 @@ describe('catalogNodes', () => {
     }
     expect(foreignKeyLabel('shop', key)).toBe('fk_customer (customer_id) → crm.customers (id)')
     expect(foreignKeyLabel('crm', key)).toBe('fk_customer (customer_id) → customers (id)')
-    expect(triggerLabel({ name: 'orders_bi', timing: 'BEFORE', event: 'INSERT' })).toBe(
-      'orders_bi · BEFORE INSERT',
-    )
+    expect(
+      triggerLabel({ name: 'orders_bi', timing: 'BEFORE', event: 'INSERT', comment: '' }),
+    ).toBe('orders_bi · BEFORE INSERT')
   })
 
   it('labels a reference, a composite key and a reference of another database', () => {
@@ -448,7 +502,7 @@ describe('applyCatalogEvent', () => {
     applyCatalogEvent(state, {
       type: 'namespaces',
       source: MYSQL_SOURCE,
-      namespaces: [{ namespace: ['a'], system: false }],
+      namespaces: [{ namespace: ['a'], system: false, comment: '' }],
     })
     expect(state.schemas).toEqual([schema('a', null)])
     expect(state.source).toEqual(MYSQL_SOURCE)
@@ -457,10 +511,10 @@ describe('applyCatalogEvent', () => {
       type: 'objects',
       namespace: ['a'],
       objects: [
-        { name: 't', kind: 'table', rows: 0, enabled: null },
-        { name: 'u', kind: 'table', rows: 0, enabled: null },
+        { name: 't', kind: 'table', rows: 0, enabled: null, comment: '' },
+        { name: 'u', kind: 'table', rows: 0, enabled: null, comment: '' },
         // A procedure named as a table: the details of the table are not its own.
-        { name: 't', kind: 'procedure', rows: null, enabled: null },
+        { name: 't', kind: 'procedure', rows: null, enabled: null, comment: '' },
       ],
     })
     applyCatalogEvent(state, {
@@ -470,7 +524,14 @@ describe('applyCatalogEvent', () => {
         {
           table: 't',
           columns: [
-            { name: 'id', column_type: 'int', nullable: false, key: '', auto_increment: false },
+            {
+              name: 'id',
+              column_type: 'int',
+              nullable: false,
+              key: '',
+              auto_increment: false,
+              comment: '',
+            },
           ],
           indexes: [],
           foreign_keys: [],

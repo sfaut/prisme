@@ -18,6 +18,9 @@ pub struct NamespaceInfo {
     /// `performance_schema`, `sys` for MySQL)? The navigator reads it last,
     /// and shows it only when the connection asks for it.
     pub system: bool,
+    /// Comment the source keeps for it, empty if none (`docs/DEVELOPER.md`,
+    /// section "Comments of the objects").
+    pub comment: String,
 }
 
 /// Object of a namespace: table, view, routine, event...
@@ -34,6 +37,9 @@ pub struct ObjectInfo {
     /// Is a scheduled object running on its schedule (`ENABLED` event), or
     /// paused? `None` for an object without a schedule.
     pub enabled: Option<bool>,
+    /// Comment the source keeps for it, empty if none (`docs/DEVELOPER.md`,
+    /// section "Comments of the objects").
+    pub comment: String,
 }
 
 /// Kind of an object of a namespace. Kinds are only added, as the engines
@@ -70,6 +76,9 @@ pub struct ColumnInfo {
     pub key: String,
     /// Value assigned automatically on insert (`AUTO_INCREMENT`)?
     pub auto_increment: bool,
+    /// Comment the source keeps for it, empty if none (`docs/DEVELOPER.md`,
+    /// section "Comments of the objects").
+    pub comment: String,
 }
 
 /// Index of a table.
@@ -83,6 +92,9 @@ pub struct IndexInfo {
     pub columns: Vec<String>,
     /// Unique index?
     pub unique: bool,
+    /// Comment the source keeps for it, empty if none (`docs/DEVELOPER.md`,
+    /// section "Comments of the objects").
+    pub comment: String,
 }
 
 /// Foreign key of a table.
@@ -111,6 +123,9 @@ pub struct TriggerInfo {
     pub timing: String,
     /// Event: `INSERT`, `UPDATE` or `DELETE`.
     pub event: String,
+    /// Comment the source keeps for it, empty if none (`docs/DEVELOPER.md`,
+    /// section "Comments of the objects").
+    pub comment: String,
 }
 
 /// Details of a table: columns, indexes, foreign keys and triggers.

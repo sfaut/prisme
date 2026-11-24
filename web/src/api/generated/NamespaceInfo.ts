@@ -15,4 +15,9 @@ export type NamespaceInfo = {
    * and shows it only when the connection asks for it.
    */
   system: boolean;
+  /**
+   * Comment the source keeps for it, empty if none (`docs/DEVELOPER.md`,
+   * section "Comments of the objects").
+   */
+  comment: string;
 };

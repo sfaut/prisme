@@ -18,7 +18,7 @@ export function schema(
   objects: CatalogObject[] | null,
   system = false,
 ): CatalogSchema {
-  return { name, namespace: [name], system, objects }
+  return { name, namespace: [name], system, objects, comment: '' }
 }
 
 /**
@@ -33,7 +33,7 @@ export function table(
   rows: number | null,
   details: TableDetails | null = null,
 ): CatalogObject {
-  return { name, kind: 'table', rows, enabled: null, details }
+  return { name, kind: 'table', rows, enabled: null, details, comment: '' }
 }
 
 /**
@@ -42,7 +42,7 @@ export function table(
  * @param name Name of the view.
  */
 export function view(name: string): CatalogObject {
-  return { name, kind: 'view', rows: null, enabled: null, details: null }
+  return { name, kind: 'view', rows: null, enabled: null, details: null, comment: '' }
 }
 
 /**
@@ -52,7 +52,7 @@ export function view(name: string): CatalogObject {
  * @param kind Procedure or function.
  */
 export function routine(name: string, kind: 'procedure' | 'function'): CatalogObject {
-  return { name, kind, rows: null, enabled: null, details: null }
+  return { name, kind, rows: null, enabled: null, details: null, comment: '' }
 }
 
 /**
@@ -62,5 +62,5 @@ export function routine(name: string, kind: 'procedure' | 'function'): CatalogOb
  * @param enabled Does it run on its schedule?
  */
 export function event(name: string, enabled: boolean): CatalogObject {
-  return { name, kind: 'event', rows: null, enabled, details: null }
+  return { name, kind: 'event', rows: null, enabled, details: null, comment: '' }
 }
