@@ -15,7 +15,7 @@ use sqlparser::ast::{
     AlterTableOperation, ObjectName, ObjectNamePart, ObjectType, RenameTableNameKind, Statement,
 };
 
-use crate::Dialect;
+use crate::SessionDialect;
 use crate::mysql_statements::MySqlStatement;
 use crate::parse::{Parsed, parse_statements};
 
@@ -49,7 +49,7 @@ pub enum TemporaryChange {
 
 /// Changes that the text `sql` brings to the temporary tables of its
 /// connection, in order; none if it cannot be parsed.
-pub fn temporary_changes(sql: &str, dialect: Dialect) -> Vec<TemporaryChange> {
+pub fn temporary_changes(sql: &str, dialect: impl Into<SessionDialect>) -> Vec<TemporaryChange> {
     let Ok(statements) = parse_statements(sql, dialect) else {
         return Vec::new();
     };
@@ -131,6 +131,7 @@ pub(crate) fn table_name(name: &ObjectName) -> Option<TableName> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Dialect;
 
     fn table(schema: Option<&str>, name: &str) -> TableName {
         TableName {

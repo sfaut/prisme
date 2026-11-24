@@ -13,4 +13,14 @@ export type AnalyzeRequest = {
    * Flavor of the session's server, which sets the dialect of the analysis.
    */
   flavor: Flavor;
+  /**
+   * Do double quotes delimit identifiers, no longer strings (MySQL's
+   * `ANSI_QUOTES` mode, directly or through `ANSI`; always for SQLite)?
+   */
+  ansi_quotes: boolean;
+  /**
+   * Is the backslash an ordinary character in strings, no longer an
+   * escape (MySQL's `NO_BACKSLASH_ESCAPES` mode; always for SQLite)?
+   */
+  no_backslash_escapes: boolean;
 };

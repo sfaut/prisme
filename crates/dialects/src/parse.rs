@@ -19,7 +19,7 @@ use sqlparser::tokenizer::Token;
 use crate::mysql_statements::{self, MySqlStatement};
 use crate::sqlite_statements::{SqliteStatement, parse_replace, parse_sqlite_statement};
 use crate::words::expect_end;
-use crate::{Dialect, Statements};
+use crate::{Dialect, SessionDialect, Statements};
 
 /// Statement parsed by `sqlparser`, or a MySQL / MariaDB statement it does
 /// not know.
@@ -37,13 +37,18 @@ pub(crate) enum Parsed {
 }
 
 /// Parses the queries of the text, separated by `;`, as `Parser::parse_sql`
-/// does, with the statements of `mysql_statements.rs`.
+/// does, with the statements of `mysql_statements.rs`, in the lexical
+/// settings of the session (`ANSI_QUOTES`).
 ///
 /// # Errors
 ///
 /// Returns the error of the first query not understood.
-pub(crate) fn parse_statements(sql: &str, dialect: Dialect) -> Result<Vec<Parsed>, ParserError> {
-    let parser_dialect = dialect.parser_dialect();
+pub(crate) fn parse_statements(
+    sql: &str,
+    dialect: impl Into<SessionDialect>,
+) -> Result<Vec<Parsed>, ParserError> {
+    let session: SessionDialect = dialect.into();
+    let parser_dialect = session.parser_dialect();
     let mut parser = Parser::new(parser_dialect.as_ref()).try_with_sql(sql)?;
     let mut statements = Vec::new();
     loop {
@@ -51,7 +56,7 @@ pub(crate) fn parse_statements(sql: &str, dialect: Dialect) -> Result<Vec<Parsed
         if parser.peek_token_ref().token == Token::EOF {
             return Ok(statements);
         }
-        statements.push(match dialect.spec().statements {
+        statements.push(match session.dialect.spec().statements {
             Statements::MySql => parse_mysql_statement(&mut parser)?,
             Statements::Sqlite => parse_sqlite(&mut parser)?,
         });

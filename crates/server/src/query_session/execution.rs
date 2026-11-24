@@ -12,7 +12,6 @@ use futures_util::future::join_all;
 use prisme_connectors::api::{self, ConnectorError, Namespace, OpenOptions};
 use prisme_connectors::columns::Cell;
 use prisme_connectors::drivers;
-use prisme_connectors::flavor::Flavor;
 use prisme_connectors::sql_log::{self, Sent};
 use prisme_dialects::classify::{StatementKind, changes_database, classify, classify_with};
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit, written_limit};
@@ -24,8 +23,7 @@ use tracing::Instrument;
 use super::limits::{RunLimits, limit_error, report, write_refusal};
 use super::outbox::SessionStopped;
 use super::protocol::{SelectionRange, ServerMessage};
-use super::session::{Session, Summary, database_of};
-use crate::analyze::dialect_of;
+use super::session::{Language, Session, Summary, database_of};
 use crate::console::{self, Action};
 use crate::error_detail::ErrorDetail;
 
@@ -55,19 +53,19 @@ impl Session<'_> {
     pub(super) async fn run_on_session(
         &self,
         connection: &mut dyn api::Session,
-        flavor: Flavor,
+        language: Language,
         query: u32,
         sql: &str,
         limits: &RunLimits,
     ) -> Result<bool, SessionStopped> {
         self.outbox.send(ServerMessage::Started { query }).await?;
         let Some(summary) = self
-            .run_query(connection, flavor, query, sql, limits)
+            .run_query(connection, language, query, sql, limits)
             .await?
         else {
             return Ok(false);
         };
-        let database = if changes_database(sql, dialect_of(flavor)) {
+        let database = if changes_database(sql, language.dialect) {
             match connection.current_namespace().await {
                 Ok(namespace) => {
                     let database = database_of(namespace);
@@ -75,7 +73,7 @@ impl Session<'_> {
                     database
                 }
                 Err(error) => {
-                    let detail = ErrorDetail::of_connector(&error, Some(flavor));
+                    let detail = ErrorDetail::of_connector(&error, Some(language.flavor));
                     self.outbox.error(Some(query), detail).await?;
                     return Ok(false);
                 }
@@ -94,7 +92,7 @@ impl Session<'_> {
         &self,
         connection: &mut dyn api::Session,
         statements: &[&Statement],
-        flavor: Flavor,
+        language: Language,
         limits: &RunLimits,
     ) -> Result<(), SessionStopped> {
         let mut failed = false;
@@ -109,7 +107,7 @@ impl Session<'_> {
                 continue;
             }
             failed = !self
-                .run_on_session(connection, flavor, query, &statement.sql, limits)
+                .run_on_session(connection, language, query, &statement.sql, limits)
                 .await?;
         }
         Ok(())
@@ -120,7 +118,7 @@ impl Session<'_> {
     pub(super) async fn run_in_parallel(
         &self,
         statements: &[&Statement],
-        flavor: Flavor,
+        language: Language,
         limits: &RunLimits,
         database: &Option<String>,
     ) -> Result<(), SessionStopped> {
@@ -130,7 +128,7 @@ impl Session<'_> {
         for (query, statement) in (0_u32..).zip(statements.iter()) {
             runs.push(self.run_with_permit(
                 &permits,
-                flavor,
+                language,
                 query,
                 &statement.sql,
                 limits,
@@ -145,7 +143,7 @@ impl Session<'_> {
     pub(super) async fn run_with_permit(
         &self,
         permits: &Semaphore,
-        flavor: Flavor,
+        language: Language,
         query: u32,
         sql: &str,
         limits: &RunLimits,
@@ -159,7 +157,7 @@ impl Session<'_> {
                 .await;
         }
         self.outbox.send(ServerMessage::Started { query }).await?;
-        self.run_on_new_connection(flavor, query, sql, limits, database)
+        self.run_on_new_connection(language, query, sql, limits, database)
             .await
     }
 
@@ -169,7 +167,7 @@ impl Session<'_> {
     /// settings, and attaches the databases of the session's connection.
     pub(super) async fn run_on_new_connection(
         &self,
-        flavor: Flavor,
+        language: Language,
         query: u32,
         sql: &str,
         limits: &RunLimits,
@@ -188,12 +186,12 @@ impl Session<'_> {
         let mut connection = match drivers::of(target.engine).open(&target, options).await {
             Ok(connection) => connection,
             Err(error) => {
-                let detail = ErrorDetail::of_connector(&error, Some(flavor));
+                let detail = ErrorDetail::of_connector(&error, Some(language.flavor));
                 return self.outbox.error(Some(query), detail).await;
             }
         };
         let result = match self
-            .run_query(connection.as_mut(), flavor, query, sql, limits)
+            .run_query(connection.as_mut(), language, query, sql, limits)
             .await
         {
             Ok(Some(summary)) => self.done(query, summary, database.clone()).await,
@@ -213,7 +211,7 @@ impl Session<'_> {
     pub(super) async fn run_query(
         &self,
         connection: &mut dyn api::Session,
-        flavor: Flavor,
+        language: Language,
         query: u32,
         sql: &str,
         limits: &RunLimits,
@@ -221,12 +219,12 @@ impl Session<'_> {
         let max_rows = limits.max_rows;
         let database = self.current_database();
         let temporary = |table: &TableName| self.is_temporary(table, database.as_deref());
-        let kind = classify_with(sql, dialect_of(flavor), &temporary);
+        let kind = classify_with(sql, language.dialect, &temporary);
         if let Some(refusal) = write_refusal(&kind, &limits.writes) {
             self.outbox.error(Some(query), refusal).await?;
             return Ok(None);
         }
-        let limited = match apply_default_limit(sql, dialect_of(flavor), max_rows as u64) {
+        let limited = match apply_default_limit(sql, language.dialect, max_rows as u64) {
             Ok(limited) => limited,
             Err(error) => {
                 self.outbox.error(Some(query), limit_error(&error)).await?;
@@ -254,7 +252,8 @@ impl Session<'_> {
         }
         let executing = Instant::now();
         // Only the session's connection writes: the parallel queries only read.
-        let follow = |succeeded| self.follow_temporary(sql, flavor, database.as_deref(), succeeded);
+        let follow =
+            |succeeded| self.follow_temporary(sql, language, database.as_deref(), succeeded);
         let mut stream = match connection.execute(&limited.sql).await {
             Ok(stream) => {
                 follow(true);
@@ -262,7 +261,7 @@ impl Session<'_> {
             }
             Err(error) => {
                 follow(false);
-                let detail = self.failure(query, flavor, &error);
+                let detail = self.failure(query, language, &error);
                 sql_log::record(&Sent {
                     sql: &limited.sql,
                     duration: executing.elapsed(),
@@ -315,7 +314,7 @@ impl Session<'_> {
                     LimitOutcome::Added | LimitOutcome::Unparsed | LimitOutcome::Capped => {
                         Some(max_rows as u64)
                     }
-                    LimitOutcome::UserLimit => written_limit(sql, dialect_of(flavor)),
+                    LimitOutcome::UserLimit => written_limit(sql, language.dialect),
                     LimitOutcome::NotApplicable => None,
                 },
                 execution_us: u64::try_from(execution.as_micros()).unwrap_or(u64::MAX),
@@ -351,7 +350,7 @@ impl Session<'_> {
                 Ok(None) => break,
                 Err(error) => {
                     stream.discard().await;
-                    let detail = self.failure(query, flavor, &error);
+                    let detail = self.failure(query, language, &error);
                     trace(row_count, false, 0, Some(&detail));
                     self.outbox.error(Some(query), detail).await?;
                     return Ok(None);
@@ -428,13 +427,13 @@ impl Session<'_> {
     pub(super) fn failure(
         &self,
         query: u32,
-        flavor: Flavor,
+        language: Language,
         error: &ConnectorError,
     ) -> ErrorDetail {
         if self.is_cancelled(query) {
             ErrorDetail::QueryInterrupted
         } else {
-            ErrorDetail::of_connector(error, Some(flavor))
+            ErrorDetail::of_connector(error, Some(language.flavor))
         }
     }
 
@@ -463,10 +462,10 @@ impl Session<'_> {
 /// connection. A write, a setting of the session, a control of the
 /// transaction or a query Prisme cannot parse needs the session's connection
 /// and the order of the text.
-pub(super) fn reads_only(statements: &[&Statement], flavor: Flavor) -> bool {
+pub(super) fn reads_only(statements: &[&Statement], language: Language) -> bool {
     statements
         .iter()
-        .all(|statement| classify(&statement.sql, dialect_of(flavor)) == StatementKind::Read)
+        .all(|statement| classify(&statement.sql, language.dialect) == StatementKind::Read)
 }
 
 /// Rows of a result gathered into the batches of the `rows` messages. A

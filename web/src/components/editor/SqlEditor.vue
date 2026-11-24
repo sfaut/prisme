@@ -46,6 +46,7 @@ import { EditorView } from 'codemirror'
 import { computed, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue'
 
 import { analyzeSql } from '@/api/analyze'
+import type { DialectOptions } from '@/api/generated/DialectOptions'
 import type { DialectSyntax } from '@/api/generated/DialectSyntax'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { NamespaceLevel } from '@/api/generated/NamespaceLevel'
@@ -80,10 +81,10 @@ const props = defineProps<{
    */
   version: string | null
   /**
-   * Is the `ANSI_QUOTES` mode active on the session? Double quotes then
-   * delimit identifiers (highlighting, completion).
+   * Lexical settings of the session: under `ANSI_QUOTES`, double quotes
+   * delimit identifiers (highlighting, completion, analysis).
    */
-  ansiQuotes: boolean
+  dialectOptions: DialectOptions
   /**
    * Databases of the connection's catalog: their tables and columns are
    * offered by completion.
@@ -181,7 +182,7 @@ async function analyze(): Promise<void> {
     return
   }
   try {
-    const analysis = await analyzeSql(doc.toString(), props.flavor)
+    const analysis = await analyzeSql(doc.toString(), props.flavor, props.dialectOptions)
     if (view?.state.doc === doc) {
       const diagnostics: Diagnostic[] = analysis.errors.map((error) => ({
         from: error.start,
@@ -216,7 +217,7 @@ const reserved = shallowRef<ReadonlySet<string>>(new Set())
  * Databases, tables and columns offered by completion, quoted when needed.
  */
 const completion = computed(() =>
-  completionSchema(props.schemas, props.ansiQuotes, reserved.value, props.level),
+  completionSchema(props.schemas, props.dialectOptions.ansi_quotes, reserved.value, props.level),
 )
 
 /**
@@ -261,7 +262,10 @@ const FALLBACK_DIALECTS: Record<Flavor, SQLDialect> = {
  */
 function currentLanguage(): LanguageSupport {
   const fallback = FALLBACK_DIALECTS[props.flavor]
-  const dialect = syntax === null ? fallback : editorDialect(syntax, props.flavor, props.ansiQuotes)
+  const dialect =
+    syntax === null
+      ? fallback
+      : editorDialect(syntax, props.flavor, props.dialectOptions.ansi_quotes)
   // Workaround: language assembled by hand, because `sql()` always adds the
   // completion of keywords; only the names of the catalog are offered
   // (`docs/DEVELOPER.md`, section "Workarounds").
@@ -363,7 +367,7 @@ watch(text, (value) => {
 })
 
 watch(
-  () => [props.flavor, props.ansiQuotes, completion.value, props.defaultSchema],
+  () => [props.flavor, props.dialectOptions.ansi_quotes, completion.value, props.defaultSchema],
   () => view?.dispatch({ effects: language.reconfigure(currentLanguage()) }),
 )
 
@@ -373,7 +377,7 @@ watch(
 )
 
 // The dialect changes when the session opens: the analysis must be redone.
-watch(() => props.flavor, scheduleAnalysis)
+watch(() => [props.flavor, props.dialectOptions.ansi_quotes], scheduleAnalysis)
 
 // Dialect or version known or changed: their keywords must be read again.
 watch(() => [props.flavor, props.version], loadKeywords, { immediate: true })

@@ -495,6 +495,11 @@ async fn runs_the_writes_the_settings_allow() {
             assert_eq!(result.end["type"], "done", "{sql}: {:?}", result.end);
         }
 
+        // Double quotes delimit names under the session's `ANSI_QUOTES` mode.
+        let sql = r#"CREATE TEMPORARY TABLE "quoted" ("col" VARCHAR(10))"#;
+        let result = run_one(&mut socket, sql, None).await;
+        assert_eq!(result.end["type"], "done", "{sql}: {:?}", result.end);
+
         // The end of a write says what it did, and the warnings are read
         // right after it, for its result.
         let result = run_one(&mut socket, "INSERT INTO w VALUES (3)", None).await;

@@ -22,6 +22,7 @@ use prisme_connectors::drivers;
 use prisme_connectors::flavor::Flavor;
 use prisme_connectors::location::Location;
 use prisme_connectors::outcome::StatementOutcome;
+use prisme_dialects::SessionDialect;
 use prisme_dialects::classify::{StatementKind, WriteKind, classify, ends_transaction};
 use prisme_dialects::temporary::{TableName, temporary_changes};
 use prisme_dialects::verb::StatementVerb;
@@ -36,7 +37,7 @@ use super::limits::run_limits;
 use super::outbox::{Outbox, SessionStopped};
 use super::protocol::{BatchQuery, QueryRequest, ServerMessage, SessionRequest};
 use super::temporary_tables::TemporaryTables;
-use crate::analyze::dialect_of;
+use crate::analyze::session_dialect;
 use crate::api::AppState;
 use crate::api_error::ApiError;
 use crate::connections::{self, ConnectionsError};
@@ -76,13 +77,13 @@ pub(super) async fn serve(
     // The databases of the session, told at once: the navigator shows where
     // each one lies.
     let ready = match ready {
-        Ok(flavor) => session
+        Ok(language) => session
             .tell_databases(connection.as_mut())
             .await
-            .map(|()| flavor),
+            .map(|()| language),
         Err(stopped) => Err(stopped),
     };
-    if let Ok(flavor) = ready {
+    if let Ok(language) = ready {
         loop {
             let request = tokio::select! {
                 _ = stop.changed() => break,
@@ -97,19 +98,19 @@ pub(super) async fn serve(
                     let session = Session { batch, ..session };
                     let span = console::action_span(action_of(&request));
                     session
-                        .handle(connection.as_mut(), flavor, request)
+                        .handle(connection.as_mut(), language, request)
                         .instrument(span)
                         .await
                 }
                 SessionRequest::Use(database) => {
                     session
-                        .use_database(connection.as_mut(), flavor, &database)
+                        .use_database(connection.as_mut(), language, &database)
                         .instrument(console::action_span(Action::Use))
                         .await
                 }
                 SessionRequest::Backup { schema, location } => {
                     session
-                        .backup(connection.as_mut(), flavor, &schema, &location)
+                        .backup(connection.as_mut(), language, &schema, &location)
                         .instrument(console::action_span(Action::Databases))
                         .await
                 }
@@ -119,13 +120,13 @@ pub(super) async fn serve(
                     save,
                 } => {
                     session
-                        .attach(connection.as_mut(), flavor, &schema, &location, save)
+                        .attach(connection.as_mut(), language, &schema, &location, save)
                         .instrument(console::action_span(Action::Databases))
                         .await
                 }
                 SessionRequest::Detach(schema) => {
                     session
-                        .detach(connection.as_mut(), flavor, &schema)
+                        .detach(connection.as_mut(), language, &schema)
                         .instrument(console::action_span(Action::Databases))
                         .await
                 }
@@ -148,6 +149,17 @@ fn action_of(request: &QueryRequest) -> Action {
         (None, None) if request.exact == Some(true) => Action::RunExact,
         (None, None) => Action::RunAll,
     }
+}
+
+/// Language of the source of a session: its flavor, and the dialect its
+/// texts are read in, with the lexical settings of the session
+/// (`ANSI_QUOTES`), read when it opens.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Language {
+    /// Flavor of the source.
+    pub(super) flavor: Flavor,
+    /// Dialect of the session's texts.
+    pub(super) dialect: SessionDialect,
 }
 
 /// What the queries need while running.
@@ -214,11 +226,11 @@ impl Session<'_> {
     pub(super) fn follow_temporary(
         &self,
         sql: &str,
-        flavor: Flavor,
+        language: Language,
         database: Option<&str>,
         succeeded: bool,
     ) {
-        let changes = temporary_changes(sql, dialect_of(flavor));
+        let changes = temporary_changes(sql, language.dialect);
         if changes.is_empty() {
             return;
         }
@@ -242,8 +254,8 @@ impl Session<'_> {
     }
 
     /// Announces the session to the client: identity of the source and current
-    /// database. Returns the source's flavor.
-    async fn ready(&self, connection: &mut dyn api::Session) -> Result<Flavor, SessionStopped> {
+    /// database. Returns the language of the source.
+    async fn ready(&self, connection: &mut dyn api::Session) -> Result<Language, SessionStopped> {
         let info = connection.info().clone();
         let database = match connection.current_namespace().await {
             Ok(namespace) => database_of(namespace),
@@ -254,7 +266,10 @@ impl Session<'_> {
             }
         };
         self.remember_database(&database);
-        let flavor = info.flavor;
+        let language = Language {
+            flavor: info.flavor,
+            dialect: session_dialect(&info),
+        };
         self.outbox
             .send(ServerMessage::Ready {
                 server: info,
@@ -262,7 +277,7 @@ impl Session<'_> {
                 transaction: false,
             })
             .await?;
-        Ok(flavor)
+        Ok(language)
     }
 
     /// Tells the client when a transaction opened or ended on the session's
@@ -292,7 +307,7 @@ impl Session<'_> {
     async fn use_database(
         &self,
         connection: &mut dyn api::Session,
-        flavor: Flavor,
+        language: Language,
         database: &str,
     ) -> Result<(), SessionStopped> {
         let namespace = Namespace::single(database);
@@ -307,7 +322,7 @@ impl Session<'_> {
                 self.outbox.send(ServerMessage::Database { database }).await
             }
             Err(error) => {
-                let detail = ErrorDetail::of_connector(&error, Some(flavor));
+                let detail = ErrorDetail::of_connector(&error, Some(language.flavor));
                 self.outbox.error(None, detail).await
             }
         }
@@ -320,7 +335,7 @@ impl Session<'_> {
     async fn backup(
         &self,
         connection: &mut dyn api::Session,
-        flavor: Flavor,
+        language: Language,
         schema: &str,
         location: &str,
     ) -> Result<(), SessionStopped> {
@@ -339,7 +354,7 @@ impl Session<'_> {
                     .await
             }
             Err(error) => {
-                let detail = ErrorDetail::of_connector(&error, Some(flavor));
+                let detail = ErrorDetail::of_connector(&error, Some(language.flavor));
                 self.outbox.error(None, detail).await
             }
         }
@@ -353,7 +368,7 @@ impl Session<'_> {
     async fn attach(
         &self,
         connection: &mut dyn api::Session,
-        flavor: Flavor,
+        language: Language,
         schema: &str,
         location: &str,
         save: bool,
@@ -383,7 +398,7 @@ impl Session<'_> {
                 self.outbox.error(None, detail).await
             }
             Err(error) => {
-                let detail = ErrorDetail::of_connector(&error, Some(flavor));
+                let detail = ErrorDetail::of_connector(&error, Some(language.flavor));
                 self.outbox.error(None, detail).await
             }
         }
@@ -411,13 +426,13 @@ impl Session<'_> {
     async fn detach(
         &self,
         connection: &mut dyn api::Session,
-        flavor: Flavor,
+        language: Language,
         schema: &str,
     ) -> Result<(), SessionStopped> {
         match connection.detach(schema).await {
             Ok(()) => self.tell_databases(connection).await,
             Err(error) => {
-                let detail = ErrorDetail::of_connector(&error, Some(flavor));
+                let detail = ErrorDetail::of_connector(&error, Some(language.flavor));
                 self.outbox.error(None, detail).await
             }
         }
@@ -449,14 +464,14 @@ impl Session<'_> {
     async fn handle(
         &self,
         connection: &mut dyn api::Session,
-        flavor: Flavor,
+        language: Language,
         request: QueryRequest,
     ) -> Result<(), SessionStopped> {
         let limits = match run_limits(self.state, self.user_id, request.row_limit).await {
             Ok(limits) => limits,
             Err(detail) => return self.outbox.error(None, detail).await,
         };
-        let statements = split(&request.sql, dialect_of(flavor).lexical_rules());
+        let statements = split(&request.sql, &language.dialect.lexical_rules());
         let cursor = request.tab.map_or(request.cursor, |_| Some(0));
         let selection = request.selection.as_deref().unwrap_or_default();
         let exact = request.exact == Some(true) && cursor.is_none();
@@ -489,19 +504,19 @@ impl Session<'_> {
         self.outbox.send(ServerMessage::Batch { queries }).await?;
 
         if cursor.is_some() {
-            self.run_on_session(connection, flavor, 0, &chosen[0].sql, &limits)
+            self.run_on_session(connection, language, 0, &chosen[0].sql, &limits)
                 .await?;
-        } else if self.parallel(connection) && reads_only(&chosen, flavor) {
+        } else if self.parallel(connection) && reads_only(&chosen, language) {
             let database = self.current_database();
-            self.run_in_parallel(&chosen, flavor, &limits, &database)
+            self.run_in_parallel(&chosen, language, &limits, &database)
                 .await?;
         } else {
-            self.run_in_sequence(connection, &chosen, flavor, &limits)
+            self.run_in_sequence(connection, &chosen, language, &limits)
                 .await?;
         }
         let attaches = chosen
             .iter()
-            .any(|statement| attaches(&statement.sql, flavor));
+            .any(|statement| attaches(&statement.sql, language));
         if attaches && self.follow_databases(connection).await {
             self.outbox
                 .send(ServerMessage::Databases {
@@ -511,7 +526,7 @@ impl Session<'_> {
         }
         let ends = chosen
             .iter()
-            .any(|statement| ends_transaction(&statement.sql, dialect_of(flavor)));
+            .any(|statement| ends_transaction(&statement.sql, language.dialect));
         self.follow_transaction(connection, ends).await?;
         self.outbox.send(ServerMessage::BatchDone).await
     }
@@ -547,9 +562,9 @@ impl Session<'_> {
 }
 
 /// Does the statement `sql` attach or detach a database?
-fn attaches(sql: &str, flavor: Flavor) -> bool {
+fn attaches(sql: &str, language: Language) -> bool {
     matches!(
-        classify(sql, dialect_of(flavor)),
+        classify(sql, language.dialect),
         StatementKind::Write(kinds) if kinds.contains(&WriteKind::Attach)
     )
 }

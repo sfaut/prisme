@@ -82,6 +82,7 @@ import {
 } from '@/api/editors'
 import type { AttachedDatabase } from '@/api/generated/AttachedDatabase'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
+import type { DialectOptions } from '@/api/generated/DialectOptions'
 import type { SelectionRange } from '@/api/generated/SelectionRange'
 import type { TextEnd } from '@/api/generated/TextEnd'
 import {
@@ -208,6 +209,15 @@ const session = useQuerySession(
 const catalog = useCatalogStore()
 const connections = useConnectionsStore()
 const state = session.state
+
+/**
+ * Lexical settings of the session (`ANSI_QUOTES`), those of a session without
+ * modes as long as the source is unknown.
+ */
+const dialectOptions = computed<DialectOptions>(() => ({
+  ansi_quotes: state.server?.ansi_quotes ?? false,
+  no_backslash_escapes: state.server?.no_backslash_escapes ?? false,
+}))
 
 /**
  * Reset of the display of the editor (`editorDisplays.reset`): the grid of
@@ -585,7 +595,7 @@ async function appendToEditor(
   let end: TextEnd
   do {
     text = sql.value
-    end = (await analyzeSql(text, state.server?.flavor ?? 'mysql')).text_end
+    end = (await analyzeSql(text, state.server?.flavor ?? 'mysql', dialectOptions.value)).text_end
   } while (text !== sql.value)
   const appending = append(text, end)
   if (editor.value) {
@@ -1014,7 +1024,7 @@ defineExpose({
           v-model:position="display.sql"
           :flavor="state.server?.flavor ?? 'mysql'"
           :version="state.server?.version ?? null"
-          :ansi-quotes="state.server?.ansi_quotes ?? false"
+          :dialect-options="dialectOptions"
           :schemas="catalogSchemas"
           :level="innerLevel(state.server?.capabilities)"
           :default-schema="state.database"

@@ -1,5 +1,6 @@
 //! `sqlparser` dialect for MySQL and MariaDB: that of `sqlparser`, plus the
-//! compound time units.
+//! compound time units and the `ANSI_QUOTES` mode of the session, under which
+//! double quotes delimit a name (`CREATE TABLE t ("col" INT)`).
 //!
 //! Workaround: `sqlparser` does not parse the compound units, and has no
 //! MariaDB dialect (`docs/DEVELOPER.md`, section "Workarounds").
@@ -42,77 +43,94 @@ const COMPOUND_UNITS: [&str; 11] = [
     "YEAR_MONTH",
 ];
 
-/// MySQL dialect of `sqlparser`, with the compound time units.
+/// MySQL dialect of `sqlparser`, with the compound time units and the
+/// `ANSI_QUOTES` mode of the session.
 #[derive(Debug, Default)]
-pub(crate) struct MySqlParserDialect(MySqlDialect);
+pub(crate) struct MySqlParserDialect {
+    /// Dialect of `sqlparser` that this one extends.
+    base: MySqlDialect,
+    /// Do double quotes delimit identifiers (`ANSI_QUOTES` mode)? `sqlparser`
+    /// reads them as strings, as MySQL does without the mode.
+    ansi_quotes: bool,
+}
+
+impl MySqlParserDialect {
+    /// Dialect of a session, with its `ANSI_QUOTES` mode or without it.
+    pub(crate) fn new(ansi_quotes: bool) -> Self {
+        Self {
+            base: MySqlDialect {},
+            ansi_quotes,
+        }
+    }
+}
 
 impl Dialect for MySqlParserDialect {
     fn dialect(&self) -> TypeId {
-        self.0.dialect()
+        self.base.dialect()
     }
 
     fn parse_prefix(&self, parser: &mut Parser) -> Option<Result<Expr, ParserError>> {
         match &parser.peek_token_ref().token {
             Token::Word(word) if word.keyword == Keyword::EXTRACT => parse_extract(parser),
             Token::Word(word) if word.keyword == Keyword::INTERVAL => parse_interval(parser),
-            _ => self.0.parse_prefix(parser),
+            _ => self.base.parse_prefix(parser),
         }
     }
 
     fn supports_string_literal_table_alias(&self, explicit: bool) -> bool {
-        self.0.supports_string_literal_table_alias(explicit)
+        self.base.supports_string_literal_table_alias(explicit)
     }
 
     fn is_identifier_start(&self, ch: char) -> bool {
-        self.0.is_identifier_start(ch)
+        self.base.is_identifier_start(ch)
     }
 
     fn is_identifier_part(&self, ch: char) -> bool {
-        self.0.is_identifier_part(ch)
+        self.base.is_identifier_part(ch)
     }
 
     fn is_delimited_identifier_start(&self, ch: char) -> bool {
-        self.0.is_delimited_identifier_start(ch)
+        (self.ansi_quotes && ch == '"') || self.base.is_delimited_identifier_start(ch)
     }
 
     fn identifier_quote_style(&self, identifier: &str) -> Option<char> {
-        self.0.identifier_quote_style(identifier)
+        self.base.identifier_quote_style(identifier)
     }
 
     fn ordered_bind_placeholder_style(&self) -> Option<BindPlaceholderStyle> {
-        self.0.ordered_bind_placeholder_style()
+        self.base.ordered_bind_placeholder_style()
     }
 
     fn supports_string_literal_backslash_escape(&self) -> bool {
-        self.0.supports_string_literal_backslash_escape()
+        self.base.supports_string_literal_backslash_escape()
     }
 
     fn supports_string_literal_concatenation(&self) -> bool {
-        self.0.supports_string_literal_concatenation()
+        self.base.supports_string_literal_concatenation()
     }
 
     fn ignores_wildcard_escapes(&self) -> bool {
-        self.0.ignores_wildcard_escapes()
+        self.base.ignores_wildcard_escapes()
     }
 
     fn supports_numeric_prefix(&self) -> bool {
-        self.0.supports_numeric_prefix()
+        self.base.supports_numeric_prefix()
     }
 
     fn supports_literal_prefix_in_qualified_name(&self) -> bool {
-        self.0.supports_literal_prefix_in_qualified_name()
+        self.base.supports_literal_prefix_in_qualified_name()
     }
 
     fn supports_bitwise_shift_operators(&self) -> bool {
-        self.0.supports_bitwise_shift_operators()
+        self.base.supports_bitwise_shift_operators()
     }
 
     fn supports_singular_value_keyword(&self) -> bool {
-        self.0.supports_singular_value_keyword()
+        self.base.supports_singular_value_keyword()
     }
 
     fn supports_multiline_comment_hints(&self) -> bool {
-        self.0.supports_multiline_comment_hints()
+        self.base.supports_multiline_comment_hints()
     }
 
     fn parse_infix(
@@ -121,119 +139,119 @@ impl Dialect for MySqlParserDialect {
         expr: &Expr,
         precedence: u8,
     ) -> Option<Result<Expr, ParserError>> {
-        self.0.parse_infix(parser, expr, precedence)
+        self.base.parse_infix(parser, expr, precedence)
     }
 
     fn parse_statement(&self, parser: &mut Parser) -> Option<Result<Statement, ParserError>> {
-        self.0.parse_statement(parser)
+        self.base.parse_statement(parser)
     }
 
     fn require_interval_qualifier(&self) -> bool {
-        self.0.require_interval_qualifier()
+        self.base.require_interval_qualifier()
     }
 
     fn supports_limit_comma(&self) -> bool {
-        self.0.supports_limit_comma()
+        self.base.supports_limit_comma()
     }
 
     fn supports_create_table_select(&self) -> bool {
-        self.0.supports_create_table_select()
+        self.base.supports_create_table_select()
     }
 
     fn supports_insert_set(&self) -> bool {
-        self.0.supports_insert_set()
+        self.base.supports_insert_set()
     }
 
     fn supports_user_host_grantee(&self) -> bool {
-        self.0.supports_user_host_grantee()
+        self.base.supports_user_host_grantee()
     }
 
     fn is_table_factor_alias(&self, explicit: bool, kw: &Keyword, parser: &mut Parser) -> bool {
-        self.0.is_table_factor_alias(explicit, kw, parser)
+        self.base.is_table_factor_alias(explicit, kw, parser)
     }
 
     fn supports_table_hints(&self) -> bool {
-        self.0.supports_table_hints()
+        self.base.supports_table_hints()
     }
 
     fn requires_single_line_comment_whitespace(&self) -> bool {
-        self.0.requires_single_line_comment_whitespace()
+        self.base.requires_single_line_comment_whitespace()
     }
 
     fn supports_hash_comment(&self) -> bool {
-        self.0.supports_hash_comment()
+        self.base.supports_hash_comment()
     }
 
     fn supports_match_against(&self) -> bool {
-        self.0.supports_match_against()
+        self.base.supports_match_against()
     }
 
     fn supports_select_modifiers(&self) -> bool {
-        self.0.supports_select_modifiers()
+        self.base.supports_select_modifiers()
     }
 
     fn supports_set_names(&self) -> bool {
-        self.0.supports_set_names()
+        self.base.supports_set_names()
     }
 
     fn supports_comma_separated_set_assignments(&self) -> bool {
-        self.0.supports_comma_separated_set_assignments()
+        self.base.supports_comma_separated_set_assignments()
     }
 
     fn supports_alter_column_position(&self) -> bool {
-        self.0.supports_alter_column_position()
+        self.base.supports_alter_column_position()
     }
 
     fn supports_update_order_by(&self) -> bool {
-        self.0.supports_update_order_by()
+        self.base.supports_update_order_by()
     }
 
     fn supports_data_type_signed_suffix(&self) -> bool {
-        self.0.supports_data_type_signed_suffix()
+        self.base.supports_data_type_signed_suffix()
     }
 
     fn supports_data_type_zerofill_suffix(&self) -> bool {
-        self.0.supports_data_type_zerofill_suffix()
+        self.base.supports_data_type_zerofill_suffix()
     }
 
     fn supports_cross_join_constraint(&self) -> bool {
-        self.0.supports_cross_join_constraint()
+        self.base.supports_cross_join_constraint()
     }
 
     fn supports_double_ampersand_operator(&self) -> bool {
-        self.0.supports_double_ampersand_operator()
+        self.base.supports_double_ampersand_operator()
     }
 
     fn get_next_precedence(&self, parser: &Parser) -> Option<Result<u8, ParserError>> {
-        self.0.get_next_precedence(parser)
+        self.base.get_next_precedence(parser)
     }
 
     fn supports_binary_kw_as_cast(&self) -> bool {
-        self.0.supports_binary_kw_as_cast()
+        self.base.supports_binary_kw_as_cast()
     }
 
     fn supports_table_partitions(&self) -> bool {
-        self.0.supports_table_partitions()
+        self.base.supports_table_partitions()
     }
 
     fn supports_comment_optimizer_hint(&self) -> bool {
-        self.0.supports_comment_optimizer_hint()
+        self.base.supports_comment_optimizer_hint()
     }
 
     fn supports_constraint_keyword_without_name(&self) -> bool {
-        self.0.supports_constraint_keyword_without_name()
+        self.base.supports_constraint_keyword_without_name()
     }
 
     fn supports_key_column_option(&self) -> bool {
-        self.0.supports_key_column_option()
+        self.base.supports_key_column_option()
     }
 
     fn supports_group_by_with_modifier(&self) -> bool {
-        self.0.supports_group_by_with_modifier()
+        self.base.supports_group_by_with_modifier()
     }
 
     fn supports_left_associative_joins_without_parens(&self) -> bool {
-        self.0.supports_left_associative_joins_without_parens()
+        self.base.supports_left_associative_joins_without_parens()
     }
 }
 
@@ -346,6 +364,21 @@ mod tests {
         assert_eq!(
             printed("SELECT d - INTERVAL -5 MINUTE_SECOND, INTERVAL x HOUR_MINUTE + d"),
             "SELECT d - INTERVAL -5 MINUTE_SECOND, INTERVAL x HOUR_MINUTE + d"
+        );
+    }
+
+    #[test]
+    fn reads_double_quotes_as_names_under_ansi_quotes() {
+        let sql = r#"CREATE TABLE t ("col" VARCHAR(10))"#;
+        assert!(parse(sql).is_err());
+        let ansi = MySqlParserDialect::new(true);
+        assert_eq!(
+            Parser::parse_sql(&ansi, sql).unwrap()[0].to_string(),
+            r#"CREATE TABLE t ("col" VARCHAR(10))"#
+        );
+        assert_eq!(
+            Parser::parse_sql(&ansi, r#"SELECT "a", 'b', `c` FROM t"#).unwrap()[0].to_string(),
+            r#"SELECT "a", 'b', `c` FROM t"#
         );
     }
 

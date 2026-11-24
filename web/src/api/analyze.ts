@@ -5,6 +5,8 @@
 
 import { request } from './http'
 import type { Analysis } from './generated/Analysis'
+import type { AnalyzeRequest } from './generated/AnalyzeRequest'
+import type { DialectOptions } from './generated/DialectOptions'
 import type { Flavor } from './generated/Flavor'
 
 /**
@@ -12,7 +14,15 @@ import type { Flavor } from './generated/Flavor'
  *
  * @param sql Whole text of the editor.
  * @param flavor Flavor of the server, which sets the dialect of the analysis.
+ * @param options
+ *     Lexical settings of the session (`ANSI_QUOTES`): double quotes then
+ *     delimit names.
  */
-export function analyzeSql(sql: string, flavor: Flavor): Promise<Analysis> {
-  return request('POST', '/api/analyze', { sql, flavor }, { sync: false })
+export function analyzeSql(
+  sql: string,
+  flavor: Flavor,
+  options: DialectOptions,
+): Promise<Analysis> {
+  const body: AnalyzeRequest = { sql, flavor, ...options }
+  return request('POST', '/api/analyze', body, { sync: false })
 }
