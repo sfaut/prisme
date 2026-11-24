@@ -3,6 +3,7 @@
  */
 
 import { serverName } from './flavors'
+import { connectMessage } from './messages'
 import { request } from './http'
 import type { ConnectionSummary } from './generated/ConnectionSummary'
 import type { Created } from './generated/Created'
@@ -102,15 +103,51 @@ export function versionWarning(info: SourceInfo): string | null {
 }
 
 /**
- * Message of a successful connection test: the flavor and the version of the
- * server, then, on a line of its own, the warning of a version older than
- * those supported, which turns the message into a warning.
+ * Warning on the databases of a source held in files that could not be
+ * opened, each with why: the sessions open without them (`docs/TODO-SQLITE.md`,
+ * decision 7); `null` when every one opened.
  *
- * @param info Identity of the server.
+ * @param info Identity of the source, with the state of its databases.
  */
-export function probeMessage(info: SourceInfo): { tone: 'success' | 'warning'; title: string } {
-  const warning = versionWarning(info)
-  return warning === null
+export function unavailableWarning(info: SourceInfo): string | null {
+  const unavailable = (info.databases ?? []).flatMap((database) =>
+    database.status === 'unavailable'
+      ? [{ schema: database.schema, why: connectMessage(database.failure) }]
+      : [],
+  )
+  if (unavailable.length === 0) {
+    return null
+  }
+  if (unavailable.length === 1) {
+    const [{ schema, why }] = unavailable as [(typeof unavailable)[number]]
+    return `La base « ${schema} » ne s’ouvre pas : les sessions s’ouvrent sans elle.\n${why}`
+  }
+  const lines = unavailable.map(({ schema, why }) => `« ${schema} » : ${why}`)
+  return [
+    `${unavailable.length} bases ne s’ouvrent pas : les sessions s’ouvrent sans elles.`,
+    ...lines,
+  ].join('\n')
+}
+
+/**
+ * Message of a successful connection test: the flavor and the version of the
+ * source, then, each on lines of its own, the warning of a version older
+ * than those supported and that of the databases that could not be opened,
+ * which turn the message into a warning.
+ *
+ * @param info Identity of the source.
+ * @param databases
+ *     Does the message tell the databases that could not be opened? Not when
+ *     the state of each database is shown beside it (step "Vérification").
+ */
+export function probeMessage(
+  info: SourceInfo,
+  databases = true,
+): { tone: 'success' | 'warning'; title: string } {
+  const warnings = [versionWarning(info), databases ? unavailableWarning(info) : null].filter(
+    (warning) => warning !== null,
+  )
+  return warnings.length === 0
     ? { tone: 'success', title: serverLabel(info) }
-    : { tone: 'warning', title: `${serverLabel(info)}\n${warning}` }
+    : { tone: 'warning', title: [serverLabel(info), ...warnings].join('\n') }
 }

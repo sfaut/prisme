@@ -26,14 +26,15 @@
   While a transaction is open on the session's connection, a status badge
   says so at the right end of the editor's header, until
   its COMMIT or ROLLBACK. The banners of the session (closed, server too old,
-  error) stand under that header.
+  databases not opened, error) stand under that header.
   The session can be closed from the object navigator ("Déconnecter",
   `disconnect`), or by the server: the view then shows it closed, with
   "Reconnecter", which opens a new one in place, on the last current
   database of the editor. Running a query or refreshing a tab on the
   closed session opens it again the same way, then runs. A
   session opened on a server older than the oldest version Prisme supports
-  shows a warning.
+  shows a warning, as one opened without databases of its source that could
+  not be opened, each with why.
   Three panels share the height, in a splitter of Prisme (`split/`), each
   under its header, in the style of the Pivoteur's: the editor ("Éditeur",
   with its buttons), the results ("Résultat", with the bar of their tabs)
@@ -70,7 +71,7 @@ import {
 
 import { analyzeSql } from '@/api/analyze'
 import { beautify } from '@/api/beautify'
-import { serverLabel, versionWarning } from '@/api/connections'
+import { serverLabel, unavailableWarning, versionWarning } from '@/api/connections'
 import {
   closeSession,
   deleteResult,
@@ -427,6 +428,12 @@ const versionNotice = computed(() => {
   const warning = state.server ? versionWarning(state.server) : null
   return state.server && warning ? `${serverLabel(state.server)}\n${warning}` : null
 })
+
+/**
+ * Warning of a session opened without some databases of its source, which
+ * could not be opened, `null` otherwise.
+ */
+const databasesNotice = computed(() => (state.server ? unavailableWarning(state.server) : null))
 
 /**
  * Run button that started the running queries: "Exécuter" (`one`),
@@ -998,6 +1005,7 @@ defineExpose({
           <ui-button label="Reconnecter" @click="session.reopen()" />
         </ui-alert>
         <ui-alert v-if="versionNotice" tone="warning" :title="versionNotice" />
+        <ui-alert v-if="databasesNotice" tone="warning" :title="databasesNotice" />
         <ui-alert v-if="state.error" tone="error" :title="state.error" />
 
         <sql-editor

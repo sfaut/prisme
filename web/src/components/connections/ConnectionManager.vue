@@ -536,7 +536,8 @@ async function next(): Promise<void> {
       connection: connectionOf(current.form),
       saved_id: current.copyOf ?? undefined,
     })
-    probed.value = probeMessage(info)
+    // The state of each database shows beside the message.
+    probed.value = probeMessage(info, false)
     checked.value = info.databases ?? null
   } catch (failure) {
     error.value = errorMessage(failure)
