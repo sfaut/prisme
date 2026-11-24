@@ -245,6 +245,7 @@ keywords:
   - BEGIN
   - CHAIN
   - COLUMNS
+  - COMMENT
   - COMMIT
   - COMMITTED
   - CONSISTENT
