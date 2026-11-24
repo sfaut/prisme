@@ -246,7 +246,8 @@ pub struct Capabilities {
     pub namespace_levels: Vec<NamespaceLevel>,
     /// Kinds of objects the catalog lists, in the order of the interface.
     pub object_kinds: Vec<ObjectKind>,
-    /// Kinds of write the engine knows: the settings show only their switches.
+    /// Kinds of write the engine knows: the settings name the engines of each
+    /// switch.
     pub write_kinds: Vec<WriteKind>,
     /// The source tells the notices of a statement (warnings, notes), read
     /// by `Session::notices`.
