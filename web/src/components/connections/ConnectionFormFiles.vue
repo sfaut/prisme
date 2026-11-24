@@ -15,7 +15,10 @@
   saving; one added since goes at once.
   A location is an absolute path on the machine of Prisme's server, or the
   address of a remote file (`https`), copied and read only: the pill beside
-  the field shows the protocol read from the typing.
+  the field shows the protocol read from the typing. The field of the
+  queries run on connection states the settings of the connection they may
+  change (the pragmas of SQLite), as the engine lists them
+  (`Capabilities.session_settings`, `GET /api/engines`).
 
   The maximum lengths repeat the server's (`connectionForm.ts`); the other
   checks (schemas, locations, files to create) are made by the server,
@@ -24,7 +27,10 @@
 <script setup lang="ts">
 import { FileCheck, FilePlus, MemoryStick, Plus, Trash2, Undo2 } from '@lucide/vue'
 import { RadioGroupItem, RadioGroupRoot } from 'reka-ui'
-import { type Component, computed, useId } from 'vue'
+import { type Component, computed, onMounted, ref, useId } from 'vue'
+
+import { fetchEngines } from '@/api/engines'
+import type { EngineInfo } from '@/api/generated/EngineInfo'
 
 import {
   ATTACHED_MAX,
@@ -102,6 +108,34 @@ const LOCATION_DESCRIPTIONS: Record<Exclude<DatabaseOrigin, 'memory'>, string> =
   existing: 'Chemin absolu sur la machine du serveur de Prisme, ou adresse https.',
   new: 'Chemin absolu du fichier à créer, sur la machine du serveur de Prisme.',
 }
+
+/**
+ * Engines of Prisme, `null` until read: the field of the queries run on
+ * connection then names no setting.
+ */
+const engines = ref<EngineInfo[] | null>(null)
+
+onMounted(async () => {
+  try {
+    engines.value = await fetchEngines()
+  } catch {
+    // Server unreachable: the field names no setting.
+  }
+})
+
+/**
+ * Description of the field of the queries run on connection: the settings
+ * of the connection its engine lets them change.
+ */
+const initDescription = computed(() => {
+  const settings =
+    engines.value?.find((engine) => engine.engine === form.value.engine)?.capabilities
+      .session_settings ?? []
+  const base = 'Pragmas exécutés à l’ouverture de chaque connexion, séparés par des « ; ».'
+  return settings.length === 0
+    ? base
+    : `${base} Seuls ceux-ci sont permis : ${settings.join(', ')}.`
+})
 
 /**
  * Main database: always the first.
@@ -337,7 +371,7 @@ function restore(index: number): void {
   <ui-setting-list title="Session">
     <ui-setting-row
       label="À la connexion"
-      description="Pragmas exécutés à l’ouverture de chaque connexion, séparés par des « ; »."
+      :description="initDescription"
       :for="`${id}-init`"
       stacked
     >

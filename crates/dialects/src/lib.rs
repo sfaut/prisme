@@ -26,7 +26,7 @@ mod mysql_statements;
 mod offsets;
 mod parse;
 pub mod sqlite_files;
-mod sqlite_pragmas;
+pub mod sqlite_pragmas;
 mod sqlite_statements;
 pub mod syntax;
 pub mod temporary;

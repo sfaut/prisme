@@ -39,9 +39,17 @@ export type Capabilities = {
    */
   object_kinds: Array<ObjectKind>;
   /**
-   * Kinds of write the engine knows: the settings show only their switches.
+   * Kinds of write the engine knows: the settings name the engines of each
+   * switch.
    */
   write_kinds: Array<WriteKind>;
+  /**
+   * Settings of a session that the editor and the SQL run at connection
+   * may change, when the engine keeps a closed list of them (the pragmas
+   * of the connection, SQLite); empty when any setting of the session is
+   * allowed (`SET SESSION`, MySQL).
+   */
+  session_settings: Array<string>;
   /**
    * The source tells the notices of a statement (warnings, notes), read
    * by `Session::notices`.

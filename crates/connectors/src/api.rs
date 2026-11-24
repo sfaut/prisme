@@ -249,6 +249,11 @@ pub struct Capabilities {
     /// Kinds of write the engine knows: the settings name the engines of each
     /// switch.
     pub write_kinds: Vec<WriteKind>,
+    /// Settings of a session that the editor and the SQL run at connection
+    /// may change, when the engine keeps a closed list of them (the pragmas
+    /// of the connection, SQLite); empty when any setting of the session is
+    /// allowed (`SET SESSION`, MySQL).
+    pub session_settings: Vec<String>,
     /// The source tells the notices of a statement (warnings, notes), read
     /// by `Session::notices`.
     pub notices: bool,

@@ -43,6 +43,7 @@ export const MYSQL_CAPABILITIES: Capabilities = {
   ],
   notices: true,
   rows_estimate: true,
+  session_settings: [],
 }
 
 /**

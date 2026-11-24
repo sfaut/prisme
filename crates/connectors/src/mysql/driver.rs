@@ -111,6 +111,7 @@ pub fn capabilities() -> Capabilities {
             .collect(),
         notices: true,
         rows_estimate: true,
+        session_settings: Vec::new(),
     }
 }
 

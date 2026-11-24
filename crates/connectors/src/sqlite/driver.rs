@@ -15,6 +15,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use futures_util::future::BoxFuture;
 use prisme_dialects::classify::WriteKind;
 use prisme_dialects::sqlite_files::{attached_paths, file_uri};
+use prisme_dialects::sqlite_pragmas::SESSION_PRAGMAS;
 use prisme_dialects::verb::StatementVerb;
 use rusqlite::{Connection, InterruptHandle};
 use tokio::sync::{mpsc, oneshot};
@@ -110,6 +111,7 @@ pub fn capabilities() -> Capabilities {
         ],
         notices: false,
         rows_estimate: false,
+        session_settings: SESSION_PRAGMAS.map(String::from).to_vec(),
     }
 }
 

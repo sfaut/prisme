@@ -122,7 +122,7 @@ Architecture:
 - ✅ Operations on the indexes in the navigator, in SQLite (`CREATE INDEX`, `DROP INDEX`): unique index and index added by `CREATE [UNIQUE] INDEX`, the schema on the index; `REINDEX`; `DROP INDEX`, except for the primary key and the indexes of a constraint (`sqlite_autoindex_…`); `CREATE INDEX temp.i` and `DROP INDEX temp.i` classified as acting on a temporary table
 - ✅ Messages of the states of the databases (`DatabaseState`) in the interface: a session opened without databases that could not be opened says so in a banner of the editor, each with why; the test of a saved connection ("Tester", in the navigator and the manager) turns into a warning with them; the step "Vérification" keeps its state database by database
 - ✅ Switches of the engine in the settings: every switch stays shown, the settings being the user's for every connection; its tooltip names the engines it concerns ("Pour MySQL et MariaDB"), from the capabilities of each engine (`GET /api/engines`)
-- ⬜ SQL run at connection: the pragmas of the connection it accepts, stated beside the field (decision 4)
+- ✅ SQL run at connection: the pragmas of the connection it accepts, stated beside the field (decision 4), from the capabilities of the engine (`session_settings`, read from `SESSION_PRAGMAS`)
 
 ## 7. Documentation
 
