@@ -12,6 +12,11 @@
 //! one SQLite fills itself, `auto_increment`. SQLite keeps no name for a
 //! foreign key: each one is named by its number in the table (`fk_0`), as
 //! `pragma_foreign_key_list` numbers them.
+//!
+//! SQLite has no `COMMENT` clause: the comment of a table, a view, a column,
+//! an index or a trigger is read in the text of its `CREATE` statement
+//! (`sqlite_schema.sql`), where it is written as `prisme_dialects::sqlite_comments`
+//! describes. A schema has none.
 
 use std::collections::BTreeMap;
 
@@ -24,6 +29,7 @@ use crate::catalog::{
     TriggerInfo,
 };
 use crate::sql_log;
+use prisme_dialects::sqlite_comments::{object_comment, table_comments};
 
 /// Schema of the temporary tables of a connection.
 const TEMP_SCHEMA: &str = "temp";
@@ -44,6 +50,7 @@ pub(super) fn namespaces(connection: &Connection) -> rusqlite::Result<Vec<Namesp
         .map(|name| NamespaceInfo {
             system: name.eq_ignore_ascii_case(TEMP_SCHEMA),
             namespace: Namespace::single(name),
+            comment: String::new(),
         })
         .collect())
 }
@@ -52,6 +59,7 @@ pub(super) fn namespaces(connection: &Connection) -> rusqlite::Result<Vec<Namesp
 /// (`sqlite_schema`, `sqlite_sequence`...) and the shadow tables of the
 /// virtual tables are tables of the system.
 pub(super) fn objects(connection: &Connection, schema: &str) -> rusqlite::Result<Vec<ObjectInfo>> {
+    let texts = create_texts(connection, schema)?;
     query(
         connection,
         "SELECT name, type FROM pragma_table_list WHERE schema = ?1 ORDER BY name",
@@ -66,11 +74,17 @@ pub(super) fn objects(connection: &Connection, schema: &str) -> rusqlite::Result
             } else {
                 ObjectKind::Table
             };
+            let comment = match (kind, texts.get(&name)) {
+                (ObjectKind::View, Some(sql)) => object_comment(sql),
+                (ObjectKind::Table, Some(sql)) => table_comments(sql).table,
+                _ => String::new(),
+            };
             Ok(ObjectInfo {
                 name,
                 kind,
                 rows: None,
                 enabled: None,
+                comment,
             })
         },
     )
@@ -120,11 +134,31 @@ struct ForeignKeyRow {
     referenced_column: Option<String>,
 }
 
+/// Texts of the `CREATE` statements of the tables, views and indexes of the
+/// schema `schema`, by name: those SQLite keeps, which hold their comments.
+/// An index of a constraint (`sqlite_autoindex_...`) has none.
+fn create_texts(
+    connection: &Connection,
+    schema: &str,
+) -> rusqlite::Result<BTreeMap<String, String>> {
+    let sql = format!(
+        "SELECT name, sql FROM {}.sqlite_schema \
+         WHERE type IN ('table', 'view', 'index') AND sql IS NOT NULL",
+        quoted(schema)
+    );
+    Ok(
+        query(connection, &sql, &[], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .into_iter()
+            .collect(),
+    )
+}
+
 /// Details of the tables and views of the schema `schema`, by name.
 pub(super) fn details(
     connection: &Connection,
     schema: &str,
 ) -> rusqlite::Result<Vec<TableDetails>> {
+    let texts = create_texts(connection, schema)?;
     let columns = query(
         connection,
         "SELECT l.name, c.name, c.type, c.\"notnull\", c.pk, l.wr \
@@ -189,10 +223,18 @@ pub(super) fn details(
                 name: row.get(1)?,
                 timing,
                 event,
+                comment: object_comment(&sql),
             },
         ))
     })?;
-    Ok(assemble(schema, columns, indexes, foreign_keys, triggers))
+    Ok(assemble(
+        schema,
+        columns,
+        indexes,
+        foreign_keys,
+        triggers,
+        &texts,
+    ))
 }
 
 /// Gathers the rows read table by table.
@@ -202,7 +244,25 @@ fn assemble(
     indexes: Vec<IndexRow>,
     foreign_keys: Vec<ForeignKeyRow>,
     triggers: Vec<(String, TriggerInfo)>,
+    texts: &BTreeMap<String, String>,
 ) -> Vec<TableDetails> {
+    // Comments of the columns, by table.
+    let column_comments: BTreeMap<&str, Vec<(String, String)>> = texts
+        .iter()
+        .map(|(name, sql)| (name.as_str(), table_comments(sql).columns))
+        .filter(|(_, columns)| !columns.is_empty())
+        .collect();
+    let column_comment = |table: &str, column: &str| {
+        column_comments
+            .get(table)
+            .and_then(|columns| {
+                columns
+                    .iter()
+                    .find(|(name, _)| name.eq_ignore_ascii_case(column))
+            })
+            .map(|(_, comment)| comment.clone())
+            .unwrap_or_default()
+    };
     let mut tables: BTreeMap<String, TableDetails> = BTreeMap::new();
     // Columns of the primary key of each table, in their order.
     let mut primary_keys: BTreeMap<String, Vec<(u32, String)>> = BTreeMap::new();
@@ -230,7 +290,9 @@ fn assemble(
     for column in columns {
         let alias = rowid_alias.get(&column.table) == Some(&column.name);
         let in_key = column.primary_key > 0;
+        let comment = column_comment(&column.table, &column.name);
         table(&mut tables, &column.table).columns.push(ColumnInfo {
+            comment,
             nullable: !column.not_null && !(in_key && (alias || column.without_rowid)),
             key: if in_key { "PRI" } else { "" }.to_string(),
             auto_increment: alias,
@@ -243,6 +305,7 @@ fn assemble(
             name: PRIMARY.to_string(),
             columns: keys.iter().map(|(_, column)| column.clone()).collect(),
             unique: true,
+            comment: String::new(),
         });
     }
     for row in indexes {
@@ -255,6 +318,9 @@ fn assemble(
         match indexes.last_mut() {
             Some(last) if last.name == row.index => last.columns.push(column),
             _ => indexes.push(IndexInfo {
+                comment: texts
+                    .get(&row.index)
+                    .map_or_else(String::new, |sql| object_comment(sql)),
                 name: row.index,
                 columns: vec![column],
                 unique: row.unique,
@@ -618,5 +684,102 @@ mod tests {
             head("CREATE TEMP TRIGGER [before insert] -- AFTER\n BEFORE INSERT ON t BEGIN END"),
             ("BEFORE".to_string(), "INSERT".to_string())
         );
+    }
+
+    #[test]
+    fn reads_the_comments_of_the_create_statements() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "-- Lost: SQLite keeps the text from CREATE
+                 CREATE TABLE customer -- Customers
+                 -- of the shop
+                 (
+                     id INTEGER PRIMARY KEY, -- Identifier
+                     /*
+                      * Name, as written
+                      * by the customer
+                      */
+                     name TEXT NOT NULL,
+                     age INTEGER /* Years,
+                                    if known */
+                 ) -- Lost: after the closing parenthesis
+                 ;
+                 CREATE TABLE plain (x);
+                 CREATE INDEX customer_name /* Search
+                                               by name */ ON customer (name);
+                 CREATE VIEW adult -- Customers
+                 -- of age
+                 AS SELECT * FROM customer WHERE age >= 18;
+                 CREATE TRIGGER customer_audit /* Audit of
+                                                  the inserts */
+                 AFTER INSERT ON customer BEGIN SELECT 1; END;",
+            )
+            .unwrap();
+        // SQLite keeps the text from CREATE to the end of the statement: the
+        // comments before it and after its last token are gone.
+        let kept = |name: &str| -> String {
+            connection
+                .query_row(
+                    "SELECT sql FROM sqlite_schema WHERE name = ?1",
+                    [name],
+                    |row| row.get(0),
+                )
+                .unwrap()
+        };
+        let customer = kept("customer");
+        assert!(
+            customer.starts_with("CREATE TABLE customer -- Customers"),
+            "{customer}"
+        );
+        assert!(customer.ends_with(')'), "{customer}");
+        assert!(kept("customer_audit").ends_with("END"));
+
+        let comments: Vec<(String, String)> = objects(&connection, "main")
+            .unwrap()
+            .into_iter()
+            .map(|object| (object.name, object.comment))
+            .collect();
+        let text = |name: &str, comment: &str| (name.to_string(), comment.to_string());
+        assert_eq!(
+            comments,
+            [
+                text("adult", "Customers of age"),
+                text("customer", "Customers of the shop"),
+                text("plain", ""),
+                text("sqlite_schema", ""),
+            ]
+        );
+
+        let tables = details(&connection, "main").unwrap();
+        let customer = tables
+            .iter()
+            .find(|table| table.table == "customer")
+            .unwrap();
+        let columns: Vec<(&str, &str)> = customer
+            .columns
+            .iter()
+            .map(|column| (column.name.as_str(), column.comment.as_str()))
+            .collect();
+        assert_eq!(
+            columns,
+            [
+                ("id", "Identifier"),
+                ("name", "Name, as written by the customer"),
+                ("age", "Years, if known"),
+            ]
+        );
+        let indexes: Vec<(&str, &str)> = customer
+            .indexes
+            .iter()
+            .map(|index| (index.name.as_str(), index.comment.as_str()))
+            .collect();
+        assert_eq!(
+            indexes,
+            [("PRIMARY", ""), ("customer_name", "Search by name")]
+        );
+        assert_eq!(customer.triggers[0].comment, "Audit of the inserts");
+        let plain = tables.iter().find(|table| table.table == "plain").unwrap();
+        assert_eq!(plain.columns[0].comment, "");
     }
 }

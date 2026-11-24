@@ -16,4 +16,9 @@ export type TriggerInfo = {
    * Event: `INSERT`, `UPDATE` or `DELETE`.
    */
   event: string;
+  /**
+   * Comment the source keeps for it, empty if none (`docs/DEVELOPER.md`,
+   * section "Comments of the objects").
+   */
+  comment: string;
 };

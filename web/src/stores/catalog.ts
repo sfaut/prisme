@@ -65,6 +65,10 @@ export interface CatalogSchema {
    */
   system: boolean
   /**
+   * Comment the source keeps for it, empty if none.
+   */
+  comment: string
+  /**
    * Objects, in the order of the source, `null` as long as they are not received.
    */
   objects: CatalogObject[] | null
@@ -163,10 +167,11 @@ export function isForeignKey(
 export function applyCatalogEvent(catalog: Catalog, event: CatalogEvent): void {
   switch (event.type) {
     case 'namespaces':
-      catalog.schemas = event.namespaces.map(({ namespace, system }) => ({
+      catalog.schemas = event.namespaces.map(({ namespace, system, comment }) => ({
         name: namespace[namespace.length - 1] ?? '',
         namespace,
         system,
+        comment,
         objects: null,
       }))
       catalog.source = event.source

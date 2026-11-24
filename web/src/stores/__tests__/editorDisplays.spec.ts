@@ -39,6 +39,7 @@ function saved(): EditorDisplay {
     expanded: ['source:2'],
     scroll_top: 48,
     tables_by_rows: ['folder:tables:2/shop'],
+    comments: true,
   }
   return display
 }
@@ -67,6 +68,7 @@ describe('display of an editor', () => {
     display.panels.console.size = 200
     display.navigator.expanded = ['source:2']
     display.navigator.tables_by_rows = ['folder:tables:2/shop']
+    display.navigator.comments = true
     await nextTick()
     display.navigator.scroll_top = 48
     await nextTick()

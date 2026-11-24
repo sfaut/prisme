@@ -320,22 +320,36 @@ async fn reads_the_catalog_schema_by_schema() {
             .with_database("catalog", async |target| {
                 let mut connection = connect(&target).await.unwrap();
                 for sql in [
-            "CREATE TABLE p (id INT PRIMARY KEY)",
-            "CREATE TABLE t (id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20) NULL, p_id INT,
-                INDEX idx_label (label),
+            "CREATE TABLE p (id INT PRIMARY KEY) COMMENT 'Parents'",
+            "CREATE TABLE t (id INT AUTO_INCREMENT PRIMARY KEY,
+                label VARCHAR(20) NULL COMMENT 'Shown label', p_id INT,
+                INDEX idx_label (label) COMMENT 'By label',
                 CONSTRAINT fk_p FOREIGN KEY (p_id) REFERENCES p (id))",
             "CREATE VIEW v AS SELECT id FROM t",
             "CREATE TRIGGER t_bi BEFORE INSERT ON t FOR EACH ROW SET NEW.label = UPPER(NEW.label)",
-            "CREATE PROCEDURE do_nothing() BEGIN END",
+            "CREATE PROCEDURE do_nothing() COMMENT 'Does nothing' BEGIN END",
             "CREATE FUNCTION one() RETURNS INT DETERMINISTIC RETURN 1",
-            "CREATE EVENT e_daily ON SCHEDULE EVERY 1 DAY DO SELECT 1",
+            "CREATE EVENT e_daily ON SCHEDULE EVERY 1 DAY COMMENT 'Daily' DO SELECT 1",
             "CREATE EVENT e_paused ON SCHEDULE EVERY 1 DAY DISABLE DO SELECT 1",
         ] {
             execute(&mut connection, sql).await.unwrap().discard().await;
         }
+        let mariadb = server.flavor == Flavor::MariaDb;
+        if mariadb {
+            let sql = format!("ALTER DATABASE `{}` COMMENT 'Catalog'", target.database_name);
+            execute(&mut connection, &sql).await.unwrap().discard().await;
+        }
 
-                let schemas = catalog::schemas(&mut connection).await.unwrap();
-                assert!(schemas.contains(&target.database_name));
+                let schemas = catalog::commented_schemas(&mut connection, mariadb)
+                    .await
+                    .unwrap();
+                // A database has a comment in MariaDB only.
+                let comment = if mariadb { "Catalog" } else { "" };
+                assert!(
+                    schemas.contains(&(target.database_name.clone(), comment.to_string())),
+                    "{}",
+                    server.name
+                );
 
                 let objects = catalog::objects(&mut connection, &target.database_name)
                     .await
@@ -365,10 +379,34 @@ async fn reads_the_catalog_schema_by_schema() {
                     ]
                 );
 
+                let comments: Vec<_> = objects
+                    .iter()
+                    .map(|object| (object.name.as_str(), object.comment.as_str()))
+                    .collect();
+                // A view and a function without COMMENT have none.
+                assert_eq!(
+                    comments,
+                    [
+                        ("p", "Parents"),
+                        ("t", ""),
+                        ("v", ""),
+                        ("do_nothing", "Does nothing"),
+                        ("one", ""),
+                        ("e_daily", "Daily"),
+                        ("e_paused", ""),
+                    ],
+                    "{}",
+                    server.name
+                );
+
                 let details = catalog::details(&mut connection, &target.database_name)
                     .await
                     .unwrap();
                 let t = details.iter().find(|table| table.table == "t").unwrap();
+                assert_eq!(t.columns[1].comment, "Shown label");
+                assert_eq!(t.columns[0].comment, "");
+                let idx_label = t.indexes.iter().find(|index| index.name == "idx_label");
+                assert_eq!(idx_label.unwrap().comment, "By label");
                 assert_eq!(t.columns[0].name, "id");
                 assert_eq!(t.columns[0].key, "PRI");
                 assert!(t.columns[0].auto_increment);

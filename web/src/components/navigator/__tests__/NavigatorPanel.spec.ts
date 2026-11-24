@@ -42,7 +42,12 @@ vi.mock('@/api/navigator', () => ({
     onEvent({
       type: 'namespaces',
       source: MYSQL_SOURCE,
-      namespaces: schemaNames.map((name) => ({ namespace: [name], system: false })),
+      // The database `b` has a comment.
+      namespaces: schemaNames.map((name) => ({
+        namespace: [name],
+        system: false,
+        comment: name === 'b' ? 'Archives' : '',
+      })),
     })
     onEvent({ type: 'done' })
   },
@@ -194,6 +199,25 @@ describe('NavigatorPanel', () => {
     const wrapper = mountNavigator({ selectedId: 1, currentDatabase: null })
     expect(wrapper.find('h2').text()).toBe('Navigateur d’objets')
     await vi.waitFor(() => expect(labels(wrapper)).toEqual(['Origen 2', 'a', 'b', 'c', 'Autre']))
+    wrapper.unmount()
+  })
+
+  it('shows the comments with the button of the title, hidden by default', async () => {
+    savedConnections = [connection(1, 'Origen 2')]
+    const wrapper = mountNavigator({ selectedId: 1, currentDatabase: null })
+    await vi.waitFor(() => expect(row(wrapper, 'b')).toBeDefined())
+    const toggle = wrapper.find('[aria-label="Afficher les commentaires"]')
+    expect(toggle.attributes('aria-pressed')).toBe('false')
+    expect(row(wrapper, 'b')?.text()).not.toContain('Archives')
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-pressed')).toBe('true')
+    expect(row(wrapper, 'b')?.text()).toContain('Archives')
+    // The label stays the name alone.
+    expect(labels(wrapper)).toEqual(['Origen 2', 'a', 'b', 'c'])
+
+    await toggle.trigger('click')
+    expect(row(wrapper, 'b')?.text()).not.toContain('Archives')
     wrapper.unmount()
   })
 

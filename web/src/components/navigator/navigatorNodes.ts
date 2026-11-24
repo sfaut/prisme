@@ -257,6 +257,12 @@ export interface NavigatorNode extends Place {
    */
   note?: string
   /**
+   * Comment the source keeps for the object (database, table, view, routine,
+   * event, column, index, trigger), shown after its label and its note when
+   * the navigator shows the comments; absent or empty if none.
+   */
+  comment?: string
+  /**
    * For a column: what is needed to show it in two columns (name, detail),
    * aligned over all the columns of the table, and the keys that choose
    * its icon.
@@ -408,6 +414,7 @@ export function catalogNodes(
       usable: capabilities?.switch_namespace ?? true,
       level: innerLevel(capabilities),
       pill: locations === null ? undefined : placePill(locations, schema.name),
+      comment: schema.comment,
       children:
         schema.objects === null
           ? [loadingNode(key, place)]
@@ -531,6 +538,7 @@ function schemaFolders(
     isLeaf: true,
     entry: routine.kind === 'procedure' ? 'procedure' : 'function',
     ...place,
+    comment: routine.comment,
   })
   const eventNode = (event: CatalogObject): NavigatorNode => ({
     key: `event:${base}.${event.name}`,
@@ -538,6 +546,7 @@ function schemaFolders(
     isLeaf: true,
     entry: 'event',
     ...place,
+    comment: event.comment,
   })
   const folders: [Folder, NavigatorNode][] = [
     ['tables', tablesFolder(place, inFolder('tables'), references, tablesByRows)],
@@ -612,6 +621,7 @@ function tableNode(place: Place, table: CatalogObject, references: Reference[]):
     ...place,
     table: table.name,
     note: table.kind === 'table' && table.rows !== null ? compactCount(table.rows) : undefined,
+    comment: table.comment,
     children:
       table.details === null
         ? [loadingNode(key, place)]
@@ -653,6 +663,7 @@ function tableFolders(
       const foreignKey = foreignKeyColumns.has(column.name)
       return {
         ...item('column', 'column', column.name, `${column.name} ${columnDetails(column)}`),
+        comment: column.comment,
         column: {
           name: column.name,
           details: columnDetails(column),
@@ -676,6 +687,7 @@ function tableFolders(
       details.indexes.map((index) => ({
         ...item('index', 'index', index.name, indexLabel(index)),
         note: indexNote(index),
+        comment: index.comment,
         index: { table: details.table, name: index.name },
       })),
     ),
@@ -704,9 +716,10 @@ function tableFolders(
       `triggers:${base}`,
       'Déclencheurs',
       place,
-      details.triggers.map((trigger) =>
-        item('trigger', 'trigger', trigger.name, triggerLabel(trigger)),
-      ),
+      details.triggers.map((trigger) => ({
+        ...item('trigger', 'trigger', trigger.name, triggerLabel(trigger)),
+        comment: trigger.comment,
+      })),
     ),
   ]
 }

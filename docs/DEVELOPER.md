@@ -112,6 +112,7 @@ Common rules:
 | `navigator.expanded` | keys | `[]` | Open nodes of the tree (`navigatorNodes.ts`) |
 | `navigator.scroll_top` | number | `0` | Scroll of the tree, in CSS pixels |
 | `navigator.tables_by_rows` | keys | `[]` | "Tables" folders sorted by row count; the others by name |
+| `navigator.comments` | boolean | `false` | The comments of the objects are shown after their label and note (see "Comments of the objects") |
 | `active_result` | id or `null` | `null` | Result tab shown; `null`, or a tab no longer there: the first one |
 | `sql.anchor`, `sql.head` | numbers | `0` | Selection in the SQL text, in UTF-16 code units; `head` is the cursor |
 | `sql.top` | number | `0` | Start of the first line shown at the top of the editor |
@@ -133,7 +134,7 @@ The positions in the SQL text are brought back within the text when it is shorte
 
 The widths, the order, the sort and the scroll apply only to a result with the same `columns`; the filter applies to any result, on all the columns if they changed. A new run gives each new tab the display of the tab it replaces, with the configuration of the Pivoteur (`carry_over`, see "Pivoteur"). The configuration of the Pivoteur, the widths of its sections (`fields_px`, `zones_px`) and of its table are saved in `result_tabs.pivot` (see "Pivoteur"), the preferences in `users` (`GET` / `PUT /api/settings`).
 
-**Reset.** The button **Réinitialiser l’affichage** of the activity bar (Ctrl-K then 0) brings the display of its editor back to the defaults (`editorDisplays.reset`): the panels, the navigator (the source of the editor open, at the top), the layout of the grid of each result tab (its filter kept) and the widths of the sections of their Pivoteur. The position in the SQL text, the result tab shown, the configuration of the Pivoteur, the documents of the user and of the other editors stay. The objects of the display are reset in place, so that the components that hold them follow.
+**Reset.** The button **Réinitialiser l’affichage** of the activity bar (Ctrl-K then 0) brings the display of its editor back to the defaults (`editorDisplays.reset`): the panels, the navigator (the source of the editor open, at the top, the comments hidden), the layout of the grid of each result tab (its filter kept) and the widths of the sections of their Pivoteur. The position in the SQL text, the result tab shown, the configuration of the Pivoteur, the documents of the user and of the other editors stay. The objects of the display are reset in place, so that the components that hold them follow.
 
 ### Icons and actions
 
@@ -670,6 +671,7 @@ An error of the library is an answer of the engine (`FailureCause::Engine`, `cra
 - one level of namespaces, the schemas (`NamespaceLevel::Schema`): `main`, the attached databases, and `temp` once the connection created a temporary object. `temp` is a schema of the system, hidden when the connection hides its system schemas. Each schema of the navigator carries the protocol of its location (`file`, `https`), `memdb` or `memory` (see "SQLite databases in memory");
 - tables, views, and tables of the system (`sqlite_schema`, `sqlite_sequence`, `sqlite_stat1`..., and the shadow tables of the virtual tables) in their own folder; no procedure, function nor event, which SQLite does not have;
 - no row estimate (`rows_estimate` false): the tables show no count;
+- the comments of the tables, views, columns, indexes and triggers, read in the text of their `CREATE` (see "Comments of the objects");
 - columns, indexes, foreign keys, references and triggers, in the neutral forms of MySQL: the primary key is an index named `PRIMARY`, even that of a rowid table; the column `INTEGER PRIMARY KEY` is `auto_increment`, as SQLite fills it; a foreign key, which SQLite does not name, is named by its number in its table (`fk_0`); the index of a constraint keeps the name SQLite gives it (`sqlite_autoindex_t_1`).
 
 ### Dialect
@@ -764,6 +766,35 @@ A connection is split by family of settings (migration `0037_connections_by_fami
 | `write_kinds` | Kinds of write that a switch allows (`WriteKind`), `attach` and `maintenance` of SQLite included (migration `0040_write_kinds_sqlite.sql`); `user_allowed_writes` holds those a user allows. |
 
 The API sends the settings tagged by their family (`"family": "server"`, `"family": "files"`, see "Testing the API by hand"); `crates/server/src/connections.rs` reads and writes them, and repeats the lengths of the `CHECK`s in its validation.
+
+## Comments of the objects
+
+Each element of the catalog (`NamespaceInfo`, `ObjectInfo`, `ColumnInfo`, `IndexInfo`, `TriggerInfo`, in `crates/connectors/src/catalog.rs`) carries the comment its source keeps for it, an empty string when it has none or when the engine has no comment for that kind of object. Where each engine keeps them is measured in `docs/SQL-COMPARISON.md`, section 3.18. The navigator hides them by default; the button **Afficher les commentaires** of its title shows them after the label and the note of each line, in the room left, cut by an ellipsis (`navigator.comments` of the display of the editor, see "Saved display").
+
+- **MySQL and MariaDB** (`crates/connectors/src/mysql/catalog.rs`): the columns `*_COMMENT` of `information_schema`, for the tables, columns, indexes, procedures, functions and events, and the databases in MariaDB (`SCHEMA_COMMENT`, which MySQL does not have: the reader knows the flavor of its server). A view has no comment: `TABLE_COMMENT` reads `VIEW` there, which the reader drops. A trigger has none.
+- **SQLite** (`crates/connectors/src/sqlite/catalog.rs`): no `COMMENT` clause; the comments are read in the text of the `CREATE` statements that `sqlite_schema` keeps, by `crates/dialects/src/sqlite_comments.rs`, with the tokenizer of `sqlparser`. A schema has none.
+
+What is read in the text of a SQLite `CREATE`, `--` or `/* */` comments alike, on one line or several:
+
+| Element | Comments read |
+|---|---|
+| Table, view, index, trigger | Right after the name of the object (schema included, `main.t`), up to its next word or symbol |
+| Table, too | After its opening parenthesis, on the same line |
+| Column | Inside its definition, after it on the same line (its comma included), and on the lines just before it |
+
+```sql
+CREATE TABLE customer -- Customers of the shop
+(
+    id INTEGER PRIMARY KEY, -- Identifier
+    /* Name, as written
+       by the customer */
+    name TEXT NOT NULL
+);
+CREATE INDEX customer_name -- Search by name
+ON customer (name);
+```
+
+Several comments of one element are joined by a space; a comment loses its `--` or `/* */`, the `*` that start the lines of a block, and its blanks and line breaks become one space each. A comment beside a constraint of the table (`PRIMARY KEY (a, b)`) belongs to no column; one written before `CREATE`, or after the closing parenthesis of a table, is not kept by SQLite.
 
 ## Adding an engine
 

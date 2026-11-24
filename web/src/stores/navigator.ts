@@ -2,7 +2,7 @@
  * Object navigators, the panels on the left of the editors
  * (`NavigatorPanel.vue`): each editor has its own, with its panel (open or
  * closed, its width) and its tree (open nodes, scroll, "Tables" folders
- * sorted by row count), so that going from one editor to another finds each
+ * sorted by row count, comments shown or not), so that going from one editor to another finds each
  * navigator as it was left.
  *
  * Both are parts of the display of the editor (`editorDisplays` store),

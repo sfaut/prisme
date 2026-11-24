@@ -1106,6 +1106,7 @@ mod tests {
                 expanded: vec!["sources".to_string(), "source:1".to_string()],
                 scroll_top: 48.0,
                 tables_by_rows: vec!["folder:tables:1/shop".to_string()],
+                comments: true,
             },
             active_result: Some(12),
             sql: SqlPosition {

@@ -53,8 +53,11 @@
   circle during a load, in place of the source's icon while its catalog
   arrives.
 
-  The button of the title, always shown, reads again all the catalogs
-  already read; connections are added in the connections manager (top
+  The comments of the objects (database, table, view, routine, event,
+  column, index, trigger) are hidden by default; the button of the title
+  shows or hides them, after the label and the note of each line, the choice
+  kept with the tree. The other button of the title, always shown, reads
+  again all the catalogs already read; connections are added in the connections manager (top
   bar). On hovering each source, a "⋮" menu opens the connection in the connections
   manager ("Modifier"), tests it, reads its catalog again or deletes it
   (after confirmation, `ConnectionRemoveDialog`, which warns of the
@@ -93,7 +96,17 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { Pencil, PlugZap, Plus, RefreshCw, Save, Trash2, Unlink, Unplug } from '@lucide/vue'
+import {
+  MessageSquareText,
+  Pencil,
+  PlugZap,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
+  Unlink,
+  Unplug,
+} from '@lucide/vue'
 import {
   TreeItem,
   type TreeItemSelectEvent,
@@ -807,6 +820,15 @@ watch(() => visible.value.rows.length, retryScroll)
     <panel-header title="Navigateur d’objets">
       <template #actions>
         <ui-button
+          :icon="MessageSquareText"
+          variant="ghost"
+          small
+          :tone="tree.comments ? 'primary' : 'neutral'"
+          :aria-pressed="tree.comments"
+          aria-label="Afficher les commentaires"
+          @click="tree.comments = !tree.comments"
+        />
+        <ui-button
           :icon="RefreshCw"
           variant="ghost"
           small
@@ -861,6 +883,7 @@ watch(() => visible.value.rows.length, retryScroll)
               :expanded="isExpanded"
               :menu="menuItems(item.value as NavigatorNode)"
               :session="sessionOf((item.value as NavigatorNode).connectionId)"
+              :comments="tree.comments"
               @act="activate(item.value as NavigatorNode)"
               @disconnect="emit('disconnect')"
               @sort-tables="
@@ -889,6 +912,7 @@ watch(() => visible.value.rows.length, retryScroll)
             :expanded="expandedKeys.includes(row.node.key)"
             :menu="menuItems(row.node)"
             :session="sessionOf(row.node.connectionId)"
+            :comments="tree.comments"
             @act="activate(row.node)"
             @disconnect="emit('disconnect')"
             @sort-tables="navigatorStore.sortTables(editorId, row.node.key, $event)"
