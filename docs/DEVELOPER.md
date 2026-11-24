@@ -670,7 +670,7 @@ An error of the library is an answer of the engine (`FailureCause::Engine`, `cra
 
 - one level of namespaces, the schemas (`NamespaceLevel::Schema`): `main`, the attached databases, and `temp` once the connection created a temporary object. `temp` is a schema of the system, hidden when the connection hides its system schemas. Each schema of the navigator carries the protocol of its location (`file`, `https`), `memdb` or `memory` (see "SQLite databases in memory");
 - tables, views, and tables of the system (`sqlite_schema`, `sqlite_sequence`, `sqlite_stat1`..., and the shadow tables of the virtual tables) in their own folder; no procedure, function nor event, which SQLite does not have;
-- no row estimate (`rows_estimate` false): the tables show no count;
+- the row count of each table that `ANALYZE` measured, read in `sqlite_stat1` (`rows_estimate`): that of its last `ANALYZE`; a table never analyzed shows none;
 - the comments of the tables, views, columns, indexes and triggers, read in the text of their `CREATE` (see "Comments of the objects");
 - columns, indexes, foreign keys, references and triggers, in the neutral forms of MySQL: the primary key is an index named `PRIMARY`, even that of a rowid table; the column `INTEGER PRIMARY KEY` is `auto_increment`, as SQLite fills it; a foreign key, which SQLite does not name, is named by its number in its table (`fk_0`); the index of a constraint keeps the name SQLite gives it (`sqlite_autoindex_t_1`).
 
