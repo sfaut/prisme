@@ -11,6 +11,7 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
 5. **Name**: Prisme (see section 4).
 6. **Refocusing of the v1**: a multi-database client as a notebook, each query to a single database, with translation between dialects. The federated engine comes after.
 7. **Choice of stack**: Rust, then a Vue 3 + TypeScript + Vite frontend "the industry way".
+8. **Second engine** (from 2026-11-22): SQLite, the first source held in files, on contracts that any engine fills (connector, dialect, storage, catalog, interface; `docs/TODO-SQLITE.md`), so that PostgreSQL, DuckDB and ClickHouse only fill them in turn.
 
 ## 2. Ideas kept
 
@@ -38,7 +39,8 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
 
   Limits: a memory of WebAssembly holds 4 GB at most (one module per tab pushes the limit back); a Worker busy with a long computation answers the grid only once it is done. Measured on 2026-10-31 for 1 million rows (`docs/PERFORMANCES.md`, chapter 11): the interface receives them in 33 s, its main thread saturated, against 6.6 to 7.7 s for the server alone, a bare page or a Worker; the Worker answers a window of 50 visible rows in 0.6 ms (2 ms during the reception, 20 ms at most) and leaves the main thread free; kept as text, the cells take 122 MB in columns against 139 MB as JavaScript rows. Open: the layout of the cells in the store (text, dictionary of the repeated values, typed values that give back their exact text), to set with the lot 1 of the Pivoteur; the cost of each update of the interface during a reception, a lead of its own, with or without the store (question 33).
 - **Multi-database conformance suite** as a safety net.
-- **Abstract storage and connector interface**, to be able to change the workspace engine later.
+- **Abstract storage and connector interface**, to be able to change the workspace engine later. The connectors have theirs since SQLite (`crates/connectors/src/api.rs`): traits and a registry of the drivers, capabilities sent to the interface, a contract suite run on every engine (`docs/DEVELOPER.md`, section "Adding an engine").
+- **Locations with an explicit protocol** for the databases held in files (`file`, `http`, `https`, `memory`), each protocol behind a provider, so that `s3` or `ftp` join without touching the engines (`docs/DEVELOPER.md`, section "Adding a protocol").
 
 ## 3. Ideas dropped or postponed
 
@@ -60,6 +62,9 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
 | Writes to several destinations in a query | Dropped | No use case, complexity and non-atomicity. |
 | SQLite: one connection per session, shared by the editor, the parallel queries, the navigator and the exports | Dropped | One statement at a time per connection: no parallel queries, the navigator and the exports wait, an interruption stops everything. The databases in memory go through `memdb` (`docs/DEVELOPER.md`, section "SQLite databases in memory"). |
 | SQLite: rewrite an `ATTACH` of a path alone on a main database in memory into its URI, silently or in the editor | Dropped | Silently, the user types one text and Prisme runs another; in the editor, the text would hold a form tied to one system (`vfs=win32`). The path alone is refused, the message giving the URI to write (`docs/DEVELOPER.md`, section "SQLite databases in memory"). |
+| Connectors behind an enum that dispatches each call to its engine | Dropped | Each new engine would add an arm to every call of the server. Traits and a registry (`drivers::of`) let an engine join by its own module and one line of the registry (`docs/TODO-SQLITE.md`, decision 19). |
+| Settings of the writes showing only the switches of the engines of the saved connections | Dropped | The settings are the user's, for every connection: the grid would change as connections are added or deleted. Every switch stays shown, and its tooltip names the engines it concerns (decided on 2026-11-24). |
+| CTE of a result for another dialect, written with the modes of the server of the result (`ANSI_QUOTES`, `NO_BACKSLASH_ESCAPES`) | Dropped | These modes belong to that server. A CTE for another dialect follows the default reading of that dialect, even between MySQL and MariaDB (decided on 2026-11-24). |
 | Mixing languages in a single query | Dropped | One language per query is enough. |
 | Automatic reuse of a materialised result (query matching) | Dropped in v1 | Hard problem. Explicit saving under a name. |
 | Parquet for the workspace | Dropped | Heavy to write. SQLite with indexes is the best trade-off. |
