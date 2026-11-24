@@ -184,7 +184,7 @@ export function locationMessage(error: LocationError): string {
     case 'credentials':
       return `${error.address} : un emplacement web doit être public, sans compte.`
     case 'not_served':
-      return `Le protocole ${error.scheme} n’est pas encore servi par Prisme.`
+      return `Le protocole ${error.scheme} n’est pas encore supporté par Prisme.`
     case 'unknown_scheme':
       return `Le protocole ${error.scheme} est inconnu.`
     case 'already_exists':
