@@ -940,7 +940,7 @@ The session of an editor (`ws://127.0.0.1:10000/api/editors/{id}/session`) outli
 
 On opening, the page reads the list of the saved tabs (`GET /api/editors/{id}/results`) and shows them at once, then opens the WebSocket without waiting for their rows. These are read in the background, a chunk at a time (`GET /api/results/{id}/chunks/{position}`), the tab shown first, and go through the same grouping as the messages of the WebSocket (`saved_rows`, `web/src/api/querySession.ts`): an ended query counts as running until its last row (`awaitedRows`), as after `resume`, so that the grid and the Pivoteur follow them. A tab taken back by `resume` is no longer read from its chunks: its rows come by `resumed_rows`.
 
-Only reads pass: `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` and `USE`. Writes (`UPDATE`, `DELETE`, `DROP`, `CALL`...) are refused until the write switches exist, as are queries Prisme cannot analyse.
+Reads always pass: `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`, and the pragmas of SQLite that read. A write passes when the settings of the user allow each of its switches, and the session is not read-only (`docs/V1.md`, section 2.4); otherwise, like a query Prisme cannot analyse, it gets an `error` that names the switches missing, and does not run.
 
 ### Database servers
 
