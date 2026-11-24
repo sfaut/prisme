@@ -203,12 +203,16 @@ pub struct SessionDialect {
 
 impl SessionDialect {
     /// Lexical rules of the texts of the session: those of its dialect, with
-    /// double quotes for the names under `ANSI_QUOTES`.
+    /// double quotes for the names under `ANSI_QUOTES`, and no backslash
+    /// escape under `NO_BACKSLASH_ESCAPES`.
     pub fn lexical_rules(self) -> LexicalRules {
         let mut rules = *self.dialect.lexical_rules();
         if self.options.ansi_quotes && rules.double_quoted_strings {
             rules.double_quoted_strings = false;
             rules.identifier_quotes = ANSI_IDENTIFIER_QUOTES;
+        }
+        if self.options.no_backslash_escapes {
+            rules.backslash_escapes = false;
         }
         rules
     }
@@ -216,9 +220,9 @@ impl SessionDialect {
     /// `sqlparser` dialect used to parse a query of the session.
     fn parser_dialect(self) -> Box<dyn sqlparser::dialect::Dialect> {
         match self.dialect {
-            Dialect::MySql | Dialect::MariaDb => Box::new(mysql_parser::MySqlParserDialect::new(
-                self.options.ansi_quotes,
-            )),
+            Dialect::MySql | Dialect::MariaDb => {
+                Box::new(mysql_parser::MySqlParserDialect::new(self.options))
+            }
             Dialect::Sqlite => self.dialect.parser_dialect(),
         }
     }

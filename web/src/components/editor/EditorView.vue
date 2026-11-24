@@ -211,7 +211,7 @@ const connections = useConnectionsStore()
 const state = session.state
 
 /**
- * Lexical settings of the session (`ANSI_QUOTES`), those of a session without
+ * Lexical settings of the session (`ANSI_QUOTES`, `NO_BACKSLASH_ESCAPES`), those of a session without
  * modes as long as the source is unknown.
  */
 const dialectOptions = computed<DialectOptions>(() => ({

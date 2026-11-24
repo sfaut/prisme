@@ -82,7 +82,9 @@ const props = defineProps<{
   version: string | null
   /**
    * Lexical settings of the session: under `ANSI_QUOTES`, double quotes
-   * delimit identifiers (highlighting, completion, analysis).
+   * delimit identifiers (highlighting, completion, analysis); under
+   * `NO_BACKSLASH_ESCAPES`, the backslash escapes nothing (highlighting,
+   * analysis).
    */
   dialectOptions: DialectOptions
   /**
@@ -263,9 +265,7 @@ const FALLBACK_DIALECTS: Record<Flavor, SQLDialect> = {
 function currentLanguage(): LanguageSupport {
   const fallback = FALLBACK_DIALECTS[props.flavor]
   const dialect =
-    syntax === null
-      ? fallback
-      : editorDialect(syntax, props.flavor, props.dialectOptions.ansi_quotes)
+    syntax === null ? fallback : editorDialect(syntax, props.flavor, props.dialectOptions)
   // Workaround: language assembled by hand, because `sql()` always adds the
   // completion of keywords; only the names of the catalog are offered
   // (`docs/DEVELOPER.md`, section "Workarounds").
@@ -367,7 +367,7 @@ watch(text, (value) => {
 })
 
 watch(
-  () => [props.flavor, props.dialectOptions.ansi_quotes, completion.value, props.defaultSchema],
+  () => [props.flavor, props.dialectOptions, completion.value, props.defaultSchema],
   () => view?.dispatch({ effects: language.reconfigure(currentLanguage()) }),
 )
 
@@ -377,7 +377,7 @@ watch(
 )
 
 // The dialect changes when the session opens: the analysis must be redone.
-watch(() => [props.flavor, props.dialectOptions.ansi_quotes], scheduleAnalysis)
+watch(() => [props.flavor, props.dialectOptions], scheduleAnalysis)
 
 // Dialect or version known or changed: their keywords must be read again.
 watch(() => [props.flavor, props.version], loadKeywords, { immediate: true })

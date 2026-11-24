@@ -25,7 +25,7 @@ pub struct AnalyzeRequest {
     pub sql: String,
     /// Flavor of the session's server, which sets the dialect of the analysis.
     pub flavor: Flavor,
-    /// Lexical settings of the session (`ANSI_QUOTES`), read on the source
+    /// Lexical settings of the session (`ANSI_QUOTES`, `NO_BACKSLASH_ESCAPES`), read on the source
     /// when it opened.
     #[serde(flatten)]
     pub dialect_options: DialectOptions,
@@ -90,7 +90,7 @@ pub fn dialect_of(flavor: Flavor) -> Dialect {
 }
 
 /// Dialect of the texts of a session: that of its flavor, with the lexical
-/// settings read on the source when it opened (`ANSI_QUOTES`).
+/// settings read on the source when it opened (`ANSI_QUOTES`, `NO_BACKSLASH_ESCAPES`).
 pub fn session_dialect(info: &SourceInfo) -> SessionDialect {
     SessionDialect {
         dialect: dialect_of(info.flavor),
@@ -245,6 +245,21 @@ mod tests {
         assert_eq!(analyze(&request).errors.len(), 1);
         request.dialect_options.ansi_quotes = true;
         assert_eq!(analyze(&request).errors, vec![]);
+    }
+
+    #[test]
+    fn reads_the_backslash_as_a_character_under_no_backslash_escapes() {
+        let mut request = AnalyzeRequest {
+            sql: r"SELECT 'C:\'; SELECT 1".to_string(),
+            flavor: Flavor::MariaDb,
+            dialect_options: DialectOptions::default(),
+        };
+        // Without the mode, the string runs to the end of the text.
+        assert_eq!(analyze(&request).statements.len(), 1);
+        request.dialect_options.no_backslash_escapes = true;
+        let analysis = analyze(&request);
+        assert_eq!(analysis.statements.len(), 2);
+        assert_eq!(analysis.errors, vec![]);
     }
 
     #[test]

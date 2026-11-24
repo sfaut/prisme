@@ -38,7 +38,7 @@ pub(crate) enum Parsed {
 
 /// Parses the queries of the text, separated by `;`, as `Parser::parse_sql`
 /// does, with the statements of `mysql_statements.rs`, in the lexical
-/// settings of the session (`ANSI_QUOTES`).
+/// settings of the session (`ANSI_QUOTES`, `NO_BACKSLASH_ESCAPES`).
 ///
 /// # Errors
 ///
