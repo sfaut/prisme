@@ -149,7 +149,7 @@ fn beautify_chunks(sql: &str, options: BeautifyOptions) -> String {
     // precedes it.
     let mut tight = true;
     let mut delimiter = ";".to_string();
-    for chunk in chunks(sql) {
+    for chunk in chunks(sql, options.dialect.lexical_rules()) {
         let command = matches!(chunk, Chunk::Command { .. });
         let (text, next_tight) = match chunk {
             Chunk::Command {

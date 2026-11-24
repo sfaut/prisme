@@ -20,7 +20,8 @@ import type { ErrorDetail } from './generated/ErrorDetail'
 import type { FailureCause } from './generated/FailureCause'
 import type { Field } from './generated/Field'
 import type { Flavor } from './generated/Flavor'
-import { FLAVOR_NAMES } from './flavors'
+import type { LocationError } from './generated/LocationError'
+import { FLAVORS } from './flavors'
 import { WRITE_KIND_STATEMENTS } from './writeKinds'
 
 /**
@@ -41,6 +42,11 @@ const FIELD_LABELS: Record<Field, string> = {
   indent_size: 'Indentation',
   concat_max_bytes: 'GROUP_CONCAT',
   pivot_refresh_ms: 'Mise à jour du Pivoteur',
+  remote_connect_timeout_seconds: 'Délai de connexion',
+  remote_download_timeout_minutes: 'Durée d’un téléchargement',
+  remote_max_mebibytes: 'Taille la plus grande',
+  remote_cache_days: 'Copies inutilisées',
+  schema_name: 'Schéma',
 }
 
 /**
@@ -53,6 +59,10 @@ const FIELD_UNITS: Partial<Record<Field, string>> = {
   indent_size: ' espaces',
   concat_max_bytes: ' octets',
   pivot_refresh_ms: ' millisecondes',
+  remote_connect_timeout_seconds: ' secondes',
+  remote_download_timeout_minutes: ' minutes',
+  remote_max_mebibytes: ' Mio',
+  remote_cache_days: ' jours',
 }
 
 /**
@@ -84,12 +94,18 @@ export function quoted(intro: string, text: string): string {
 function causeText(cause: FailureCause, flavor: Flavor | null = null): string {
   switch (cause.source) {
     case 'server': {
-      const server = flavor === null ? 'Le serveur' : `Le serveur ${FLAVOR_NAMES[flavor]}`
+      const server = flavor === null ? 'Le serveur' : `Le serveur ${FLAVORS[flavor].name}`
       const reference = `erreur ${cause.number}, SQLSTATE ${cause.sqlstate}`
       return quoted(`${server} a répondu (${reference})`, cause.message)
     }
-    case 'driver':
-      return quoted('Le pilote de connexion (mysql_async) a signalé', cause.message)
+    case 'engine': {
+      const engine = flavor === null ? 'Le moteur' : FLAVORS[flavor].name
+      return quoted(`${engine} a répondu (${cause.name}, code ${cause.code})`, cause.message)
+    }
+    case 'driver': {
+      const driver = flavor === null ? '' : ` (${FLAVORS[flavor].driver})`
+      return quoted(`Le pilote de connexion${driver} a signalé`, cause.message)
+    }
     case 'system':
       return quoted('Le système a signalé', cause.message)
   }
@@ -111,7 +127,7 @@ function withCause(sentence: string, cause: FailureCause, flavor: Flavor | null 
  *
  * @param failure Why the connection could not open.
  */
-function connectMessage(failure: ConnectFailure): string {
+export function connectMessage(failure: ConnectFailure): string {
   switch (failure.reason) {
     case 'refused':
       return `${failure.address} refuse la connexion : aucun serveur n’écoute sur ce port, ou il n’accepte que les connexions locales (bind-address).`
@@ -137,8 +153,48 @@ function connectMessage(failure: ConnectFailure): string {
       return withCause(`${failure.address} refuse la connexion.`, failure.cause)
     case 'unsupported_authentication':
       return `Le compte « ${failure.username} » utilise une méthode d’authentification que Prisme ne prend pas en charge (${failure.plugin}).`
+    case 'file_not_found':
+      return `Le fichier ${failure.location} n’existe pas.`
+    case 'not_a_database':
+      return withCause(`${failure.location} n’est pas une base de données.`, failure.cause)
+    case 'file_unreadable':
+      return withCause(`Impossible d’ouvrir ${failure.location}.`, failure.cause)
+    case 'location':
+      return locationMessage(failure.error)
     case 'other':
       return withCause(`Connexion impossible à ${failure.address}.`, failure.cause)
+  }
+}
+
+/**
+ * Message of a location refused, or that could not be reached.
+ *
+ * @param error Why the location is refused or unreachable.
+ */
+export function locationMessage(error: LocationError): string {
+  switch (error.code) {
+    case 'empty':
+      return 'Aucun emplacement n’est saisi.'
+    case 'too_long':
+      return `L’emplacement dépasse ${error.max} caractères.`
+    case 'relative_path':
+      return `${error.address} : le chemin doit être absolu.`
+    case 'invalid_url':
+      return `${error.address} : adresse illisible.`
+    case 'credentials':
+      return `${error.address} : un emplacement web doit être public, sans compte.`
+    case 'not_served':
+      return `Le protocole ${error.scheme} n’est pas encore supporté par Prisme.`
+    case 'unknown_scheme':
+      return `Le protocole ${error.scheme} est inconnu.`
+    case 'already_exists':
+      return `${error.address} existe déjà.`
+    case 'too_large':
+      return `Le fichier dépasse ${error.max_bytes} octets, la taille permise par les préférences.`
+    case 'not_creatable':
+      return `Prisme ne peut pas créer de base par le protocole ${error.scheme}.`
+    case 'unreachable':
+      return quoted(`${error.address} est injoignable`, error.message)
   }
 }
 
@@ -171,6 +227,18 @@ export function describe(detail: ErrorDetail): string {
       return `Limite de ${number(detail.value)} lignes non proposée : choisir parmi ${detail.choices.map(number).join(', ')}.`
     case 'duplicate_connection_name':
       return `Une connexion nommée « ${detail.name} » existe déjà.`
+    case 'settings_family':
+      return `Les réglages envoyés ne conviennent pas au moteur « ${detail.engine} ».`
+    case 'main_database_first':
+      return 'La première base est la base principale, de schéma « main ».'
+    case 'too_many_databases':
+      return `${number(detail.max)} bases attachées au plus, en plus de la base principale.`
+    case 'duplicate_schema':
+      return `Le schéma « ${detail.schema} » est donné deux fois (sans tenir compte de la casse).`
+    case 'reserved_schema':
+      return `Le schéma « ${detail.schema} » est réservé par le moteur : choisir un autre nom.`
+    case 'location':
+      return `Schéma « ${detail.schema} » : ${locationMessage(detail.error)}`
     case 'init_sql_not_understood':
       return `À la connexion : Prisme ne comprend pas la requête « ${detail.statement} ».`
     case 'init_sql_global_setting':
@@ -209,6 +277,8 @@ export function describe(detail: ErrorDetail): string {
         ? `Écriture refusée : ${statements} ne sont pas autorisés dans les Paramètres.`
         : `Écriture refusée : ${statements} n’est pas autorisé dans les Paramètres.`
     }
+    case 'attach_path_in_memory':
+      return `ATTACH refusé : la base principale de la connexion est en mémoire (memdb), où le chemin ${detail.path} ouvrirait une base vide au lieu du fichier. Nommer le fichier par son URI : ATTACH '${detail.uri}' AS …`
     case 'write_forbidden':
       return 'Écriture refusée : aucun paramètre n’autorise cette instruction (appel de procédure, base de données, déclencheur, compte, fichier, réglage du serveur…).'
     case 'read_write_transaction_read_only':

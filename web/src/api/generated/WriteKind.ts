@@ -24,4 +24,6 @@ export type WriteKind =
   | "drop_procedure"
   | "create_event"
   | "alter_event"
-  | "drop_event";
+  | "drop_event"
+  | "attach"
+  | "maintenance";

@@ -15,36 +15,43 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use prisme_connectors::mysql::{self, Connection, MysqlTarget};
+use prisme_connectors::api::{
+    self, ConnectorError, DatabaseState, DatabaseStatus, FileDatabase, Namespace,
+};
+use prisme_connectors::drivers;
+use prisme_connectors::flavor::Flavor;
+use prisme_connectors::location::Location;
 use prisme_connectors::outcome::StatementOutcome;
-use prisme_dialects::Dialect;
-use prisme_dialects::classify::ends_transaction;
+use prisme_dialects::classify::{StatementKind, WriteKind, classify, ends_transaction};
 use prisme_dialects::temporary::{TableName, temporary_changes};
 use prisme_dialects::verb::StatementVerb;
 use prisme_splitter::split;
 use tokio::sync::{mpsc, watch};
 use tracing::Instrument;
 
+use super::Source;
 use super::cancellation::Cancellation;
 use super::execution::{chosen_statements, reads_only, selected_pieces};
 use super::limits::run_limits;
 use super::outbox::{Outbox, SessionStopped};
 use super::protocol::{BatchQuery, QueryRequest, ServerMessage, SessionRequest};
 use super::temporary_tables::TemporaryTables;
-use crate::analyze::flavor_of;
+use crate::analyze::dialect_of;
 use crate::api::AppState;
+use crate::api_error::ApiError;
+use crate::connections::{self, ConnectionsError};
 use crate::console::{self, Action};
 use crate::error_detail::ErrorDetail;
 
-/// Runs a session: connection to the target server, then the client's
-/// requests until the session stops.
+/// Runs a session: connection to the source, then the client's requests
+/// until the session stops.
 pub(super) async fn serve(
     outbox: Outbox,
     mut requests: mpsc::Receiver<SessionRequest>,
     mut stop: watch::Receiver<bool>,
     state: AppState,
     user_id: i64,
-    target: MysqlTarget,
+    source: Source,
     cancellation: Arc<Cancellation>,
 ) {
     let database = Mutex::new(None);
@@ -52,7 +59,7 @@ pub(super) async fn serve(
     let transaction = AtomicBool::new(false);
     let session = Session {
         outbox: &outbox,
-        target: &target,
+        source: &source,
         state: &state,
         user_id,
         cancellation: &cancellation,
@@ -65,7 +72,17 @@ pub(super) async fn serve(
     let Some(mut connection) = session.open().instrument(opening.clone()).await else {
         return;
     };
-    if let Ok(dialect) = session.ready(&mut connection).instrument(opening).await {
+    let ready = session.ready(connection.as_mut()).instrument(opening).await;
+    // The databases of the session, told at once: the navigator shows where
+    // each one lies.
+    let ready = match ready {
+        Ok(flavor) => session
+            .tell_databases(connection.as_mut())
+            .await
+            .map(|()| flavor),
+        Err(stopped) => Err(stopped),
+    };
+    if let Ok(flavor) = ready {
         loop {
             let request = tokio::select! {
                 _ = stop.changed() => break,
@@ -80,14 +97,36 @@ pub(super) async fn serve(
                     let session = Session { batch, ..session };
                     let span = console::action_span(action_of(&request));
                     session
-                        .handle(&mut connection, dialect, request)
+                        .handle(connection.as_mut(), flavor, request)
                         .instrument(span)
                         .await
                 }
                 SessionRequest::Use(database) => {
                     session
-                        .use_database(&mut connection, dialect, &database)
+                        .use_database(connection.as_mut(), flavor, &database)
                         .instrument(console::action_span(Action::Use))
+                        .await
+                }
+                SessionRequest::Backup { schema, location } => {
+                    session
+                        .backup(connection.as_mut(), flavor, &schema, &location)
+                        .instrument(console::action_span(Action::Databases))
+                        .await
+                }
+                SessionRequest::Attach {
+                    schema,
+                    location,
+                    save,
+                } => {
+                    session
+                        .attach(connection.as_mut(), flavor, &schema, &location, save)
+                        .instrument(console::action_span(Action::Databases))
+                        .await
+                }
+                SessionRequest::Detach(schema) => {
+                    session
+                        .detach(connection.as_mut(), flavor, &schema)
+                        .instrument(console::action_span(Action::Databases))
                         .await
                 }
             };
@@ -96,7 +135,7 @@ pub(super) async fn serve(
             }
         }
     }
-    let _ = connection.disconnect().await;
+    connection.close().await;
 }
 
 /// Action of a request, for the history of the queries: a refresh, the
@@ -118,8 +157,8 @@ pub(super) struct Session<'a> {
     pub(super) batch: u64,
     /// Queue of the messages to the client.
     pub(super) outbox: &'a Outbox,
-    /// Connection settings, for the extra connections and the interruptions.
-    pub(super) target: &'a MysqlTarget,
+    /// The source, for the connections of the parallel queries.
+    pub(super) source: &'a Source,
     /// State of the application, to read the settings.
     pub(super) state: &'a AppState,
     /// User of the session.
@@ -175,11 +214,11 @@ impl Session<'_> {
     pub(super) fn follow_temporary(
         &self,
         sql: &str,
-        dialect: Dialect,
+        flavor: Flavor,
         database: Option<&str>,
         succeeded: bool,
     ) {
-        let changes = temporary_changes(sql, dialect);
+        let changes = temporary_changes(sql, dialect_of(flavor));
         if changes.is_empty() {
             return;
         }
@@ -189,38 +228,33 @@ impl Session<'_> {
     }
 
     /// Opens the session's connection; on failure, the error goes to the client.
-    async fn open(&self) -> Option<Connection> {
-        match mysql::connect(self.target).await {
+    async fn open(&self) -> Option<Box<dyn api::Session>> {
+        let target = &self.source.target;
+        let opening = drivers::of(target.engine).open(target, self.source.options.clone());
+        match opening.await {
             Ok(connection) => Some(connection),
             Err(error) => {
-                let detail = ErrorDetail::of_mysql(&error, None);
+                let detail = ErrorDetail::of_connector(&error, None);
                 let _ = self.outbox.error(None, detail).await;
                 None
             }
         }
     }
 
-    /// Announces the session to the client: identity of the server and current
-    /// database. Returns the server's dialect.
-    async fn ready(&self, connection: &mut Connection) -> Result<Dialect, SessionStopped> {
-        let info = match mysql::server_info(connection).await {
-            Ok(info) => info,
+    /// Announces the session to the client: identity of the source and current
+    /// database. Returns the source's flavor.
+    async fn ready(&self, connection: &mut dyn api::Session) -> Result<Flavor, SessionStopped> {
+        let info = connection.info().clone();
+        let database = match connection.current_namespace().await {
+            Ok(namespace) => database_of(namespace),
             Err(error) => {
-                let detail = ErrorDetail::of_mysql(&error, None);
-                self.outbox.error(None, detail).await?;
-                return Err(SessionStopped);
-            }
-        };
-        let database = match mysql::current_database(connection).await {
-            Ok(database) => database,
-            Err(error) => {
-                let detail = ErrorDetail::of_mysql(&error, Some(info.flavor));
+                let detail = ErrorDetail::of_connector(&error, Some(info.flavor));
                 self.outbox.error(None, detail).await?;
                 return Err(SessionStopped);
             }
         };
         self.remember_database(&database);
-        let dialect = crate::analyze::dialect_of(info.flavor);
+        let flavor = info.flavor;
         self.outbox
             .send(ServerMessage::Ready {
                 server: info,
@@ -228,7 +262,7 @@ impl Session<'_> {
                 transaction: false,
             })
             .await?;
-        Ok(dialect)
+        Ok(flavor)
     }
 
     /// Tells the client when a transaction opened or ended on the session's
@@ -237,10 +271,10 @@ impl Session<'_> {
     /// (the server closed it) ends the session, with an error for the client.
     async fn follow_transaction(
         &self,
-        connection: &mut Connection,
+        connection: &mut dyn api::Session,
         check: bool,
     ) -> Result<(), SessionStopped> {
-        let Ok(open) = mysql::in_transaction(connection, check).await else {
+        let Ok(open) = connection.transaction_state(check).await else {
             self.outbox
                 .error(None, ErrorDetail::ConnectionClosedByServer)
                 .await?;
@@ -257,24 +291,153 @@ impl Session<'_> {
     /// session error.
     async fn use_database(
         &self,
-        connection: &mut Connection,
-        dialect: Dialect,
+        connection: &mut dyn api::Session,
+        flavor: Flavor,
         database: &str,
     ) -> Result<(), SessionStopped> {
-        let changed = match mysql::use_database(connection, database).await {
-            Ok(()) => mysql::current_database(connection).await,
+        let namespace = Namespace::single(database);
+        let changed = match connection.switch_namespace(&namespace).await {
+            Ok(()) => connection.current_namespace().await,
             Err(error) => Err(error),
         };
         match changed {
-            Ok(database) => {
+            Ok(namespace) => {
+                let database = database_of(namespace);
                 self.remember_database(&database);
                 self.outbox.send(ServerMessage::Database { database }).await
             }
             Err(error) => {
-                let detail = ErrorDetail::of_mysql(&error, Some(flavor_of(dialect)));
+                let detail = ErrorDetail::of_connector(&error, Some(flavor));
                 self.outbox.error(None, detail).await
             }
         }
+    }
+
+    /// Copies the database of the schema `schema` into a new file at
+    /// `location`, as typed, and tells the client; a location refused or a
+    /// copy that fails goes as a session error. Allowed in a read-only
+    /// session: the copy writes no database of the session.
+    async fn backup(
+        &self,
+        connection: &mut dyn api::Session,
+        flavor: Flavor,
+        schema: &str,
+        location: &str,
+    ) -> Result<(), SessionStopped> {
+        let copied = match Location::parse(location) {
+            Ok(location) => connection
+                .backup(schema, &location)
+                .await
+                .map(|()| location),
+            Err(error) => Err(ConnectorError::Location(error)),
+        };
+        match copied {
+            Ok(location) => {
+                let schema = schema.to_string();
+                self.outbox
+                    .send(ServerMessage::BackedUp { schema, location })
+                    .await
+            }
+            Err(error) => {
+                let detail = ErrorDetail::of_connector(&error, Some(flavor));
+                self.outbox.error(None, detail).await
+            }
+        }
+    }
+
+    /// Attaches the database at `location`, as typed, under the schema
+    /// `schema`, with `save` also to the databases of the connection, and
+    /// tells the client the databases of the session; a database refused,
+    /// or that cannot be opened, goes as a session error. No switch: the
+    /// request comes from the navigator, not from SQL.
+    async fn attach(
+        &self,
+        connection: &mut dyn api::Session,
+        flavor: Flavor,
+        schema: &str,
+        location: &str,
+        save: bool,
+    ) -> Result<(), SessionStopped> {
+        let database = match connections::attachment(schema, location) {
+            Ok(database) => database,
+            Err(ConnectionsError::Invalid(detail)) => return self.outbox.error(None, detail).await,
+            Err(_) => return self.outbox.error(None, ErrorDetail::Internal).await,
+        };
+        match connection.attach(&database).await {
+            Ok(DatabaseState {
+                status: DatabaseStatus::Open { .. },
+                ..
+            }) => {
+                if save && let Err(detail) = self.save_database(&database).await {
+                    // Not saved: the session goes back to its databases.
+                    let _ = connection.detach(&database.schema).await;
+                    return self.outbox.error(None, detail).await;
+                }
+                self.tell_databases(connection).await
+            }
+            Ok(DatabaseState {
+                status: DatabaseStatus::Unavailable { failure },
+                ..
+            }) => {
+                let detail = ErrorDetail::Connect { failure };
+                self.outbox.error(None, detail).await
+            }
+            Err(error) => {
+                let detail = ErrorDetail::of_connector(&error, Some(flavor));
+                self.outbox.error(None, detail).await
+            }
+        }
+    }
+
+    /// Adds `database`, just attached, to the databases of the connection of
+    /// the session.
+    async fn save_database(&self, database: &FileDatabase) -> Result<(), ErrorDetail> {
+        let user_id = self.user_id;
+        let id = self.source.connection_id;
+        let database = database.clone();
+        let saved = self
+            .state
+            .with_db(move |db, _| connections::append_file(db, user_id, id, &database))
+            .await;
+        match saved {
+            Ok(true) => Ok(()),
+            Err(ApiError::BadRequest(detail)) => Err(detail),
+            Ok(false) | Err(_) => Err(ErrorDetail::Internal),
+        }
+    }
+
+    /// Detaches the database of the schema `schema`, and tells the client
+    /// the databases of the session; a failure goes as a session error.
+    async fn detach(
+        &self,
+        connection: &mut dyn api::Session,
+        flavor: Flavor,
+        schema: &str,
+    ) -> Result<(), SessionStopped> {
+        match connection.detach(schema).await {
+            Ok(()) => self.tell_databases(connection).await,
+            Err(error) => {
+                let detail = ErrorDetail::of_connector(&error, Some(flavor));
+                self.outbox.error(None, detail).await
+            }
+        }
+    }
+
+    /// Lists the databases of the session's connection again, and tells
+    /// them to the client; nothing for an engine without attachments.
+    async fn tell_databases(
+        &self,
+        connection: &mut dyn api::Session,
+    ) -> Result<(), SessionStopped> {
+        if !connection.info().capabilities.attachments {
+            return Ok(());
+        }
+        self.follow_databases(connection).await;
+        self.outbox
+            .send(ServerMessage::Databases {
+                databases: self.source.shared.listed(),
+            })
+            .await
     }
 
     /// Handles a request of the client: splits the text, then runs the query
@@ -285,15 +448,15 @@ impl Session<'_> {
     /// alone, like a cursor at the start.
     async fn handle(
         &self,
-        connection: &mut Connection,
-        dialect: Dialect,
+        connection: &mut dyn api::Session,
+        flavor: Flavor,
         request: QueryRequest,
     ) -> Result<(), SessionStopped> {
         let limits = match run_limits(self.state, self.user_id, request.row_limit).await {
             Ok(limits) => limits,
             Err(detail) => return self.outbox.error(None, detail).await,
         };
-        let statements = split(&request.sql);
+        let statements = split(&request.sql, dialect_of(flavor).lexical_rules());
         let cursor = request.tab.map_or(request.cursor, |_| Some(0));
         let selection = request.selection.as_deref().unwrap_or_default();
         let exact = request.exact == Some(true) && cursor.is_none();
@@ -326,20 +489,73 @@ impl Session<'_> {
         self.outbox.send(ServerMessage::Batch { queries }).await?;
 
         if cursor.is_some() {
-            self.run_on_session(connection, dialect, 0, &chosen[0].sql, &limits)
+            self.run_on_session(connection, flavor, 0, &chosen[0].sql, &limits)
                 .await?;
-        } else if !self.transaction.load(Ordering::Relaxed) && reads_only(&chosen, dialect) {
+        } else if self.parallel(connection) && reads_only(&chosen, flavor) {
             let database = self.current_database();
-            self.run_in_parallel(&chosen, dialect, &limits, &database)
+            self.run_in_parallel(&chosen, flavor, &limits, &database)
                 .await?;
         } else {
-            self.run_in_sequence(connection, &chosen, dialect, &limits)
+            self.run_in_sequence(connection, &chosen, flavor, &limits)
+                .await?;
+        }
+        let attaches = chosen
+            .iter()
+            .any(|statement| attaches(&statement.sql, flavor));
+        if attaches && self.follow_databases(connection).await {
+            self.outbox
+                .send(ServerMessage::Databases {
+                    databases: self.source.shared.listed(),
+                })
                 .await?;
         }
         let ends = chosen
             .iter()
-            .any(|statement| ends_transaction(&statement.sql, dialect));
+            .any(|statement| ends_transaction(&statement.sql, dialect_of(flavor)));
         self.follow_transaction(connection, ends).await?;
         self.outbox.send(ServerMessage::BatchDone).await
     }
+}
+
+impl Session<'_> {
+    /// Can the queries of a batch run in parallel, each on its own
+    /// connection? Only when the engine opens several connections on the
+    /// source, no transaction is open on the session's connection, where it
+    /// lives, and that connection holds no database that the others cannot
+    /// attach.
+    fn parallel(&self, connection: &dyn api::Session) -> bool {
+        connection.info().capabilities.parallel_sessions
+            && !self.transaction.load(Ordering::Relaxed)
+            && !self.source.shared.private()
+    }
+
+    /// Lists the databases attached to the session's connection, which its
+    /// other connections attach too (`Shared`), and returns whether they
+    /// changed. An engine without attachments has none to list.
+    async fn follow_databases(&self, connection: &mut dyn api::Session) -> bool {
+        if !connection.info().capabilities.attachments {
+            return false;
+        }
+        match connection.databases().await {
+            Ok(listed) => self.source.shared.follow(&listed),
+            Err(error) => {
+                tracing::warn!("cannot list the attached databases: {error}");
+                false
+            }
+        }
+    }
+}
+
+/// Does the statement `sql` attach or detach a database?
+fn attaches(sql: &str, flavor: Flavor) -> bool {
+    matches!(
+        classify(sql, dialect_of(flavor)),
+        StatementKind::Write(kinds) if kinds.contains(&WriteKind::Attach)
+    )
+}
+
+/// Current database of the session, as the protocol carries it: the
+/// innermost level of the namespace, the only level of a MySQL database.
+pub(super) fn database_of(namespace: Option<Namespace>) -> Option<String> {
+    namespace.map(|namespace| namespace.name().to_string())
 }

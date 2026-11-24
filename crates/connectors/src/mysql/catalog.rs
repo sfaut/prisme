@@ -1,10 +1,12 @@
 //! Catalog of a MySQL or MariaDB server: databases, objects and table details.
 //!
-//! Serves the object navigator, which shows the elements as soon as they
-//! arrive, in three steps:
+//! Serves the object navigator through `MysqlCatalog`, the reader of the
+//! contract (`crate::api::CatalogReader`), which shows the elements as soon
+//! as they arrive, in three steps:
 //!
 //! 1. `schemas`: database names;
-//! 2. `objects`: tables, views, procedures, functions and events of a database;
+//! 2. `objects`: tables, views, procedures, functions and events of a database,
+//!    in their neutral form (`crate::catalog::ObjectInfo`);
 //! 3. `details`: columns, indexes, foreign keys and triggers of each table of
 //!    a database.
 //!
@@ -18,153 +20,16 @@
 
 use std::collections::BTreeMap;
 
+use futures_util::future::BoxFuture;
 use mysql_async::prelude::{FromRow, Queryable};
-use serde::Serialize;
-use ts_rs::TS;
 
-use super::{Connection, MysqlError, sql_log};
-
-/// Table or view of a database.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct TableInfo {
-    /// Name of the table.
-    pub name: String,
-    /// Nature of the object.
-    pub kind: TableKind,
-    /// Row count estimated by the server (`TABLE_ROWS`, up to a day old on
-    /// MySQL 8.4); `None` for a view, or a table without statistics.
-    pub rows: Option<u64>,
-}
-
-/// Nature of a table-like object.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-#[serde(rename_all = "snake_case")]
-pub enum TableKind {
-    /// Data table.
-    Table,
-    /// View.
-    View,
-    /// Table or view provided by the server itself (`information_schema`...).
-    System,
-}
-
-/// Stored procedure or function.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct RoutineInfo {
-    /// Name of the routine.
-    pub name: String,
-    /// Procedure or function.
-    pub kind: RoutineKind,
-}
-
-/// Nature of a stored routine.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-#[serde(rename_all = "snake_case")]
-pub enum RoutineKind {
-    /// Procedure (`CALL`).
-    Procedure,
-    /// Function (called in an expression).
-    Function,
-}
-
-/// Scheduled event of a database (`CREATE EVENT`, MySQL and MariaDB).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct EventInfo {
-    /// Name of the event.
-    pub name: String,
-    /// Running on its schedule (`ENABLED`), or paused (`DISABLED`).
-    pub enabled: bool,
-}
-
-/// Objects of a database: tables and views, procedures and functions, events, by name.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct SchemaObjects {
-    /// Tables and views.
-    pub tables: Vec<TableInfo>,
-    /// Procedures and functions.
-    pub routines: Vec<RoutineInfo>,
-    /// Scheduled events.
-    pub events: Vec<EventInfo>,
-}
-
-/// Column of a table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct ColumnInfo {
-    /// Name of the column.
-    pub name: String,
-    /// Full type, as declared (`varchar(50)`, `int unsigned`...).
-    pub column_type: String,
-    /// Does the column accept NULL?
-    pub nullable: bool,
-    /// Role in the indexes: `PRI`, `UNI`, `MUL`, or empty string.
-    pub key: String,
-    /// Value assigned automatically on insert (`AUTO_INCREMENT`)?
-    pub auto_increment: bool,
-}
-
-/// Index of a table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct IndexInfo {
-    /// Name of the index (`PRIMARY` for the primary key).
-    pub name: String,
-    /// Indexed columns, in the order of the index. A computed part (MySQL
-    /// functional index) appears as `(expression)`.
-    pub columns: Vec<String>,
-    /// Unique index?
-    pub unique: bool,
-}
-
-/// Foreign key of a table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct ForeignKeyInfo {
-    /// Name of the constraint.
-    pub name: String,
-    /// Columns of the table, in the order of the key.
-    pub columns: Vec<String>,
-    /// Database of the referenced table.
-    pub referenced_schema: String,
-    /// Referenced table.
-    pub referenced_table: String,
-    /// Referenced columns, in the same order as `columns`.
-    pub referenced_columns: Vec<String>,
-}
-
-/// Trigger of a table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct TriggerInfo {
-    /// Name of the trigger.
-    pub name: String,
-    /// Timing: `BEFORE` or `AFTER`.
-    pub timing: String,
-    /// Event: `INSERT`, `UPDATE` or `DELETE`.
-    pub event: String,
-}
-
-/// Details of a table: columns, indexes, foreign keys and triggers.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct TableDetails {
-    /// Name of the table.
-    pub table: String,
-    /// Columns, in declaration order.
-    pub columns: Vec<ColumnInfo>,
-    /// Indexes, the primary key first, then by name.
-    pub indexes: Vec<IndexInfo>,
-    /// Foreign keys, by name.
-    pub foreign_keys: Vec<ForeignKeyInfo>,
-    /// Triggers, by timing, event and execution order.
-    pub triggers: Vec<TriggerInfo>,
-}
+use super::{Connection, MysqlError};
+use crate::api::{CatalogReader, ConnectorError, Namespace};
+use crate::catalog::{
+    ColumnInfo, ForeignKeyInfo, IndexInfo, NamespaceInfo, ObjectInfo, ObjectKind, TableDetails,
+    TriggerInfo,
+};
+use crate::sql_log;
 
 /// Row of `information_schema.COLUMNS`: table, column, type, nullability,
 /// index, extra information (`auto_increment`...).
@@ -179,6 +44,52 @@ type ForeignKeyRow = (String, String, String, String, String, String);
 
 /// Row of `information_schema.TRIGGERS`: table, trigger, timing, event.
 type TriggerRow = (String, String, String, String);
+
+/// Databases provided by the server itself.
+const SYSTEM_SCHEMAS: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
+
+/// Reader of the catalog of a MySQL or MariaDB server, on the connection of
+/// a session. A namespace is a database.
+pub struct MysqlCatalog<'a> {
+    /// Connection of the session.
+    connection: &'a mut Connection,
+}
+
+impl<'a> MysqlCatalog<'a> {
+    /// Reader on the connection of a session, which it borrows.
+    pub fn new(connection: &'a mut Connection) -> Self {
+        Self { connection }
+    }
+}
+
+impl CatalogReader for MysqlCatalog<'_> {
+    fn namespaces(&mut self) -> BoxFuture<'_, Result<Vec<NamespaceInfo>, ConnectorError>> {
+        Box::pin(async move {
+            let schemas = schemas(self.connection).await?;
+            Ok(schemas
+                .into_iter()
+                .map(|schema| NamespaceInfo {
+                    system: SYSTEM_SCHEMAS.contains(&schema.as_str()),
+                    namespace: Namespace::single(schema),
+                })
+                .collect())
+        })
+    }
+
+    fn objects<'a>(
+        &'a mut self,
+        namespace: &'a Namespace,
+    ) -> BoxFuture<'a, Result<Vec<ObjectInfo>, ConnectorError>> {
+        Box::pin(async move { Ok(objects(self.connection, namespace.name()).await?) })
+    }
+
+    fn details<'a>(
+        &'a mut self,
+        namespace: &'a Namespace,
+    ) -> BoxFuture<'a, Result<Vec<TableDetails>, ConnectorError>> {
+        Box::pin(async move { Ok(details(self.connection, namespace.name()).await?) })
+    }
+}
 
 /// Lists the server's databases, by name.
 pub async fn schemas(connection: &mut Connection) -> Result<Vec<String>, MysqlError> {
@@ -202,11 +113,13 @@ async fn rows_of<T: FromRow + Send + 'static>(
     )
 }
 
-/// Lists the objects of the database `schema`: tables, views, procedures and functions.
+/// Lists the objects of the database `schema`, in the order of the
+/// navigator: tables and views, procedures and functions, then events, each
+/// group by name.
 pub async fn objects(
     connection: &mut Connection,
     schema: &str,
-) -> Result<SchemaObjects, MysqlError> {
+) -> Result<Vec<ObjectInfo>, MysqlError> {
     let tables: Vec<(String, String, Option<u64>)> = rows_of(
         connection,
         "SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS FROM information_schema.TABLES
@@ -228,38 +141,33 @@ pub async fn objects(
         schema,
     )
     .await?;
-    Ok(SchemaObjects {
-        events: events
-            .into_iter()
-            .map(|(name, status)| EventInfo {
-                name,
-                enabled: status == "ENABLED",
-            })
-            .collect(),
-        tables: tables
-            .into_iter()
-            .map(|(name, table_type, rows)| {
-                let kind = table_kind(&table_type);
-                TableInfo {
-                    name,
-                    kind,
-                    // A view has no estimate: NULL, but 0 up to MySQL 8.0.16.
-                    rows: rows.filter(|_| kind != TableKind::View),
-                }
-            })
-            .collect(),
-        routines: routines
-            .into_iter()
-            .map(|(name, routine_type)| RoutineInfo {
-                name,
-                kind: if routine_type == "FUNCTION" {
-                    RoutineKind::Function
-                } else {
-                    RoutineKind::Procedure
-                },
-            })
-            .collect(),
-    })
+    let tables = tables.into_iter().map(|(name, table_type, rows)| {
+        let kind = table_kind(&table_type);
+        ObjectInfo {
+            name,
+            kind,
+            // A view has no estimate: NULL, but 0 up to MySQL 8.0.16.
+            rows: rows.filter(|_| kind != ObjectKind::View),
+            enabled: None,
+        }
+    });
+    let routines = routines.into_iter().map(|(name, routine_type)| ObjectInfo {
+        name,
+        kind: if routine_type == "FUNCTION" {
+            ObjectKind::Function
+        } else {
+            ObjectKind::Procedure
+        },
+        rows: None,
+        enabled: None,
+    });
+    let events = events.into_iter().map(|(name, status)| ObjectInfo {
+        name,
+        kind: ObjectKind::Event,
+        rows: None,
+        enabled: Some(status == "ENABLED"),
+    });
+    Ok(tables.chain(routines).chain(events).collect())
 }
 
 /// Reads the details of all the tables of the database `schema`, table by table.
@@ -384,13 +292,13 @@ fn table<'a>(tables: &'a mut BTreeMap<String, TableDetails>, name: &str) -> &'a 
 }
 
 /// Translates the `TABLE_TYPE` column of `information_schema.TABLES`.
-fn table_kind(table_type: &str) -> TableKind {
+fn table_kind(table_type: &str) -> ObjectKind {
     match table_type {
-        "BASE TABLE" => TableKind::Table,
-        "VIEW" => TableKind::View,
+        "BASE TABLE" => ObjectKind::Table,
+        "VIEW" => ObjectKind::View,
         // SYSTEM VIEW (MySQL, MariaDB), SYSTEM VERSIONED (MariaDB, versioned table)...
-        "SYSTEM VERSIONED" => TableKind::Table,
-        _ => TableKind::System,
+        "SYSTEM VERSIONED" => ObjectKind::Table,
+        _ => ObjectKind::SystemTable,
     }
 }
 
@@ -467,9 +375,9 @@ mod tests {
 
     #[test]
     fn translates_table_types() {
-        assert_eq!(table_kind("BASE TABLE"), TableKind::Table);
-        assert_eq!(table_kind("SYSTEM VERSIONED"), TableKind::Table);
-        assert_eq!(table_kind("VIEW"), TableKind::View);
-        assert_eq!(table_kind("SYSTEM VIEW"), TableKind::System);
+        assert_eq!(table_kind("BASE TABLE"), ObjectKind::Table);
+        assert_eq!(table_kind("SYSTEM VERSIONED"), ObjectKind::Table);
+        assert_eq!(table_kind("VIEW"), ObjectKind::View);
+        assert_eq!(table_kind("SYSTEM VIEW"), ObjectKind::SystemTable);
     }
 }

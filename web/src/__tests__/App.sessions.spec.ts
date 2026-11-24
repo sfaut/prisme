@@ -8,6 +8,32 @@ import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import { useConnectionsStore } from '@/stores/connections'
 import { useEditorsStore } from '@/stores/editors'
 
+/**
+ * A saved MySQL connection on the database `ventes`, never connected.
+ *
+ * @param id Id of the connection.
+ * @param name Name of the connection.
+ */
+function summary(id: number, name: string): ConnectionSummary {
+  return {
+    id,
+    name,
+    engine: 'mysql',
+    settings: {
+      family: 'server',
+      host: 'localhost',
+      port: 3306,
+      username: 'root',
+      database_name: 'ventes',
+    },
+    init_sql: '',
+    session_timeout_minutes: 5,
+    show_system_schemas: true,
+    probe: null,
+    created_at: '2026-11-22T00:00:00.000Z',
+  }
+}
+
 vi.mock('@/api/version', () => ({
   getVersion: async () => ({ version: '1.2.3' }),
 }))
@@ -133,11 +159,12 @@ describe('App, closed session', () => {
     const wrapper = mount(App, {
       global: { stubs: { EditorView: ClosedCell, NavigatorPanel: Navigator } },
     })
-    useConnectionsStore().connections = [{ id: 1, name: 'local' } as ConnectionSummary]
+    useConnectionsStore().connections = [summary(1, 'local')]
     await vi.waitFor(() => expect(openings).toEqual([null]))
 
+    // The source chosen again reopens on the database of the connection.
     await wrapper.find('#select').trigger('click')
-    await vi.waitFor(() => expect(openings).toEqual([null, null]))
+    await vi.waitFor(() => expect(openings).toEqual([null, 'ventes']))
     wrapper.unmount()
   })
 
@@ -145,7 +172,7 @@ describe('App, closed session', () => {
     const wrapper = mount(App, {
       global: { stubs: { EditorView: ClosedCell, NavigatorPanel: Navigator } },
     })
-    useConnectionsStore().connections = [{ id: 1, name: 'local' } as ConnectionSummary]
+    useConnectionsStore().connections = [summary(1, 'local')]
     await vi.waitFor(() => expect(openings).toEqual([null]))
 
     await wrapper.find('#use').trigger('click')
@@ -154,7 +181,7 @@ describe('App, closed session', () => {
 
     // Forgotten once used: the next opening is on the connection's database.
     await wrapper.find('#select').trigger('click')
-    await vi.waitFor(() => expect(openings).toEqual([null, 'shop', null]))
+    await vi.waitFor(() => expect(openings).toEqual([null, 'shop', 'ventes']))
     wrapper.unmount()
   })
 })
@@ -176,7 +203,7 @@ describe('App, open transaction', () => {
       attachTo: document.body,
       global: { stubs: { EditorView: TransactionCell, NavigatorPanel: Navigator } },
     })
-    useConnectionsStore().connections = [{ id: 1, name: 'local' } as ConnectionSummary]
+    useConnectionsStore().connections = [summary(1, 'local')]
     await vi.waitFor(() => expect(transactionCells).toBe(1))
 
     await wrapper.find('#disconnect').trigger('click')
@@ -197,10 +224,7 @@ describe('App, open transaction', () => {
       attachTo: document.body,
       global: { stubs: { EditorView: TransactionCell, NavigatorPanel: Navigator } },
     })
-    useConnectionsStore().connections = [
-      { id: 1, name: 'local' } as ConnectionSummary,
-      { id: 2, name: 'other' } as ConnectionSummary,
-    ]
+    useConnectionsStore().connections = [summary(1, 'local'), summary(2, 'other')]
     await vi.waitFor(() => expect(transactionCells).toBe(1))
 
     await wrapper.find('#select-other').trigger('click')

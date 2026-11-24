@@ -21,6 +21,18 @@
 //! A setting of the session (`SET @v = 1`, `SET SESSION sql_mode = ...`,
 //! `SET NAMES`) writes nothing in the database: it is always allowed.
 //!
+//! SQLite follows the same switches (`docs/TODO-SQLITE.md`, decisions 2,
+//! 3, 10 and 11), with its own forms: `INSERT OR REPLACE` and `REPLACE`
+//! need `INSERT` and `DELETE`, `UPDATE OR REPLACE` needs `UPDATE` and
+//! `DELETE`, `ON CONFLICT DO UPDATE` needs `INSERT` and `UPDATE`; a table of
+//! the schema `temp` is a temporary table. A pragma has the role its list
+//! gives it (`sqlite_pragmas.rs`): it reads, sets the connection (a setting
+//! of the session), writes the file (the "Maintenance" switch, as `VACUUM`,
+//! `REINDEX`, `ANALYZE` and the function `pragma_optimize`), or is refused.
+//! `ATTACH` and `DETACH` have their switch; an `ATTACH` must name its file
+//! by a literal absolute path, or `':memory:'`. `VACUUM INTO`, which writes a
+//! new file, and triggers are refused.
+//!
 //! The control of transactions is always allowed too (`docs/V1.md`,
 //! section 2.5): `START TRANSACTION`, `BEGIN`, `COMMIT`, `ROLLBACK`,
 //! savepoints, `SET TRANSACTION`, `SET autocommit`. Its forms that can lift
@@ -36,14 +48,16 @@
 //! The queries run when a connection opens (`SET NAMES`,
 //! `SET SESSION sql_mode`...) are checked separately
 //! (`session_setting_refusal`): only settings of the session itself are
-//! allowed.
+//! allowed, the pragmas of `SESSION_PRAGMAS` for SQLite.
 
 use std::collections::BTreeSet;
+use std::ops::ControlFlow;
 
 use serde::{Deserialize, Serialize};
 use sqlparser::ast::{
-    ContextModifier, ObjectName, ObjectType, OnInsert, Set, SetExpr, Statement,
-    TransactionAccessMode, TransactionMode,
+    ContextModifier, Expr, ObjectName, ObjectType, OnConflict, OnConflictAction, OnInsert, Set,
+    SetExpr, SqliteOnConflict, Statement, TransactionAccessMode, TransactionMode, Value,
+    visit_relations,
 };
 use ts_rs::TS;
 
@@ -51,6 +65,9 @@ use crate::Dialect;
 use crate::limit::returns_rows;
 use crate::mysql_statements::MySqlStatement;
 use crate::parse::{Parsed, parse_statements};
+use crate::sqlite_files::attached_file;
+use crate::sqlite_pragmas::{self, PragmaRole};
+use crate::sqlite_statements::{PragmaForm, SqliteStatement};
 use crate::temporary::{TableName, table_name};
 
 /// Nature of a query.
@@ -73,7 +90,7 @@ pub enum StatementKind {
     /// Write of data or schema, allowed when each of its kinds is.
     Write(BTreeSet<WriteKind>),
     /// Write that no switch allows: procedure call, database, trigger,
-    /// account, file, server setting...
+    /// account, file, server setting, unknown pragma...
     Forbidden,
     /// Statement of an XA (distributed) transaction, which Prisme does not
     /// support: a prepared one outlives its session, with its locks.
@@ -131,11 +148,16 @@ pub enum WriteKind {
     AlterEvent,
     /// `DROP EVENT`.
     DropEvent,
+    /// `ATTACH` and `DETACH` of SQLite, for the session.
+    Attach,
+    /// `VACUUM`, `REINDEX`, `ANALYZE` of SQLite, and its pragmas that write
+    /// in the file (`optimize`, `wal_checkpoint`, `incremental_vacuum`).
+    Maintenance,
 }
 
 impl WriteKind {
     /// Every kind, in the order of the settings.
-    pub const ALL: [Self; 21] = [
+    pub const ALL: [Self; 23] = [
         Self::Insert,
         Self::Update,
         Self::Delete,
@@ -157,6 +179,8 @@ impl WriteKind {
         Self::CreateEvent,
         Self::AlterEvent,
         Self::DropEvent,
+        Self::Attach,
+        Self::Maintenance,
     ];
 
     /// Name of the kind, as serialized (`create_table`).
@@ -183,7 +207,17 @@ impl WriteKind {
             Self::CreateEvent => "create_event",
             Self::AlterEvent => "alter_event",
             Self::DropEvent => "drop_event",
+            Self::Attach => "attach",
+            Self::Maintenance => "maintenance",
         }
+    }
+
+    /// Does a read-only session still allow the kind, under its switch? Only
+    /// `ATTACH` / `DETACH`: a file attached by a read-only connection is
+    /// read-only too, and a missing one is not created
+    /// (`docs/SQL-COMPARISON.md`, section 6).
+    pub fn allowed_read_only(self) -> bool {
+        matches!(self, Self::Attach)
     }
 
     /// Kind of the name `name` (`create_table`), `None` if unknown.
@@ -209,11 +243,16 @@ pub fn classify_with(
     let Ok(statements) = parse_statements(sql, dialect) else {
         return StatementKind::Unparsed;
     };
+    // A table of the temporary schema (`temp.t`) is a temporary table.
+    let temporary = |table: &TableName| in_temporary_schema(table, dialect) || temporary(table);
     let mut kinds = BTreeSet::new();
     let mut setting = false;
     let mut transaction = None;
     for statement in &statements {
-        match need(statement, temporary) {
+        if writes_by_pragma_function(statement, dialect) {
+            kinds.insert(WriteKind::Maintenance);
+        }
+        match need(statement, dialect, &temporary) {
             Need::Read => {}
             Need::Setting => setting = true,
             Need::Transaction { read_write } => {
@@ -253,9 +292,9 @@ enum Need {
     Xa,
 }
 
-/// What a statement needs; `temporary` tells the temporary tables of the
-/// connection.
-fn need(statement: &Parsed, temporary: &dyn Fn(&TableName) -> bool) -> Need {
+/// What a statement needs in the dialect; `temporary` tells the temporary
+/// tables of the connection.
+fn need(statement: &Parsed, dialect: Dialect, temporary: &dyn Fn(&TableName) -> bool) -> Need {
     match statement {
         Parsed::Sql(statement) if is_read(statement) => Need::Read,
         Parsed::Sql(statement) => {
@@ -264,7 +303,7 @@ fn need(statement: &Parsed, temporary: &dyn Fn(&TableName) -> bool) -> Need {
             } else if matches!(statement, Statement::Set(set) if is_session_setting(set)) {
                 Need::Setting
             } else {
-                write_kinds(statement, temporary).map_or(Need::Forbidden, Need::Write)
+                write_kinds(statement, dialect, temporary).map_or(Need::Forbidden, Need::Write)
             }
         }
         Parsed::MySql(MySqlStatement::SetTransaction { global: true, .. }) => Need::Forbidden,
@@ -280,7 +319,83 @@ fn need(statement: &Parsed, temporary: &dyn Fn(&TableName) -> bool) -> Need {
         Parsed::MySql(MySqlStatement::Xa) => Need::Xa,
         Parsed::MySql(statement) => mysql_write_kind(statement, temporary)
             .map_or(Need::Forbidden, |kind| Need::Write(vec![kind])),
+        Parsed::Sqlite(statement) => sqlite_need(statement),
     }
+}
+
+/// What a statement of SQLite that `sqlparser` does not parse needs.
+fn sqlite_need(statement: &SqliteStatement) -> Need {
+    match statement {
+        SqliteStatement::Pragma { name, form } => {
+            let bare = *form == PragmaForm::Bare;
+            match sqlite_pragmas::role(name) {
+                Some(PragmaRole::Read) if bare => Need::Read,
+                Some(PragmaRole::ReadArgument) => Need::Read,
+                Some(PragmaRole::Setting) if bare => Need::Read,
+                Some(PragmaRole::Setting) => Need::Setting,
+                Some(PragmaRole::Maintenance) => Need::Write(vec![WriteKind::Maintenance]),
+                Some(PragmaRole::Read) | None => Need::Forbidden,
+            }
+        }
+        SqliteStatement::Detach => Need::Write(vec![WriteKind::Attach]),
+        // VACUUM INTO writes a new file.
+        SqliteStatement::Vacuum { into: true } => Need::Forbidden,
+        SqliteStatement::Vacuum { into: false } | SqliteStatement::Reindex => {
+            Need::Write(vec![WriteKind::Maintenance])
+        }
+    }
+}
+
+/// Is the table a table of the temporary schema of the dialect (`temp.t` in
+/// SQLite)?
+fn in_temporary_schema(table: &TableName, dialect: Dialect) -> bool {
+    dialect
+        .spec()
+        .temporary_schema
+        .zip(table.schema.as_deref())
+        .is_some_and(|(temporary, schema)| schema.eq_ignore_ascii_case(temporary))
+}
+
+/// Is the name that of a table of the temporary schema of the dialect?
+fn named_in_temporary_schema(name: &ObjectName, dialect: Dialect) -> bool {
+    table_name(name).is_some_and(|table| in_temporary_schema(&table, dialect))
+}
+
+/// Does the statement read the table function of a pragma that writes in
+/// the file (`SELECT * FROM pragma_optimize`, SQLite)?
+fn writes_by_pragma_function(statement: &Parsed, dialect: Dialect) -> bool {
+    let Parsed::Sql(statement) = statement else {
+        return false;
+    };
+    dialect.spec().statements == crate::Statements::Sqlite
+        && visit_relations(statement, |name| {
+            let writes = name
+                .0
+                .last()
+                .and_then(|part| part.as_ident())
+                .is_some_and(|ident| {
+                    sqlite_pragmas::function_writes(&ident.value.to_ascii_lowercase())
+                });
+            if writes {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .is_break()
+}
+
+/// Can an `ATTACH` of SQLite name this file? A literal that
+/// `sqlite_files::attached_file` accepts: an absolute path, `':memory:'`,
+/// or the URI of a file in the default file system; never a computed name.
+fn attachable(file: &Expr) -> bool {
+    let Expr::Value(value) = file else {
+        return false;
+    };
+    let Value::SingleQuotedString(name) = &value.value else {
+        return false;
+    };
+    attached_file(name).is_some()
 }
 
 /// Variables that set the read-only mode of the session.
@@ -376,23 +491,38 @@ fn on(temporary: bool, kind: WriteKind, temporary_kind: WriteKind) -> WriteKind 
     if temporary { temporary_kind } else { kind }
 }
 
-/// Kinds of a write of `sqlparser`, `None` if no switch allows it;
-/// `temporary` tells the temporary tables of the connection.
+/// Kinds of a write of `sqlparser` in the dialect, `None` if no switch
+/// allows it; `temporary` tells the temporary tables of the connection.
 fn write_kinds(
     statement: &Statement,
+    dialect: Dialect,
     temporary: &dyn Fn(&TableName) -> bool,
 ) -> Option<Vec<WriteKind>> {
     use WriteKind::*;
+    let sqlite = dialect.spec().statements == crate::Statements::Sqlite;
     let kinds = match statement {
         Statement::Insert(insert) => {
             let mut kinds = vec![Insert];
-            if insert.replace_into {
+            // REPLACE deletes the rows whose keys the new ones take.
+            if insert.replace_into || insert.or == Some(SqliteOnConflict::Replace) {
                 kinds.push(Delete);
             }
-            if matches!(insert.on, Some(OnInsert::DuplicateKeyUpdate(_))) {
+            if matches!(
+                insert.on,
+                Some(
+                    OnInsert::DuplicateKeyUpdate(_)
+                        | OnInsert::OnConflict(OnConflict {
+                            action: OnConflictAction::DoUpdate(_),
+                            ..
+                        })
+                )
+            ) {
                 kinds.push(Update);
             }
             kinds
+        }
+        Statement::Update(update) if update.or == Some(SqliteOnConflict::Replace) => {
+            vec![Update, Delete]
         }
         Statement::Update(_) => vec![Update],
         Statement::Delete(_) => vec![Delete],
@@ -401,22 +531,42 @@ fn write_kinds(
             SetExpr::Insert(statement)
             | SetExpr::Update(statement)
             | SetExpr::Delete(statement) => {
-                return write_kinds(statement, temporary);
+                return write_kinds(statement, dialect, temporary);
             }
             _ => return None,
         },
         // EXPLAIN ANALYZE runs the query.
-        Statement::Explain { statement, .. } => return write_kinds(statement, temporary),
-        Statement::CreateTable(create) => {
-            vec![on(create.temporary, CreateTable, CreateTemporaryTable)]
+        Statement::Explain { statement, .. } => {
+            return write_kinds(statement, dialect, temporary);
         }
+        Statement::CreateTable(create) => vec![on(
+            create.temporary || named_in_temporary_schema(&create.name, dialect),
+            CreateTable,
+            CreateTemporaryTable,
+        )],
+        // A virtual table of SQLite (fts5, rtree) is a table.
+        Statement::CreateVirtualTable { name, .. } => vec![on(
+            named_in_temporary_schema(name, dialect),
+            CreateTable,
+            CreateTemporaryTable,
+        )],
+        Statement::AttachDatabase {
+            database_file_name, ..
+        } if sqlite && attachable(database_file_name) => vec![Attach],
+        Statement::Analyze(_) if sqlite => vec![Maintenance],
         Statement::AlterTable(alter) => vec![on(
             all_temporary([&alter.name], temporary),
             AlterTable,
             AlterTemporaryTable,
         )],
+        // SQLite names the schema on the index (`CREATE INDEX temp.i ON x`),
+        // its table staying unqualified.
         Statement::CreateIndex(index) => vec![on(
-            all_temporary([&index.table_name], temporary),
+            all_temporary([&index.table_name], temporary)
+                || index
+                    .name
+                    .as_ref()
+                    .is_some_and(|name| named_in_temporary_schema(name, dialect)),
             AlterTable,
             AlterTemporaryTable,
         )],
@@ -441,8 +591,13 @@ fn write_kinds(
                 DropTemporaryTable,
             )],
             ObjectType::View => vec![DropView],
+            // SQLite drops an index without its table: `DROP INDEX temp.i`.
             ObjectType::Index => vec![on(
-                all_temporary(table, temporary),
+                all_temporary(table, temporary)
+                    || (!names.is_empty()
+                        && names
+                            .iter()
+                            .all(|name| named_in_temporary_schema(name, dialect))),
                 AlterTable,
                 AlterTemporaryTable,
             )],
@@ -540,6 +695,8 @@ pub fn session_setting_refusal(sql: &str, dialect: Dialect) -> Option<SettingRef
             }
             Parsed::Sql(Statement::Set(_))
             | Parsed::MySql(MySqlStatement::SetTransaction { .. }) => {}
+            Parsed::Sqlite(statement @ SqliteStatement::Pragma { .. })
+                if matches!(sqlite_need(statement), Need::Setting) => {}
             _ => return Some(SettingRefusal::NotASetting),
         }
     }
@@ -553,7 +710,8 @@ pub enum SettingRefusal {
     NotUnderstood,
     /// A global setting, which would change the whole server.
     Global,
-    /// Not a setting (`SET ...`).
+    /// Not a setting (`SET ...`, a pragma of `SESSION_PRAGMAS` with its value
+    /// for SQLite).
     NotASetting,
 }
 
@@ -917,5 +1075,255 @@ mod tests {
             kind("SELECT * FROM t PROCEDURE ANALYSE()"),
             StatementKind::Unparsed
         );
+    }
+
+    /// Nature of a query of SQLite, without a known temporary table.
+    fn sqlite(sql: &str) -> StatementKind {
+        classify(sql, Dialect::Sqlite)
+    }
+
+    /// A write of these kinds.
+    fn writes(kinds: &[WriteKind]) -> StatementKind {
+        StatementKind::Write(kinds.iter().copied().collect())
+    }
+
+    #[test]
+    fn classifies_the_writes_of_sqlite() {
+        use WriteKind::*;
+        for (sql, kinds) in [
+            ("INSERT INTO t VALUES (1) RETURNING *", &[Insert][..]),
+            ("INSERT OR IGNORE INTO t VALUES (1)", &[Insert]),
+            ("INSERT OR REPLACE INTO t VALUES (1)", &[Insert, Delete]),
+            ("REPLACE INTO t VALUES (1)", &[Insert, Delete]),
+            ("INSERT INTO t VALUES (1) ON CONFLICT DO NOTHING", &[Insert]),
+            (
+                "INSERT INTO t VALUES (1) ON CONFLICT (a) DO UPDATE SET b = excluded.b",
+                &[Insert, Update],
+            ),
+            ("UPDATE OR IGNORE t SET a = 1", &[Update]),
+            ("UPDATE OR REPLACE t SET a = 1", &[Update, Delete]),
+            ("UPDATE t SET a = u.a FROM u WHERE t.id = u.id", &[Update]),
+            ("DELETE FROM t WHERE a = 1 RETURNING a", &[Delete]),
+            (
+                "CREATE TABLE t (a INTEGER PRIMARY KEY) STRICT",
+                &[CreateTable],
+            ),
+            ("CREATE VIRTUAL TABLE f USING fts5(a)", &[CreateTable]),
+            ("ALTER TABLE t RENAME TO u", &[AlterTable]),
+            ("CREATE INDEX i ON t (a)", &[AlterTable]),
+            ("DROP TABLE t", &[DropTable]),
+            ("CREATE TEMP VIEW v AS SELECT 1", &[CreateView]),
+        ] {
+            assert_eq!(sqlite(sql), writes(kinds), "query: {sql}");
+        }
+    }
+
+    #[test]
+    fn a_table_of_the_schema_temp_is_a_temporary_table() {
+        use WriteKind::*;
+        for (sql, kind) in [
+            ("CREATE TEMP TABLE x (a)", CreateTemporaryTable),
+            ("CREATE TEMPORARY TABLE x (a)", CreateTemporaryTable),
+            ("CREATE TABLE temp.x (a)", CreateTemporaryTable),
+            ("CREATE TABLE TEMP.x (a)", CreateTemporaryTable),
+            (
+                "CREATE VIRTUAL TABLE temp.f USING fts5(a)",
+                CreateTemporaryTable,
+            ),
+            ("ALTER TABLE temp.x ADD COLUMN b", AlterTemporaryTable),
+            ("CREATE INDEX i ON temp.x (a)", AlterTemporaryTable),
+            ("DROP TABLE temp.x", DropTemporaryTable),
+            // A table `temp` of the main schema is no temporary table.
+            ("CREATE TABLE main.temp (a)", CreateTable),
+        ] {
+            assert_eq!(sqlite(sql), writes(&[kind]), "query: {sql}");
+        }
+        // `temp` is a database like any other in MySQL.
+        assert_eq!(kind("CREATE TABLE temp.x (a INT)"), writes(&[CreateTable]));
+    }
+
+    #[test]
+    fn classifies_the_operations_on_an_index_written_by_the_navigator() {
+        use WriteKind::*;
+        for (sql, kind) in [
+            ("CREATE INDEX \"other\".i ON \"t\" (a)", AlterTable),
+            ("CREATE UNIQUE INDEX other.i ON t (a, b)", AlterTable),
+            ("DROP INDEX \"other\".\"i\"", AlterTable),
+            ("CREATE INDEX temp.i ON x (a)", AlterTemporaryTable),
+            ("DROP INDEX temp.i", AlterTemporaryTable),
+        ] {
+            assert_eq!(sqlite(sql), writes(&[kind]), "query: {sql}");
+        }
+        assert_eq!(sqlite("REINDEX \"other\".i"), writes(&[Maintenance]));
+    }
+
+    #[test]
+    fn classifies_the_pragmas_by_their_role() {
+        for sql in [
+            "PRAGMA journal_mode",
+            "PRAGMA main.user_version",
+            "PRAGMA table_info(t)",
+            "PRAGMA table_info = t",
+            "PRAGMA aux.index_list('t')",
+            "PRAGMA integrity_check",
+            "PRAGMA integrity_check(10)",
+            "PRAGMA foreign_keys",
+            "SELECT * FROM pragma_table_info('t')",
+            "SELECT name FROM pragma_table_list WHERE schema = 'main'",
+        ] {
+            assert_eq!(sqlite(sql), StatementKind::Read, "query: {sql}");
+        }
+        for sql in [
+            "PRAGMA foreign_keys = ON",
+            "PRAGMA foreign_keys(1)",
+            "PRAGMA cache_size = -2000",
+            "PRAGMA temp_store = MEMORY",
+            "PRAGMA busy_timeout = 5000; SELECT 1",
+        ] {
+            assert_eq!(sqlite(sql), StatementKind::Setting, "query: {sql}");
+        }
+        for sql in [
+            "PRAGMA optimize",
+            "PRAGMA optimize(0x10002)",
+            "PRAGMA wal_checkpoint(TRUNCATE)",
+            "PRAGMA aux.incremental_vacuum(10)",
+            "SELECT * FROM pragma_optimize",
+            "SELECT * FROM main.PRAGMA_OPTIMIZE",
+            "VACUUM",
+            "VACUUM aux",
+            "REINDEX",
+            "REINDEX main.i",
+            "ANALYZE",
+            "ANALYZE main.t",
+        ] {
+            assert_eq!(
+                sqlite(sql),
+                writes(&[WriteKind::Maintenance]),
+                "query: {sql}"
+            );
+        }
+        // A write that reads the function of a pragma that writes needs both.
+        assert_eq!(
+            sqlite("INSERT INTO log SELECT * FROM pragma_optimize"),
+            writes(&[WriteKind::Insert, WriteKind::Maintenance])
+        );
+        for sql in [
+            // A setting of the file or of the library.
+            "PRAGMA journal_mode = WAL",
+            "PRAGMA journal_mode(WAL)",
+            "PRAGMA user_version = 3",
+            "PRAGMA writable_schema = ON",
+            "PRAGMA query_only = OFF",
+            // A pragma Prisme does not know, which SQLite would run silently.
+            "PRAGMA no_such_pragma",
+            "PRAGMA no_such_pragma = 1",
+        ] {
+            assert_eq!(sqlite(sql), StatementKind::Forbidden, "query: {sql}");
+        }
+        // A table of MySQL may bear the name of a pragma function.
+        assert_eq!(kind("SELECT * FROM pragma_optimize"), StatementKind::Read);
+    }
+
+    #[test]
+    fn attaches_only_files_named_by_a_literal_absolute_path_or_uri() {
+        #[cfg(windows)]
+        let paths = [
+            "D:\\data\\sales.db",
+            "D:/data/sales.db",
+            "\\\\server\\share\\s.db",
+        ];
+        #[cfg(not(windows))]
+        let paths = ["/srv/data/sales.db", "/tmp/s.db", "/s.db"];
+        let uri = crate::sqlite_files::file_uri(paths[0], false);
+        for path in paths.iter().chain(&[":memory:", uri.as_str()]) {
+            for sql in [
+                format!("ATTACH '{path}' AS sales"),
+                format!("ATTACH DATABASE '{path}' AS sales"),
+            ] {
+                assert_eq!(sqlite(&sql), writes(&[WriteKind::Attach]), "query: {sql}");
+            }
+        }
+        for sql in ["DETACH sales", "DETACH DATABASE sales"] {
+            assert_eq!(sqlite(sql), writes(&[WriteKind::Attach]), "query: {sql}");
+        }
+        for sql in [
+            "ATTACH 'sales.db' AS sales",
+            "ATTACH '' AS sales",
+            "ATTACH 'file:sales.db?mode=rwc' AS sales",
+            "ATTACH 'file:///D:/data/sales.db' AS sales",
+            "ATTACH 'file:/prisme/session-1/main?vfs=memdb' AS sales",
+            "ATTACH '/srv/' || 'sales.db' AS sales",
+            "ATTACH sales AS sales",
+            "ATTACH (SELECT path FROM files) AS sales",
+        ] {
+            assert_eq!(sqlite(sql), StatementKind::Forbidden, "query: {sql}");
+        }
+    }
+
+    #[test]
+    fn forbids_the_writes_of_sqlite_without_a_switch() {
+        for sql in [
+            "VACUUM INTO 'D:/copy.db'",
+            "VACUUM main INTO '/tmp/copy.db'",
+            "CREATE TRIGGER tr AFTER INSERT ON t BEGIN DELETE FROM u; END",
+            "CREATE TEMP TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1; END",
+            "DROP TRIGGER tr",
+        ] {
+            assert_eq!(sqlite(sql), StatementKind::Forbidden, "query: {sql}");
+        }
+    }
+
+    #[test]
+    fn allows_the_control_of_the_transactions_of_sqlite() {
+        for sql in [
+            "BEGIN",
+            "BEGIN DEFERRED TRANSACTION",
+            "BEGIN IMMEDIATE",
+            "BEGIN EXCLUSIVE",
+            "COMMIT",
+            "END",
+            "END TRANSACTION",
+            "ROLLBACK",
+            "ROLLBACK TO s",
+            "ROLLBACK TRANSACTION TO SAVEPOINT s",
+            "SAVEPOINT s",
+            "RELEASE s",
+            "RELEASE SAVEPOINT s",
+        ] {
+            assert_eq!(sqlite(sql), StatementKind::Transaction, "query: {sql}");
+        }
+        let ends = |sql| ends_transaction(sql, Dialect::Sqlite);
+        assert!(ends("COMMIT"));
+        assert!(ends("END TRANSACTION"));
+        assert!(ends("ROLLBACK"));
+        assert!(!ends("ROLLBACK TO s"));
+        assert!(!ends("BEGIN IMMEDIATE"));
+    }
+
+    #[test]
+    fn allows_only_the_settings_of_the_connection_at_its_opening() {
+        let refusal = |sql: &str| session_setting_refusal(sql, Dialect::Sqlite);
+        for pragma in sqlite_pragmas::SESSION_PRAGMAS {
+            assert_eq!(refusal(&format!("PRAGMA {pragma} = 1")), None, "{pragma}");
+        }
+        assert_eq!(
+            refusal("PRAGMA foreign_keys = ON; PRAGMA temp_store(MEMORY)"),
+            None
+        );
+        for sql in [
+            "PRAGMA foreign_keys",
+            "PRAGMA journal_mode = WAL",
+            "PRAGMA optimize",
+            "PRAGMA no_such_pragma = 1",
+            "SELECT 1",
+            "ATTACH ':memory:' AS m",
+        ] {
+            assert_eq!(
+                refusal(sql),
+                Some(SettingRefusal::NotASetting),
+                "query: {sql}"
+            );
+        }
+        assert_eq!(refusal("PRAGMA a ="), Some(SettingRefusal::NotUnderstood));
     }
 }

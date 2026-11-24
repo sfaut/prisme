@@ -72,6 +72,7 @@ mod limits;
 mod outbox;
 pub(crate) mod protocol;
 mod session;
+mod shared;
 mod temporary_tables;
 #[cfg(test)]
 mod tests;
@@ -81,10 +82,13 @@ pub(crate) use limits::limit_error;
 pub(crate) use protocol::{ClientMessage, LimitReport, ServerMessage, SessionRequest};
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use axum::extract::ws::WebSocket;
-use prisme_connectors::mysql::MysqlTarget;
+
+use prisme_connectors::api::{Namespace, OpenOptions, Target};
+use prisme_connectors::drivers;
 use tokio::sync::{mpsc, watch};
 use tracing::Instrument;
 
@@ -94,11 +98,67 @@ use crate::session_relay::{Relay, SessionHandle};
 
 use outbox::Outbox;
 use session::serve;
+pub(crate) use shared::Shared;
+
+/// The source of a session, and how its connections open on it: read-only
+/// or not, on the namespace chosen for the session, else on the one of its
+/// settings, and sharing the resources of the session (its databases in
+/// memory, the databases attached to its connection).
+#[derive(Clone)]
+pub(crate) struct Source {
+    /// Settings of the source.
+    pub(crate) target: Target,
+    /// Options of the session's connection; those of its parallel queries
+    /// follow, on the session's current namespace.
+    pub(crate) options: OpenOptions,
+    /// Resources of the session, shared by its connections.
+    pub(crate) shared: Arc<Shared>,
+    /// Saved connection of the source.
+    pub(crate) connection_id: i64,
+}
+
+/// Number of the last session opened, which names its resources.
+static SESSIONS: AtomicU64 = AtomicU64::new(0);
+
+impl Source {
+    /// Source of a session on `target`, of the saved connection
+    /// `connection_id`, read-only or not, opened on
+    /// `namespace` when the engine changes namespaces (`USE`), else on the
+    /// namespace of its settings. The session gets a key of its own, that
+    /// its parallel connections share (`OpenOptions::session_key`).
+    pub(crate) fn new(
+        connection_id: i64,
+        target: Target,
+        read_only: bool,
+        namespace: Option<Namespace>,
+    ) -> Self {
+        let switches = drivers::of(target.engine).capabilities().switch_namespace;
+        let number = SESSIONS.fetch_add(1, Ordering::Relaxed) + 1;
+        let shared = Shared::new(format!("session-{number}"));
+        Self {
+            target,
+            options: shared.options(OpenOptions {
+                read_only,
+                namespace: namespace.filter(|_| switches),
+                ..OpenOptions::default()
+            }),
+            shared: Arc::new(shared),
+            connection_id,
+        }
+    }
+
+    /// Does the engine of the source change namespaces?
+    pub(crate) fn switches_namespace(&self) -> bool {
+        drivers::of(self.target.engine)
+            .capabilities()
+            .switch_namespace
+    }
+}
 
 /// Number of messages waiting to be sent beyond which reading the results waits.
 const OUTBOX_SIZE: usize = 64;
 
-/// Opens a session on `target`, attached to the WebSocket `socket`, and
+/// Opens a session on `source`, attached to the WebSocket `socket`, and
 /// returns what is needed to reattach another WebSocket to it or to stop it.
 ///
 /// Two tasks share the session: one runs the client's requests (`serve`), the
@@ -111,7 +171,7 @@ pub(crate) fn start(
     socket: WebSocket,
     state: AppState,
     user_id: i64,
-    target: MysqlTarget,
+    source: Source,
     recorder: Option<Recorder>,
     keep_alive: Duration,
     on_end: Box<dyn FnOnce() + Send + Sync>,
@@ -127,7 +187,6 @@ pub(crate) fn start(
         requests: request_sender,
         outbox: sender.downgrade(),
         cancellation: Arc::clone(&cancellation),
-        target: target.clone(),
         recorder,
         stop: stop_sender,
         keep_alive,
@@ -140,7 +199,7 @@ pub(crate) fn start(
             stop,
             state,
             user_id,
-            target,
+            source,
             cancellation,
         )
         .in_current_span(),

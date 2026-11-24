@@ -2,7 +2,7 @@
  * Settings of the user: default row limit and allowed choices, read-only
  * mode of the query sessions and the writes they allow, retention of the
  * console, indentation of the SQL editor, longest text of a `GROUP_CONCAT`
- * of the Pivoteur.
+ * of the Pivoteur, reading of the remote databases.
  */
 
 import { defineStore } from 'pinia'
@@ -46,6 +46,10 @@ export const useSettingsStore = defineStore('settings', () => {
       indent_size: current.indent_size,
       concat_max_bytes: current.concat_max_bytes,
       pivot_refresh_ms: current.pivot_refresh_ms,
+      remote_connect_timeout_seconds: current.remote_connect_timeout_seconds,
+      remote_download_timeout_minutes: current.remote_download_timeout_minutes,
+      remote_max_mebibytes: current.remote_max_mebibytes,
+      remote_cache_days: current.remote_cache_days,
       ...change,
     })
   }

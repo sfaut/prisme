@@ -16,17 +16,21 @@
     shortest delay between two computations during the reception of the
     rows, in seconds (saved in milliseconds).
   - Console: the retention of the history and of the debug log, in days.
+  - Bases distantes: the reading of the databases on a web server, the
+    timeouts of the connection and of a download, the largest file, and the
+    days after which an unused copy leaves the cache.
 
   Each setting is a row, its description in sight under its name
   (`UiSettingRow`). One save for the whole window. Window, fields and buttons of Prisme (`ui/`).
 -->
 <script setup lang="ts">
-import { Code, Database, Grid2x2, Languages, SquareTerminal } from '@lucide/vue'
+import { Code, Database, Globe, Grid2x2, Languages, SquareTerminal } from '@lucide/vue'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { type Component, computed, reactive, ref, watch } from 'vue'
 
 import { errorMessage } from '@/api/errorMessage'
 import type { WriteKind } from '@/api/generated/WriteKind'
+import { WRITE_KIND_STATEMENTS } from '@/api/writeKinds'
 import { useSettingsStore } from '@/stores/settings'
 
 import PreferencesWrites from './PreferencesWrites.vue'
@@ -52,7 +56,7 @@ const settings = useSettingsStore()
 /**
  * Sections of the window.
  */
-type Section = 'language' | 'queries' | 'editor' | 'pivot' | 'console'
+type Section = 'language' | 'queries' | 'editor' | 'pivot' | 'console' | 'remote'
 
 /**
  * Sections in the list, with their name, icon and description.
@@ -87,6 +91,12 @@ const SECTIONS: { value: Section; label: string; icon: Component; description: s
     label: 'Console',
     icon: SquareTerminal,
     description: 'Combien de temps la console garde ce qu’elle affiche.',
+  },
+  {
+    value: 'remote',
+    label: 'Bases distantes',
+    icon: Globe,
+    description: 'Comment Prisme lit les bases sur un serveur web (http, https).',
   },
 ]
 
@@ -151,9 +161,22 @@ const REFRESH_MAX_SECONDS = 60
 const REFRESH_STEP_SECONDS = 0.1
 
 /**
+ * Default values and bounds of the reading of the remote databases: wait
+ * for the connection in seconds, for a download in minutes, largest file in
+ * mebibytes, days of an unused copy in the cache. The server checks the same
+ * bounds.
+ */
+const REMOTE = {
+  connect: { default: 10, min: 1, max: 300 },
+  download: { default: 5, min: 1, max: 1_440 },
+  size: { default: 1_024, min: 1, max: 102_400 },
+  cache: { default: 30, min: 1, max: 3_650 },
+}
+
+/**
  * Number of kinds of write, for the count of those allowed.
  */
-const WRITE_KIND_COUNT = 25
+const WRITE_KIND_COUNT = Object.keys(WRITE_KIND_STATEMENTS).length
 
 /**
  * Current input of the settings: the row limit, the read-only mode, the
@@ -169,6 +192,10 @@ const form = reactive({
   concat_max_bytes: DEFAULT_CONCAT_MAX_BYTES,
   history_retention_days: DEFAULT_RETENTION,
   debug_retention_days: DEFAULT_RETENTION,
+  remote_connect_timeout_seconds: REMOTE.connect.default,
+  remote_download_timeout_minutes: REMOTE.download.default,
+  remote_max_mebibytes: REMOTE.size.default,
+  remote_cache_days: REMOTE.cache.default,
 })
 
 /**
@@ -203,7 +230,7 @@ const rowLimitItems = computed(() =>
  */
 const writesDescription = computed(() => {
   if (form.read_only_session) {
-    return 'Sans effet tant que les sessions sont en lecture seule : la base les refuserait.'
+    return 'Sans effet tant que les sessions sont en lecture seule, sauf ATTACH / DETACH : la base les refuserait.'
   }
   const count = form.allowed_writes.length
   return count === 0
@@ -233,6 +260,12 @@ watch(open, async (isOpen) => {
   form.concat_max_bytes = settings.settings?.concat_max_bytes ?? DEFAULT_CONCAT_MAX_BYTES
   form.history_retention_days = settings.settings?.history_retention_days ?? DEFAULT_RETENTION
   form.debug_retention_days = settings.settings?.debug_retention_days ?? DEFAULT_RETENTION
+  form.remote_connect_timeout_seconds =
+    settings.settings?.remote_connect_timeout_seconds ?? REMOTE.connect.default
+  form.remote_download_timeout_minutes =
+    settings.settings?.remote_download_timeout_minutes ?? REMOTE.download.default
+  form.remote_max_mebibytes = settings.settings?.remote_max_mebibytes ?? REMOTE.size.default
+  form.remote_cache_days = settings.settings?.remote_cache_days ?? REMOTE.cache.default
   refreshSeconds.value = (settings.settings?.pivot_refresh_ms ?? DEFAULT_REFRESH_MS) / 1000
 })
 
@@ -326,7 +359,7 @@ async function save(): Promise<void> {
             <ui-setting-list title="Écritures">
               <ui-setting-row
                 label="Sessions en lecture seule"
-                description="La base refuse toute écriture, en plus du contrôle de Prisme. Désactivez-la pour autoriser les écritures cochées ci-dessous."
+                description="La base refuse toute écriture, en plus du contrôle de Prisme ; seuls ATTACH et DETACH de SQLite restent possibles, la base attachée étant elle aussi en lecture seule. Désactivez-la pour autoriser les écritures cochées ci-dessous."
                 for="preferences-read-only"
               >
                 <ui-switch id="preferences-read-only" v-model="form.read_only_session" />
@@ -334,7 +367,7 @@ async function save(): Promise<void> {
               <ui-setting-row label="Écritures autorisées" :description="writesDescription" stacked>
                 <preferences-writes
                   v-model="form.allowed_writes"
-                  :disabled="form.read_only_session"
+                  :read-only="form.read_only_session"
                 />
               </ui-setting-row>
             </ui-setting-list>
@@ -427,6 +460,73 @@ async function save(): Promise<void> {
                 type="number"
                 :min="RETENTION_MIN"
                 :max="RETENTION_MAX"
+                required
+                class="w-27"
+              />
+              <span class="w-18 text-fg-secondary">jours</span>
+            </ui-setting-row>
+          </ui-setting-list>
+
+          <ui-setting-list v-else-if="item.value === 'remote'">
+            <ui-setting-row
+              label="Délai de connexion"
+              description="Attente la plus longue de la connexion au serveur web. De 1 à 300 secondes."
+              for="preferences-remote-connect"
+            >
+              <ui-input
+                id="preferences-remote-connect"
+                v-model="form.remote_connect_timeout_seconds"
+                type="number"
+                :min="REMOTE.connect.min"
+                :max="REMOTE.connect.max"
+                required
+                class="w-27"
+              />
+              <span class="w-18 text-fg-secondary">secondes</span>
+            </ui-setting-row>
+            <ui-setting-row
+              label="Durée d’un téléchargement"
+              description="Au-delà, le téléchargement d’une base s’arrête. De 1 à 1 440 minutes."
+              for="preferences-remote-download"
+            >
+              <ui-input
+                id="preferences-remote-download"
+                v-model="form.remote_download_timeout_minutes"
+                type="number"
+                :min="REMOTE.download.min"
+                :max="REMOTE.download.max"
+                required
+                class="w-27"
+              />
+              <span class="w-18 text-fg-secondary">minutes</span>
+            </ui-setting-row>
+            <ui-setting-row
+              label="Taille la plus grande"
+              description="Une base plus grande n’est pas téléchargée. De 1 Mio à 100 Gio."
+              for="preferences-remote-size"
+            >
+              <ui-input
+                id="preferences-remote-size"
+                v-model="form.remote_max_mebibytes"
+                type="number"
+                :min="REMOTE.size.min"
+                :max="REMOTE.size.max"
+                required
+                class="w-27"
+              />
+              <span class="w-18 text-fg-secondary">Mio</span>
+            </ui-setting-row>
+            <ui-setting-row
+              label="Copies inutilisées"
+              description="Prisme garde une copie de chaque base distante, et la supprime quand aucune session ne l’a ouverte pendant ce temps. De 1 à 3 650 jours."
+              for="preferences-remote-cache"
+            >
+              <ui-input
+                id="preferences-remote-cache"
+                v-model="form.remote_cache_days"
+                type="number"
+                :min="REMOTE.cache.min"
+                :max="REMOTE.cache.max"
                 required
                 class="w-27"
               />

@@ -9,7 +9,7 @@
 //! loading the whole result in memory. The catalog (databases, tables,
 //! columns) is in the `catalog` submodule, the type of a result's columns in
 //! `column_type`. Each statement sent is traced for the history of the
-//! queries (`sql_log`).
+//! queries (`crate::sql_log`).
 
 use std::time::Duration;
 
@@ -18,10 +18,13 @@ use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, OptsBuilder, QueryResult, TextProtocol, Value};
 use prisme_dialects::verb::StatementVerb;
 use secrecy::{ExposeSecret, SecretString};
-use serde::{Deserialize, Serialize};
-use ts_rs::TS;
 
+use crate::columns::{Cell, ColumnTypeInfo};
+use crate::failure::{ConnectFailure, FailureCause};
+use crate::flavor::Flavor;
+use crate::number_text;
 use crate::outcome::{Notice, StatementOutcome};
+use crate::sql_log;
 
 /// Open connection to a MySQL or MariaDB server.
 pub use mysql_async::Conn as Connection;
@@ -29,12 +32,10 @@ pub use mysql_async::Conn as Connection;
 pub mod catalog;
 mod column_type;
 mod connect_error;
+mod driver;
 mod outcome;
-mod secret_mask;
-pub mod sql_log;
 
-pub use column_type::{ColumnTypeInfo, TypeFamily};
-pub use connect_error::{ConnectFailure, FailureCause};
+pub use driver::{DRIVER, MysqlDriver, capabilities};
 
 /// Maximum delay to open a connection to the server.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -57,32 +58,9 @@ pub struct MysqlTarget {
     pub init_statements: Vec<String>,
 }
 
-/// Flavor of the server, detected on connection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
-#[serde(rename_all = "lowercase")]
-pub enum Flavor {
-    /// MySQL server (Oracle).
-    MySql,
-    /// MariaDB server.
-    MariaDb,
-}
-
-impl Flavor {
-    /// Oldest version of the flavor that Prisme supports: the first general
-    /// availability release of MySQL 8.0 and of MariaDB 10.6. An older server
-    /// still works, with a warning (`docs/V1.md`, section 2.10).
-    pub fn oldest_supported(self) -> &'static str {
-        match self {
-            Self::MySql => "8.0.11",
-            Self::MariaDb => "10.6.3",
-        }
-    }
-}
-
-/// Identity of a server, obtained on connection.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
+/// Identity of a server, obtained on connection; the server and the
+/// interface see it as a `SourceInfo` (`driver::source_info`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerInfo {
     /// MySQL or MariaDB.
     pub flavor: Flavor,
@@ -332,13 +310,6 @@ fn first_row<T>(row: &Option<T>) -> Option<u64> {
     Some(u64::from(row.is_some()))
 }
 
-/// Value of a result cell: `None` for NULL, otherwise text.
-///
-/// Everything is sent as text, numbers included: no loss of precision on a
-/// `BIGINT UNSIGNED` or a `DECIMAL`. Fine typing will come with the `types`
-/// crate.
-pub type Cell = Option<String>;
-
 /// Result of a query being read, row by row.
 pub struct ResultStream<'a> {
     /// Driver result, which keeps the connection borrowed until the end of the reading.
@@ -406,10 +377,19 @@ impl ResultStream<'_> {
         let Some(row) = self.result.next().await? else {
             return Ok(None);
         };
+        let columns = row.columns();
         let cells = row
             .unwrap_raw()
             .into_iter()
-            .map(|value| value.and_then(cell))
+            .zip(columns.iter())
+            .map(|(value, column)| {
+                let text = value.and_then(cell);
+                if is_floating(column.column_type()) {
+                    text.map(|text| number_text::plain_decimal(&text).into_owned())
+                } else {
+                    text
+                }
+            })
             .collect();
         Ok(Some(cells))
     }
@@ -457,6 +437,15 @@ fn is_right_aligned(column_type: ColumnType) -> bool {
                 | ColumnType::MYSQL_TYPE_TIME
                 | ColumnType::MYSQL_TYPE_TIME2
         )
+}
+
+/// A floating-point type, whose values the server may write in scientific
+/// notation (`1e20`): Prisme shows them in plain decimal (`number_text`).
+fn is_floating(column_type: ColumnType) -> bool {
+    matches!(
+        column_type,
+        ColumnType::MYSQL_TYPE_FLOAT | ColumnType::MYSQL_TYPE_DOUBLE
+    )
 }
 
 /// Converts a driver value to text, or `None` for NULL.

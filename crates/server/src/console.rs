@@ -45,7 +45,7 @@ use axum::{Json, Router};
 use axum_extra::extract::Query;
 use futures_util::Stream;
 use futures_util::stream;
-use prisme_connectors::mysql::sql_log::TARGET;
+use prisme_connectors::sql_log::TARGET;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast::error::RecvError;
@@ -456,7 +456,7 @@ async fn stream_events(
 mod tests {
     use std::time::Duration;
 
-    use prisme_connectors::mysql::sql_log::{self, Sent};
+    use prisme_connectors::sql_log::{self, Sent};
     use tracing_subscriber::layer::SubscriberExt;
 
     use super::*;

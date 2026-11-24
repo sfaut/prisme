@@ -39,6 +39,7 @@ import type { ServerMessage } from '../generated/ServerMessage'
 import type { StatementOutcome } from '../generated/StatementOutcome'
 import type { TabPivot } from '../generated/TabPivot'
 import { describe as describeError } from '../messages'
+import { MYSQL_CAPABILITIES } from './capabilities'
 
 /**
  * Error message of the server, for the query `query` (`null`: the session).
@@ -69,6 +70,7 @@ function readyState() {
       ansi_quotes: false,
       no_backslash_escapes: false,
       oldest_supported: null,
+      capabilities: MYSQL_CAPABILITIES,
     },
     database: 'xlist',
     transaction: false,
@@ -198,6 +200,27 @@ describe('applyMessage', () => {
     expect(state.status).toBe('ready')
   })
 
+  it('follows the databases attached to the session', () => {
+    const state = readyState()
+    expect(state.databases).toBeNull()
+    const databases = [
+      { schema: 'main', location: { scheme: 'memory' as const, address: '' } },
+      { schema: 'scratch', location: null },
+    ]
+    applyMessage(state, { type: 'databases', databases })
+    expect(state.databases).toEqual(databases)
+    expect(state.status).toBe('ready')
+  })
+
+  it('keeps the last copy of a database into a file', () => {
+    const state = readyState()
+    expect(state.backedUp).toBeNull()
+    const location = { scheme: 'file' as const, address: 'D:/data/copie.db' }
+    applyMessage(state, { type: 'backed_up', schema: 'main', location })
+    expect(state.backedUp).toEqual({ schema: 'main', location })
+    expect(state.status).toBe('ready')
+  })
+
   it('follows the transaction open on the session', () => {
     const state = readyState()
     expect(state.transaction).toBe(false)
@@ -214,6 +237,7 @@ describe('applyMessage', () => {
         ansi_quotes: false,
         no_backslash_escapes: false,
         oldest_supported: null,
+        capabilities: MYSQL_CAPABILITIES,
       },
       database: null,
       transaction: true,
@@ -1353,6 +1377,7 @@ const READY: ServerMessage = {
     ansi_quotes: false,
     no_backslash_escapes: false,
     oldest_supported: null,
+    capabilities: MYSQL_CAPABILITIES,
   },
   database: 'shop',
   transaction: false,

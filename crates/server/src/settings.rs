@@ -11,11 +11,16 @@
 //! `migrations/0014_users_console_retention.sql`,
 //! `migrations/0016_users_indent_size.sql`,
 //! `migrations/0025_users_concat_max_bytes.sql` and
-//! `migrations/0026_users_pivot_refresh_ms.sql`), the allowed writes in the
-//! `user_allowed_writes` table (`migrations/0017_user_allowed_writes.sql`).
+//! `migrations/0026_users_pivot_refresh_ms.sql`,
+//! `migrations/0039_users_remote_locations.sql`), the allowed writes in the
+//! `user_allowed_writes` table (`migrations/0017_user_allowed_writes.sql`,
+//! its kinds in `write_kinds` since `migrations/0038_write_kinds.sql`).
 //! Synchronous functions (`rusqlite`), called from blocking tasks.
 
 use crate::error_detail::{ErrorDetail, Field};
+use std::time::Duration;
+
+use prisme_connectors::location::RemoteLimits;
 use prisme_dialects::classify::WriteKind;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
@@ -39,6 +44,22 @@ pub const CONCAT_MAX_BYTES: std::ops::RangeInclusive<u32> = 100..=1_048_576;
 /// Pivoteur during the reception of the rows, in milliseconds: from 0.2 s to
 /// one minute. The database checks the same.
 pub const PIVOT_REFRESH_MS: std::ops::RangeInclusive<u32> = 200..=60_000;
+
+/// Bounds of the wait for the connection to a web server, in seconds. The
+/// database checks the same.
+pub const REMOTE_CONNECT_TIMEOUT_SECONDS: std::ops::RangeInclusive<u32> = 1..=300;
+
+/// Bounds of the wait for a whole download, in minutes: up to a day. The
+/// database checks the same.
+pub const REMOTE_DOWNLOAD_TIMEOUT_MINUTES: std::ops::RangeInclusive<u32> = 1..=1_440;
+
+/// Bounds of the largest remote file downloaded, in mebibytes: up to
+/// 100 GiB. The database checks the same.
+pub const REMOTE_MAX_MEBIBYTES: std::ops::RangeInclusive<u32> = 1..=102_400;
+
+/// Bounds of the days after which an unused copy of a remote file is
+/// deleted. The database checks the same.
+pub const REMOTE_CACHE_DAYS: std::ops::RangeInclusive<u32> = 1..=3_650;
 
 /// Settings of a user, as returned by the API.
 #[derive(Debug, Serialize, TS)]
@@ -68,6 +89,17 @@ pub struct Settings {
     /// the Pivoteur while the rows of a result are being received, in
     /// milliseconds, 1000 by default.
     pub pivot_refresh_ms: u32,
+    /// Longest wait for the connection to a web server of a remote
+    /// database, in seconds, 10 by default.
+    pub remote_connect_timeout_seconds: u32,
+    /// Longest wait for the whole download of a remote database, in
+    /// minutes, 5 by default.
+    pub remote_download_timeout_minutes: u32,
+    /// Largest remote database downloaded, in mebibytes, 1024 by default.
+    pub remote_max_mebibytes: u32,
+    /// Days after which a copy of a remote database no session opened is
+    /// deleted from the cache, 30 by default.
+    pub remote_cache_days: u32,
 }
 
 /// Change of settings requested by the user.
@@ -91,6 +123,16 @@ pub struct SettingsUpdate {
     /// New shortest delay between two computations of the Pivoteur during the
     /// reception, in milliseconds (`PIVOT_REFRESH_MS`).
     pub pivot_refresh_ms: u32,
+    /// New wait for the connection to a web server, in seconds
+    /// (`REMOTE_CONNECT_TIMEOUT_SECONDS`).
+    pub remote_connect_timeout_seconds: u32,
+    /// New wait for a whole download, in minutes
+    /// (`REMOTE_DOWNLOAD_TIMEOUT_MINUTES`).
+    pub remote_download_timeout_minutes: u32,
+    /// New largest remote file, in mebibytes (`REMOTE_MAX_MEBIBYTES`).
+    pub remote_max_mebibytes: u32,
+    /// New delay of the purge of the cache, in days (`REMOTE_CACHE_DAYS`).
+    pub remote_cache_days: u32,
 }
 
 /// Errors of settings management.
@@ -118,6 +160,17 @@ pub enum SettingsError {
     /// Delay between two computations of the Pivoteur out of its bounds.
     #[error("pivot_refresh_ms: between {min} and {max} milliseconds", min = PIVOT_REFRESH_MS.start(), max = PIVOT_REFRESH_MS.end())]
     PivotRefreshMsOutOfRange,
+
+    /// A preference of the remote locations out of its bounds.
+    #[error("{field}: between {min} and {max}")]
+    RemoteOutOfRange {
+        /// Field out of its bounds.
+        field: Field,
+        /// Smallest value allowed.
+        min: u32,
+        /// Largest value allowed.
+        max: u32,
+    },
 
     /// Error of the internal database.
     #[error("internal database: {0}")]
@@ -153,6 +206,11 @@ impl SettingsError {
                 min: *PIVOT_REFRESH_MS.start(),
                 max: *PIVOT_REFRESH_MS.end(),
             },
+            Self::RemoteOutOfRange { field, min, max } => ErrorDetail::FieldRange {
+                field: *field,
+                min: *min,
+                max: *max,
+            },
             Self::Sqlite(_) => ErrorDetail::Internal,
         }
     }
@@ -179,7 +237,8 @@ pub fn check_row_limit(row_limit: u32) -> Result<u32, SettingsError> {
 /// indentation is out of `INDENT_SIZE`, `SettingsError::ConcatMaxBytesOutOfRange`
 /// if the longest text is out of `CONCAT_MAX_BYTES`,
 /// `SettingsError::PivotRefreshMsOutOfRange` if the delay is out of
-/// `PIVOT_REFRESH_MS`.
+/// `PIVOT_REFRESH_MS`, `SettingsError::RemoteOutOfRange` if a preference of
+/// the remote locations is out of its bounds (`REMOTE_*`).
 pub fn check_update(update: &SettingsUpdate) -> Result<(), SettingsError> {
     check_row_limit(update.row_limit)?;
     for (field, days) in [
@@ -199,6 +258,36 @@ pub fn check_update(update: &SettingsUpdate) -> Result<(), SettingsError> {
     if !PIVOT_REFRESH_MS.contains(&update.pivot_refresh_ms) {
         return Err(SettingsError::PivotRefreshMsOutOfRange);
     }
+    for (field, value, bounds) in [
+        (
+            Field::RemoteConnectTimeoutSeconds,
+            update.remote_connect_timeout_seconds,
+            REMOTE_CONNECT_TIMEOUT_SECONDS,
+        ),
+        (
+            Field::RemoteDownloadTimeoutMinutes,
+            update.remote_download_timeout_minutes,
+            REMOTE_DOWNLOAD_TIMEOUT_MINUTES,
+        ),
+        (
+            Field::RemoteMaxMebibytes,
+            update.remote_max_mebibytes,
+            REMOTE_MAX_MEBIBYTES,
+        ),
+        (
+            Field::RemoteCacheDays,
+            update.remote_cache_days,
+            REMOTE_CACHE_DAYS,
+        ),
+    ] {
+        if !bounds.contains(&value) {
+            return Err(SettingsError::RemoteOutOfRange {
+                field,
+                min: *bounds.start(),
+                max: *bounds.end(),
+            });
+        }
+    }
     Ok(())
 }
 
@@ -206,7 +295,8 @@ pub fn check_update(update: &SettingsUpdate) -> Result<(), SettingsError> {
 pub fn load(db: &Connection, user_id: i64) -> Result<Settings, SettingsError> {
     let settings = db.query_row(
         "SELECT row_limit, read_only_session, history_retention_days, debug_retention_days,
-                indent_size, concat_max_bytes, pivot_refresh_ms
+                indent_size, concat_max_bytes, pivot_refresh_ms, remote_connect_timeout_seconds,
+                remote_download_timeout_minutes, remote_max_mebibytes, remote_cache_days
          FROM users WHERE id = ?1",
         params![user_id],
         |row| {
@@ -220,6 +310,10 @@ pub fn load(db: &Connection, user_id: i64) -> Result<Settings, SettingsError> {
                 indent_size: row.get(4)?,
                 concat_max_bytes: row.get(5)?,
                 pivot_refresh_ms: row.get(6)?,
+                remote_connect_timeout_seconds: row.get(7)?,
+                remote_download_timeout_minutes: row.get(8)?,
+                remote_max_mebibytes: row.get(9)?,
+                remote_cache_days: row.get(10)?,
             })
         },
     )?;
@@ -252,8 +346,10 @@ pub fn update(
     transaction.execute(
         "UPDATE users SET row_limit = ?1, read_only_session = ?2,
                 history_retention_days = ?3, debug_retention_days = ?4, indent_size = ?5,
-                concat_max_bytes = ?6, pivot_refresh_ms = ?7
-         WHERE id = ?8",
+                concat_max_bytes = ?6, pivot_refresh_ms = ?7, remote_connect_timeout_seconds = ?8,
+                remote_download_timeout_minutes = ?9, remote_max_mebibytes = ?10,
+                remote_cache_days = ?11
+         WHERE id = ?12",
         params![
             update.row_limit,
             update.read_only_session,
@@ -262,6 +358,10 @@ pub fn update(
             update.indent_size,
             update.concat_max_bytes,
             update.pivot_refresh_ms,
+            update.remote_connect_timeout_seconds,
+            update.remote_download_timeout_minutes,
+            update.remote_max_mebibytes,
+            update.remote_cache_days,
             user_id
         ],
     )?;
@@ -277,6 +377,23 @@ pub fn update(
     }
     transaction.commit()?;
     load(db, user_id)
+}
+
+/// Limits of the reading of the remote locations of user `user_id`, as their
+/// preferences set them.
+pub fn remote_limits(db: &Connection, user_id: i64) -> rusqlite::Result<RemoteLimits> {
+    db.query_row(
+        "SELECT remote_connect_timeout_seconds, remote_download_timeout_minutes, remote_max_mebibytes
+         FROM users WHERE id = ?1",
+        params![user_id],
+        |row| {
+            Ok(RemoteLimits {
+                connect_timeout: Duration::from_secs(row.get::<_, u32>(0)?.into()),
+                download_timeout: Duration::from_secs(60 * u64::from(row.get::<_, u32>(1)?)),
+                max_bytes: u64::from(row.get::<_, u32>(2)?) << 20,
+            })
+        },
+    )
 }
 
 #[cfg(test)]
@@ -295,7 +412,62 @@ mod tests {
             indent_size: 4,
             concat_max_bytes: 1000,
             pivot_refresh_ms: 1000,
+            remote_connect_timeout_seconds: 10,
+            remote_download_timeout_minutes: 5,
+            remote_max_mebibytes: 1024,
+            remote_cache_days: 30,
         }
+    }
+
+    #[test]
+    fn keeps_the_preferences_of_the_remote_locations_within_their_bounds() {
+        let db = store::open_in_memory();
+        let user_id = store::ensure_user(&db, "a@example.com").unwrap();
+        let saved = load(&db, user_id).unwrap();
+        // The defaults of decision 15 (docs/TODO-SQLITE.md).
+        assert_eq!(
+            (
+                saved.remote_connect_timeout_seconds,
+                saved.remote_download_timeout_minutes,
+                saved.remote_max_mebibytes,
+                saved.remote_cache_days
+            ),
+            (10, 5, 1024, 30)
+        );
+
+        let mut changed = update_of(1_000);
+        changed.remote_connect_timeout_seconds = 3;
+        changed.remote_download_timeout_minutes = 60;
+        changed.remote_max_mebibytes = 10;
+        changed.remote_cache_days = 7;
+        let saved = update(&db, user_id, &changed).unwrap();
+        assert_eq!(
+            (
+                saved.remote_connect_timeout_seconds,
+                saved.remote_download_timeout_minutes,
+                saved.remote_max_mebibytes,
+                saved.remote_cache_days
+            ),
+            (3, 60, 10, 7)
+        );
+
+        changed.remote_cache_days = 0;
+        assert!(matches!(
+            update(&db, user_id, &changed),
+            Err(SettingsError::RemoteOutOfRange {
+                field: Field::RemoteCacheDays,
+                ..
+            })
+        ));
+        changed.remote_cache_days = 7;
+        changed.remote_max_mebibytes = 102_401;
+        assert!(matches!(
+            check_update(&changed),
+            Err(SettingsError::RemoteOutOfRange {
+                field: Field::RemoteMaxMebibytes,
+                ..
+            })
+        ));
     }
 
     #[test]

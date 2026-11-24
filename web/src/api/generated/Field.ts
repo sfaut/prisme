@@ -17,4 +17,9 @@ export type Field =
   | "debug_retention_days"
   | "indent_size"
   | "concat_max_bytes"
-  | "pivot_refresh_ms";
+  | "pivot_refresh_ms"
+  | "remote_connect_timeout_seconds"
+  | "remote_download_timeout_minutes"
+  | "remote_max_mebibytes"
+  | "remote_cache_days"
+  | "schema_name";

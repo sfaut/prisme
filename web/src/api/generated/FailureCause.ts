@@ -18,6 +18,21 @@ export type FailureCause = {
    */
   message: string;
 } | {
+  "source": "engine";
+  /**
+   * Code of the error in the engine, as text (`2067` for SQLite's
+   * `SQLITE_CONSTRAINT_UNIQUE`).
+   */
+  code: string;
+  /**
+   * Name of the code in the engine (`SQLITE_CONSTRAINT_UNIQUE`).
+   */
+  name: string;
+  /**
+   * Message of the engine, in its language.
+   */
+  message: string;
+} | {
   "source": "driver";
   /**
    * Message of the driver.

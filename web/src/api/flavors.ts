@@ -1,19 +1,165 @@
 /**
- * Names of the server flavors, as the interface writes them.
+ * Registry of the flavors of source: what the interface knows of each one.
  *
- * Shared by the messages of the errors and by the navigator, which names the
- * server of each source.
+ * Each flavor declares here its name, what the editor reads beyond the
+ * lexical rules of its dialect, and the syntax of the CTE that the interface
+ * writes for it (also that of the `IN` clause of a selection). The
+ * components read this registry and the capabilities of the source, and never
+ * test a flavor themselves: a new flavor that forgets an entry is reported by
+ * the compiler (`Record<Flavor, …>`). The colors of its badge come from the
+ * theme (`ConnectionFlavorBadge.vue`).
  */
 
 import type { Flavor } from './generated/Flavor'
 
 /**
- * Name of each flavor of server.
+ * Tokens of a flavor that the SQL editor reads (`sqlDialect.ts`), beyond the
+ * lexical rules of its dialect: those of the dialects of
+ * `@codemirror/lang-sql`.
  */
-export const FLAVOR_NAMES: Record<Flavor, string> = {
-  mysql: 'MySQL',
-  mariadb: 'MariaDB',
+export interface EditorSyntax {
+  /**
+   * Characters of the operators.
+   */
+  operatorChars: string
+  /**
+   * Are the charset casts read (`_utf8'…'`, `N'…'`)?
+   */
+  charSetCasts: boolean
+  /**
+   * Are the bit values written `0b101` read?
+   */
+  unquotedBitLiterals: boolean
+  /**
+   * Characters that start a variable or a parameter (`@name`, `?`,
+   * `:name`, `$name`).
+   */
+  specialVar: string
 }
+
+/**
+ * How the CTE of a result (`cte.ts`) is written for a flavor.
+ */
+export interface CteSyntax {
+  /**
+   * Are the rows of `VALUES` written `ROW (…)` (MySQL), rather than `(…)`?
+   */
+  rowConstructor: boolean
+  /**
+   * Is a date whose month or day is zero written as a string, which the
+   * server reads where a typed literal (`DATE '2024-00-00'`) is refused?
+   */
+  zeroDatesAsStrings: boolean
+  /**
+   * Is a JSON value cast (`CAST('…' AS JSON)`), the flavor having a JSON type
+   * of its own?
+   */
+  castsJson: boolean
+  /**
+   * Are dates, date-times and times written as typed literals
+   * (`DATE'2026-10-12'`), rather than as strings (SQLite, which has no such
+   * literal)?
+   */
+  typedTemporals: boolean
+  /**
+   * Are bytes that read as UTF-8 written as binary strings (`_binary'abc'`),
+   * and bits as bit values (`b'101'`), rather than in hexadecimal
+   * (`X'616263'`, SQLite)?
+   */
+  binaryStrings: boolean
+  /**
+   * First version of the flavor that reads its CTE (major, minor, patch),
+   * `null` when every supported version does.
+   */
+  readSince: [number, number, number] | null
+}
+
+/**
+ * What the interface knows of a flavor.
+ */
+export interface FlavorSpec {
+  /**
+   * Name of the product, as the interface writes it.
+   */
+  name: string
+  /**
+   * Driver of Prisme for the flavor, named by the messages of its failures.
+   */
+  driver: string
+  /**
+   * Tokens that the SQL editor reads.
+   */
+  editor: EditorSyntax
+  /**
+   * Syntax of the CTE of a result.
+   */
+  cte: CteSyntax
+}
+
+/**
+ * Tokens of MySQL and MariaDB that the editor reads.
+ */
+const MYSQL_EDITOR: EditorSyntax = {
+  operatorChars: '*+-%<>!=&|^',
+  charSetCasts: true,
+  unquotedBitLiterals: true,
+  specialVar: '@?',
+}
+
+/**
+ * Registry of the flavors.
+ */
+export const FLAVORS: Record<Flavor, FlavorSpec> = {
+  mysql: {
+    name: 'MySQL',
+    driver: 'mysql_async',
+    editor: MYSQL_EDITOR,
+    cte: {
+      rowConstructor: true,
+      zeroDatesAsStrings: true,
+      castsJson: true,
+      typedTemporals: true,
+      binaryStrings: true,
+      readSince: [8, 0, 19],
+    },
+  },
+  mariadb: {
+    name: 'MariaDB',
+    driver: 'mysql_async',
+    editor: MYSQL_EDITOR,
+    cte: {
+      rowConstructor: false,
+      zeroDatesAsStrings: false,
+      castsJson: false,
+      typedTemporals: true,
+      binaryStrings: true,
+      readSince: null,
+    },
+  },
+  sqlite: {
+    name: 'SQLite',
+    driver: 'rusqlite',
+    editor: {
+      operatorChars: '*+-%<>!=&|/~',
+      charSetCasts: false,
+      unquotedBitLiterals: false,
+      specialVar: '@:?$',
+    },
+    cte: {
+      rowConstructor: false,
+      zeroDatesAsStrings: false,
+      castsJson: false,
+      typedTemporals: false,
+      binaryStrings: false,
+      readSince: null,
+    },
+  },
+}
+
+/**
+ * Every flavor, in the order of the registry.
+ */
+export const ALL_FLAVORS = Object.keys(FLAVORS) as Flavor[]
 
 /**
  * Name and version of a server: `MariaDB 10.11.11-MariaDB`, `MySQL 8.4.11`.
@@ -22,5 +168,6 @@ export const FLAVOR_NAMES: Record<Flavor, string> = {
  * @param version Raw result of `SELECT VERSION()`, `null` if unknown.
  */
 export function serverName(flavor: Flavor, version: string | null): string {
-  return version === null ? FLAVOR_NAMES[flavor] : `${FLAVOR_NAMES[flavor]} ${version}`
+  const name = FLAVORS[flavor].name
+  return version === null ? name : `${name} ${version}`
 }

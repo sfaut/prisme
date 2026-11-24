@@ -99,6 +99,15 @@ impl fmt::Display for Received<'_> {
             Some(ClientMessage::Cancel) => f.write_str("cancel"),
             Some(ClientMessage::CancelQuery { query }) => write!(f, "cancel_query, query {query}"),
             Some(ClientMessage::Use { .. }) => f.write_str("use"),
+            Some(ClientMessage::Backup { schema, .. }) => write!(f, "backup, schema {schema}"),
+            Some(ClientMessage::Attach { schema, save, .. }) => {
+                write!(f, "attach, schema {schema}")?;
+                if *save {
+                    f.write_str(", saved in the connection")?;
+                }
+                Ok(())
+            }
+            Some(ClientMessage::Detach { schema }) => write!(f, "detach, schema {schema}"),
         }
     }
 }
@@ -163,6 +172,14 @@ impl fmt::Display for Sent<'_> {
             ServerMessage::Database { .. } => f.write_str("database"),
             ServerMessage::Transaction { open: true } => f.write_str("transaction, open"),
             ServerMessage::Transaction { open: false } => f.write_str("transaction, ended"),
+            ServerMessage::BackedUp { schema, .. } => write!(f, "backed_up, schema {schema}"),
+            ServerMessage::Databases { databases } => {
+                write!(
+                    f,
+                    "databases, {}",
+                    Count(databases.len(), "database", "databases")
+                )
+            }
             ServerMessage::Resume { running, queries } => {
                 write!(f, "resume, {}", Count(queries.len(), "query", "queries"))?;
                 if *running {
@@ -186,6 +203,7 @@ fn limit_name(limit: &LimitReport) -> &'static str {
         LimitReport::UserLimit => "user_limit",
         LimitReport::NotApplicable => "not_applicable",
         LimitReport::Unparsed => "unparsed",
+        LimitReport::Capped => "capped",
     }
 }
 
@@ -213,7 +231,9 @@ mod tests {
     use axum::http::StatusCode;
     use axum::middleware;
     use axum::routing::post;
-    use prisme_connectors::mysql::{Flavor, ServerInfo};
+    use prisme_connectors::api::{DialectOptions, SourceInfo};
+    use prisme_connectors::flavor::Flavor;
+    use prisme_connectors::mysql::capabilities;
     use tower::ServiceExt;
 
     use super::*;
@@ -259,12 +279,13 @@ mod tests {
     fn sums_up_the_server_messages_with_their_numbers_and_counts() {
         assert_eq!(
             server(ServerMessage::Ready {
-                server: ServerInfo {
+                server: SourceInfo {
                     flavor: Flavor::MariaDb,
                     version: "10.6.28-MariaDB".to_string(),
-                    ansi_quotes: false,
-                    no_backslash_escapes: false,
+                    dialect_options: DialectOptions::default(),
                     oldest_supported: None,
+                    capabilities: capabilities(),
+                    databases: Vec::new(),
                 },
                 database: Some("shop".to_string()),
                 transaction: false,

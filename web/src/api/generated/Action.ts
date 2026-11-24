@@ -14,4 +14,5 @@ export type Action =
   | "navigator"
   | "probe"
   | "export"
-  | "diagnostics";
+  | "diagnostics"
+  | "databases";

@@ -4,13 +4,16 @@
 //! streamed to the client in batches that follow their arrival
 //! (`RowBatches`): a row received does not wait for others to show.
 
+use std::sync::Arc;
 use std::task::Poll;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures_util::future::join_all;
-use prisme_connectors::mysql::sql_log::{self, Sent};
-use prisme_connectors::mysql::{self, Cell, Connection, MysqlTarget};
-use prisme_dialects::Dialect;
+use prisme_connectors::api::{self, ConnectorError, Namespace, OpenOptions};
+use prisme_connectors::columns::Cell;
+use prisme_connectors::drivers;
+use prisme_connectors::flavor::Flavor;
+use prisme_connectors::sql_log::{self, Sent};
 use prisme_dialects::classify::{StatementKind, changes_database, classify, classify_with};
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit, written_limit};
 use prisme_dialects::temporary::TableName;
@@ -21,8 +24,8 @@ use tracing::Instrument;
 use super::limits::{RunLimits, limit_error, report, write_refusal};
 use super::outbox::SessionStopped;
 use super::protocol::{SelectionRange, ServerMessage};
-use super::session::{Session, Summary};
-use crate::analyze::flavor_of;
+use super::session::{Session, Summary, database_of};
+use crate::analyze::dialect_of;
 use crate::console::{self, Action};
 use crate::error_detail::ErrorDetail;
 
@@ -51,27 +54,28 @@ impl Session<'_> {
     /// to the client).
     pub(super) async fn run_on_session(
         &self,
-        connection: &mut Connection,
-        dialect: Dialect,
+        connection: &mut dyn api::Session,
+        flavor: Flavor,
         query: u32,
         sql: &str,
         limits: &RunLimits,
     ) -> Result<bool, SessionStopped> {
         self.outbox.send(ServerMessage::Started { query }).await?;
         let Some(summary) = self
-            .run_query(connection, dialect, query, sql, limits)
+            .run_query(connection, flavor, query, sql, limits)
             .await?
         else {
             return Ok(false);
         };
-        let database = if changes_database(sql, dialect) {
-            match mysql::current_database(connection).await {
-                Ok(database) => {
+        let database = if changes_database(sql, dialect_of(flavor)) {
+            match connection.current_namespace().await {
+                Ok(namespace) => {
+                    let database = database_of(namespace);
                     self.remember_database(&database);
                     database
                 }
                 Err(error) => {
-                    let detail = ErrorDetail::of_mysql(&error, Some(flavor_of(dialect)));
+                    let detail = ErrorDetail::of_connector(&error, Some(flavor));
                     self.outbox.error(Some(query), detail).await?;
                     return Ok(false);
                 }
@@ -88,9 +92,9 @@ impl Session<'_> {
     /// failure, the next queries do not run.
     pub(super) async fn run_in_sequence(
         &self,
-        connection: &mut Connection,
+        connection: &mut dyn api::Session,
         statements: &[&Statement],
-        dialect: Dialect,
+        flavor: Flavor,
         limits: &RunLimits,
     ) -> Result<(), SessionStopped> {
         let mut failed = false;
@@ -105,7 +109,7 @@ impl Session<'_> {
                 continue;
             }
             failed = !self
-                .run_on_session(connection, dialect, query, &statement.sql, limits)
+                .run_on_session(connection, flavor, query, &statement.sql, limits)
                 .await?;
         }
         Ok(())
@@ -116,7 +120,7 @@ impl Session<'_> {
     pub(super) async fn run_in_parallel(
         &self,
         statements: &[&Statement],
-        dialect: Dialect,
+        flavor: Flavor,
         limits: &RunLimits,
         database: &Option<String>,
     ) -> Result<(), SessionStopped> {
@@ -126,7 +130,7 @@ impl Session<'_> {
         for (query, statement) in (0_u32..).zip(statements.iter()) {
             runs.push(self.run_with_permit(
                 &permits,
-                dialect,
+                flavor,
                 query,
                 &statement.sql,
                 limits,
@@ -141,7 +145,7 @@ impl Session<'_> {
     pub(super) async fn run_with_permit(
         &self,
         permits: &Semaphore,
-        dialect: Dialect,
+        flavor: Flavor,
         query: u32,
         sql: &str,
         limits: &RunLimits,
@@ -155,40 +159,48 @@ impl Session<'_> {
                 .await;
         }
         self.outbox.send(ServerMessage::Started { query }).await?;
-        self.run_on_new_connection(dialect, query, sql, limits, database)
+        self.run_on_new_connection(flavor, query, sql, limits, database)
             .await
     }
 
-    /// Runs a query on a new connection, opened on the database `database`
-    /// (none when absent), without a `USE` of its own.
+    /// Runs a query on a new connection, opened like the session's on the
+    /// database `database` (none when absent), without a `USE` of its own;
+    /// an engine that does not change namespaces opens it on that of its
+    /// settings, and attaches the databases of the session's connection.
     pub(super) async fn run_on_new_connection(
         &self,
-        dialect: Dialect,
+        flavor: Flavor,
         query: u32,
         sql: &str,
         limits: &RunLimits,
         database: &Option<String>,
     ) -> Result<(), SessionStopped> {
-        let target = MysqlTarget {
-            database_name: database.clone().unwrap_or_default(),
-            ..self.target.clone()
+        let target = self.source.shared.target(&self.source.target);
+        let options = OpenOptions {
+            // An empty path opens on no database.
+            namespace: self.source.switches_namespace().then(|| {
+                database
+                    .as_ref()
+                    .map_or_else(|| Namespace(Vec::new()), Namespace::single)
+            }),
+            ..self.source.options.clone()
         };
-        let mut connection = match mysql::connect(&target).await {
+        let mut connection = match drivers::of(target.engine).open(&target, options).await {
             Ok(connection) => connection,
             Err(error) => {
-                let detail = ErrorDetail::of_mysql(&error, Some(flavor_of(dialect)));
+                let detail = ErrorDetail::of_connector(&error, Some(flavor));
                 return self.outbox.error(Some(query), detail).await;
             }
         };
         let result = match self
-            .run_query(&mut connection, dialect, query, sql, limits)
+            .run_query(connection.as_mut(), flavor, query, sql, limits)
             .await
         {
             Ok(Some(summary)) => self.done(query, summary, database.clone()).await,
             Ok(None) => Ok(()),
             Err(stopped) => Err(stopped),
         };
-        let _ = connection.disconnect().await;
+        connection.close().await;
         result
     }
 
@@ -200,8 +212,8 @@ impl Session<'_> {
     /// error has then already gone to the client).
     pub(super) async fn run_query(
         &self,
-        connection: &mut Connection,
-        dialect: Dialect,
+        connection: &mut dyn api::Session,
+        flavor: Flavor,
         query: u32,
         sql: &str,
         limits: &RunLimits,
@@ -209,12 +221,12 @@ impl Session<'_> {
         let max_rows = limits.max_rows;
         let database = self.current_database();
         let temporary = |table: &TableName| self.is_temporary(table, database.as_deref());
-        let kind = classify_with(sql, dialect, &temporary);
-        if let Some(refusal) = write_refusal(&kind, limits.writes.as_ref()) {
+        let kind = classify_with(sql, dialect_of(flavor), &temporary);
+        if let Some(refusal) = write_refusal(&kind, &limits.writes) {
             self.outbox.error(Some(query), refusal).await?;
             return Ok(None);
         }
-        let limited = match apply_default_limit(sql, dialect, max_rows as u64) {
+        let limited = match apply_default_limit(sql, dialect_of(flavor), max_rows as u64) {
             Ok(limited) => limited,
             Err(error) => {
                 self.outbox.error(Some(query), limit_error(&error)).await?;
@@ -224,12 +236,15 @@ impl Session<'_> {
         // Reading only stops by itself if Prisme set the limit.
         let capped = matches!(
             limited.outcome,
-            LimitOutcome::Added | LimitOutcome::Unparsed
+            LimitOutcome::Added | LimitOutcome::Unparsed | LimitOutcome::Capped
         );
 
         let started = Instant::now();
-        let connection_id = connection.id();
-        let _running = self.cancellation.track(self.batch, query, connection_id);
+        let canceller = connection.canceller();
+        let notices = connection.info().capabilities.notices;
+        let _running = self
+            .cancellation
+            .track(self.batch, query, Arc::clone(&canceller));
         // Stop requested while the connection was opening: the query does not start.
         if self.is_cancelled(query) {
             self.outbox
@@ -238,13 +253,16 @@ impl Session<'_> {
             return Ok(None);
         }
         let executing = Instant::now();
-        let executed = mysql::execute(connection, &limited.sql).await;
         // Only the session's connection writes: the parallel queries only read.
-        self.follow_temporary(sql, dialect, database.as_deref(), executed.is_ok());
-        let mut stream = match executed {
-            Ok(stream) => stream,
+        let follow = |succeeded| self.follow_temporary(sql, flavor, database.as_deref(), succeeded);
+        let mut stream = match connection.execute(&limited.sql).await {
+            Ok(stream) => {
+                follow(true);
+                stream
+            }
             Err(error) => {
-                let detail = self.failure(query, dialect, &error);
+                follow(false);
+                let detail = self.failure(query, flavor, &error);
                 sql_log::record(&Sent {
                     sql: &limited.sql,
                     duration: executing.elapsed(),
@@ -258,7 +276,7 @@ impl Session<'_> {
         };
         let execution = executing.elapsed();
         let transferring = Instant::now();
-        let returns_rows = !stream.column_names().is_empty();
+        let returns_rows = !stream.columns().is_empty();
         let trace =
             |rows: usize, truncated: bool, affected_rows: u64, error: Option<&ErrorDetail>| {
                 let text = error.map(ToString::to_string);
@@ -276,14 +294,28 @@ impl Session<'_> {
         self.outbox
             .send(ServerMessage::Columns {
                 query,
-                columns: stream.column_names(),
-                right_aligned: stream.right_aligned_columns(),
-                types: stream.column_types(),
+                columns: stream
+                    .columns()
+                    .iter()
+                    .map(|column| column.name.clone())
+                    .collect(),
+                right_aligned: stream
+                    .columns()
+                    .iter()
+                    .map(|column| column.right_aligned)
+                    .collect(),
+                types: stream
+                    .columns()
+                    .iter()
+                    .map(|column| column.type_info.clone())
+                    .collect(),
                 sql: limited.sql.clone(),
                 limit: report(limited.outcome),
                 expected_rows: match limited.outcome {
-                    LimitOutcome::Added | LimitOutcome::Unparsed => Some(max_rows as u64),
-                    LimitOutcome::UserLimit => written_limit(sql, dialect),
+                    LimitOutcome::Added | LimitOutcome::Unparsed | LimitOutcome::Capped => {
+                        Some(max_rows as u64)
+                    }
+                    LimitOutcome::UserLimit => written_limit(sql, dialect_of(flavor)),
                     LimitOutcome::NotApplicable => None,
                 },
                 execution_us: u64::try_from(execution.as_micros()).unwrap_or(u64::MAX),
@@ -319,7 +351,7 @@ impl Session<'_> {
                 Ok(None) => break,
                 Err(error) => {
                     stream.discard().await;
-                    let detail = self.failure(query, dialect, &error);
+                    let detail = self.failure(query, flavor, &error);
                     trace(row_count, false, 0, Some(&detail));
                     self.outbox.error(Some(query), detail).await?;
                     return Ok(None);
@@ -336,11 +368,15 @@ impl Session<'_> {
             if capped && row_count == max_rows {
                 // Row N + 1: the result is truncated, no need to read further.
                 truncated = true;
-                if limited.outcome == LimitOutcome::Unparsed {
-                    // Without LIMIT, the server would keep sending rows: it is interrupted.
-                    let killing = mysql::kill_query(self.target, connection_id)
+                if matches!(
+                    limited.outcome,
+                    LimitOutcome::Unparsed | LimitOutcome::Capped
+                ) {
+                    // Without LIMIT, the source would keep sending rows: it is interrupted.
+                    let interrupting = canceller
+                        .interrupt()
                         .instrument(console::action_span(Action::Cancel));
-                    if let Err(error) = killing.await {
+                    if let Err(error) = interrupting.await {
                         tracing::warn!("cannot interrupt the query: {error}");
                     }
                 }
@@ -363,9 +399,10 @@ impl Session<'_> {
         let mut outcome = stream.outcome(verb);
         stream.discard().await;
         trace(row_count, truncated, outcome.affected.unwrap_or(0), None);
-        if !returns_rows && outcome.lacks_notices() {
+        if notices && !returns_rows && outcome.lacks_notices() {
             // The next statement would clear them: they are read at once.
-            let reading = mysql::read_warnings(connection)
+            let reading = connection
+                .notices()
                 .instrument(console::action_span(Action::Diagnostics));
             match reading.await {
                 Ok(notices) => outcome.notices = notices,
@@ -391,13 +428,13 @@ impl Session<'_> {
     pub(super) fn failure(
         &self,
         query: u32,
-        dialect: Dialect,
-        error: &mysql::MysqlError,
+        flavor: Flavor,
+        error: &ConnectorError,
     ) -> ErrorDetail {
         if self.is_cancelled(query) {
             ErrorDetail::QueryInterrupted
         } else {
-            ErrorDetail::of_mysql(error, Some(flavor_of(dialect)))
+            ErrorDetail::of_connector(error, Some(flavor))
         }
     }
 
@@ -426,10 +463,10 @@ impl Session<'_> {
 /// connection. A write, a setting of the session, a control of the
 /// transaction or a query Prisme cannot parse needs the session's connection
 /// and the order of the text.
-pub(super) fn reads_only(statements: &[&Statement], dialect: Dialect) -> bool {
+pub(super) fn reads_only(statements: &[&Statement], flavor: Flavor) -> bool {
     statements
         .iter()
-        .all(|statement| classify(&statement.sql, dialect) == StatementKind::Read)
+        .all(|statement| classify(&statement.sql, dialect_of(flavor)) == StatementKind::Read)
 }
 
 /// Rows of a result gathered into the batches of the `rows` messages. A

@@ -10,7 +10,10 @@
 
 use std::fmt;
 
-use prisme_connectors::mysql::{ConnectFailure, FailureCause, Flavor, MysqlError};
+use prisme_connectors::api::ConnectorError;
+use prisme_connectors::failure::{ConnectFailure, FailureCause};
+use prisme_connectors::flavor::Flavor;
+use prisme_connectors::location::LocationError;
 use prisme_dialects::classify::WriteKind;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -49,6 +52,16 @@ pub enum Field {
     /// Shortest delay between two computations of the Pivoteur during the
     /// reception of the rows, in milliseconds.
     PivotRefreshMs,
+    /// Longest wait for the connection to a web server, in seconds.
+    RemoteConnectTimeoutSeconds,
+    /// Longest wait for a whole download, in minutes.
+    RemoteDownloadTimeoutMinutes,
+    /// Largest remote file downloaded, in mebibytes.
+    RemoteMaxMebibytes,
+    /// Days after which an unused copy of a remote file is deleted.
+    RemoteCacheDays,
+    /// Name of the schema of a database of a source held in files.
+    SchemaName,
 }
 
 impl fmt::Display for Field {
@@ -111,6 +124,44 @@ pub enum ErrorDetail {
     DuplicateConnectionName {
         /// Name taken.
         name: String,
+    },
+    /// The settings of a connection are not of the family of its engine.
+    #[error("settings: not those of the engine {engine}")]
+    SettingsFamily {
+        /// Key of the engine.
+        engine: String,
+    },
+    /// The first database of a source held in files is not that of the
+    /// schema `main`.
+    #[error("databases: the first one must be that of the schema main")]
+    MainDatabaseFirst,
+    /// More databases attached to the main one than the engine attaches.
+    #[error("databases: {max} attached at most")]
+    TooManyDatabases {
+        /// Databases attached at most.
+        max: u32,
+    },
+    /// A name of schema given twice in a connection, whatever its case.
+    #[error("schema {schema}: given twice")]
+    DuplicateSchema {
+        /// Name given twice.
+        schema: String,
+    },
+    /// A name of schema the engine keeps for itself: `temp`, or `main` for
+    /// an attached database.
+    #[error("schema {schema}: reserved by the engine")]
+    ReservedSchema {
+        /// Name refused.
+        schema: String,
+    },
+    /// The location of a database refused, or where an empty database could
+    /// not be created.
+    #[error("schema {schema}: {error}")]
+    Location {
+        /// Schema of the database.
+        schema: String,
+        /// Why the location is refused.
+        error: LocationError,
     },
     /// A query of `init_sql` is not understood by Prisme.
     #[error("init_sql: \"{statement}\": query not understood by Prisme")]
@@ -202,6 +253,17 @@ pub enum ErrorDetail {
         /// Kinds of write the query needs and the settings do not allow.
         kinds: Vec<WriteKind>,
     },
+    /// An `ATTACH` naming its file by its path alone, on a SQLite connection
+    /// whose main database is in memory (`memdb`), where it would attach an
+    /// empty database in memory instead of the file: `uri` names the file on
+    /// the disk.
+    #[error("ATTACH of {path} refused: the main database is in memory, name the file {uri}")]
+    AttachPathInMemory {
+        /// Path written in the `ATTACH`.
+        path: String,
+        /// URI that opens the file on the disk.
+        uri: String,
+    },
     /// A write that no switch allows: procedure call, database, trigger,
     /// account, file, server setting...
     #[error("write refused: no setting allows this statement")]
@@ -257,23 +319,33 @@ pub enum ErrorDetail {
 }
 
 impl ErrorDetail {
-    /// Detail of a failure of the MySQL / MariaDB connector.
+    /// Detail of a failure of a connector.
     ///
     /// # Arguments
     ///
     /// * `error` - Failure of the connector.
-    /// * `flavor` - Flavor of the server, when the connection told it.
-    pub fn of_mysql(error: &MysqlError, flavor: Option<Flavor>) -> Self {
+    /// * `flavor` - Flavor of the source, when the connection told it.
+    pub fn of_connector(error: &ConnectorError, flavor: Option<Flavor>) -> Self {
         match error {
-            MysqlError::Connect(failure) => Self::Connect {
+            ConnectorError::Connect(failure) => Self::Connect {
                 failure: failure.clone(),
             },
-            MysqlError::MissingVersion => Self::MissingVersion,
-            MysqlError::Init { statement, cause } => Self::InitQueryFailed {
+            ConnectorError::MissingVersion => Self::MissingVersion,
+            // A location refused is told as a source that cannot be reached.
+            ConnectorError::Location(error) => Self::Connect {
+                failure: ConnectFailure::Location {
+                    error: error.clone(),
+                },
+            },
+            ConnectorError::Init { statement, cause } => Self::InitQueryFailed {
                 statement: statement.clone(),
                 cause: cause.clone(),
             },
-            MysqlError::Driver(_) => Self::QueryFailed {
+            ConnectorError::AttachPathInMemory { path, uri } => Self::AttachPathInMemory {
+                path: path.clone(),
+                uri: uri.clone(),
+            },
+            ConnectorError::Query(_) | ConnectorError::Unsupported(_) => Self::QueryFailed {
                 flavor,
                 cause: error.cause(),
             },
@@ -311,7 +383,7 @@ mod tests {
 
     #[test]
     fn keeps_the_text_of_the_target_server_apart() {
-        let error = MysqlError::Init {
+        let error = ConnectorError::Init {
             statement: "SET NAMES utf8mb4".to_string(),
             cause: FailureCause::Server {
                 number: 1115,
@@ -319,7 +391,7 @@ mod tests {
                 message: "Unknown character set: 'utf8mb4'".to_string(),
             },
         };
-        let detail = ErrorDetail::of_mysql(&error, Some(Flavor::MariaDb));
+        let detail = ErrorDetail::of_connector(&error, Some(Flavor::MariaDb));
         assert_eq!(
             serde_json::to_value(&detail).unwrap(),
             serde_json::json!({

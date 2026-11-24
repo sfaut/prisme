@@ -25,9 +25,11 @@ mod exports;
 mod grid_display;
 mod master_key;
 mod navigator;
+mod new_files;
 mod profile;
 mod query_session;
 mod recorder;
+mod remote_cache;
 mod request_guard;
 mod secrets;
 mod session_relay;
@@ -36,6 +38,8 @@ mod settings;
 mod setup;
 mod store;
 mod tab_pivot;
+#[cfg(test)]
+mod test_support;
 mod user_display;
 mod web_assets;
 
@@ -105,15 +109,16 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(user_id = startup.user_id, "local user: {}", startup.email);
 
     // Exports that were running when Prisme stopped: their partial files stay.
-    let exports_folder = data_dir.join(exports::FOLDER);
-    let interrupted = exports::interrupt_unfinished(&db, &exports_folder)?;
+    let folders = api::Folders::of(&data_dir);
+    let interrupted = exports::interrupt_unfinished(&db, &folders.exports)?;
     if interrupted > 0 {
         tracing::info!("{interrupted} export(s) interrupted by the last stop");
     }
 
-    let state = api::AppState::new(db, master_key, startup.user_id, exports_folder);
+    let state = api::AppState::new(db, master_key, startup.user_id, folders);
     tokio::spawn(console::write(state.clone(), console_receiver));
     tokio::spawn(console::purge_regularly(state.clone()));
+    tokio::spawn(remote_cache::purge_regularly(state.clone()));
     let app = api::router(state);
 
     let listener = tokio::net::TcpListener::bind(startup.listen)

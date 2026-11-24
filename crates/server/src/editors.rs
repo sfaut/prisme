@@ -37,7 +37,7 @@ use axum::http::{StatusCode, header};
 use axum::response::IntoResponse;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
-use prisme_connectors::mysql::ColumnTypeInfo;
+use prisme_connectors::columns::ColumnTypeInfo;
 use prisme_connectors::outcome::StatementOutcome;
 use prisme_dialects::verb::StatementVerb;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -1321,11 +1321,16 @@ mod tests {
     fn create_connection(db: &Connection, user_id: i64, name: &str) -> i64 {
         let new = crate::connections::NewConnection {
             name: name.to_string(),
-            host: "127.0.0.1".to_string(),
-            port: 3306,
-            username: "root".to_string(),
-            password: secrecy::SecretString::from(String::new()),
-            database_name: String::new(),
+            engine: prisme_connectors::api::Engine::Mysql,
+            settings: crate::connections::NewSettings::Server(
+                crate::connections::NewServerSettings {
+                    host: "127.0.0.1".to_string(),
+                    port: 3306,
+                    username: "root".to_string(),
+                    password: secrecy::SecretString::from(String::new()),
+                    database_name: String::new(),
+                },
+            ),
             init_sql: String::new(),
             session_timeout_minutes: 5,
             show_system_schemas: false,

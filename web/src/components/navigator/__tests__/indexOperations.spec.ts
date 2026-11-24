@@ -17,6 +17,11 @@ function server(flavor: 'mysql' | 'mariadb', version: string) {
   return { flavor, version, ansiQuotes: false }
 }
 
+/**
+ * The SQLite of Prisme, whose names take double quotes.
+ */
+const SQLITE = { flavor: 'sqlite' as const, version: '3.54.1', ansiQuotes: true }
+
 describe('versions', () => {
   it('compares the version given by the server', () => {
     expect(versionAtLeast('8.0.11', [8, 0, 0])).toBe(true)
@@ -62,6 +67,24 @@ describe('operations on an index', () => {
     expect(primary.split('\n').slice(3)).toEqual([
       '-- ALTER TABLE `shop`.`orders` DROP PRIMARY KEY;',
     ])
+  })
+
+  it('writes CREATE INDEX, REINDEX and DROP INDEX for SQLite, the schema on the index', () => {
+    expect(indexOperations(INDEX, SQLITE, ';')).toBe(
+      [
+        '-- CREATE UNIQUE INDEX "shop".new_index_name ON "orders" (column_name /* , ... */);',
+        '-- CREATE INDEX "shop".new_index_name ON "orders" (column_name /* , ... */);',
+        '-- REINDEX "shop"."idx";',
+        '-- DROP INDEX "shop"."idx";',
+      ].join('\n'),
+    )
+  })
+
+  it('never drops the primary key nor an index of a constraint in SQLite', () => {
+    const primary = indexOperations({ ...INDEX, name: 'PRIMARY' }, SQLITE, ';')
+    expect(primary.split('\n')).toHaveLength(2)
+    const unique = indexOperations({ ...INDEX, name: 'sqlite_autoindex_orders_1' }, SQLITE, ';')
+    expect(unique.split('\n').slice(2)).toEqual(['-- REINDEX "shop"."sqlite_autoindex_orders_1";'])
   })
 
   it('ends each statement with the separator in force, names quoted as the session wants', () => {

@@ -26,14 +26,15 @@
   While a transaction is open on the session's connection, a status badge
   says so at the right end of the editor's header, until
   its COMMIT or ROLLBACK. The banners of the session (closed, server too old,
-  error) stand under that header.
+  databases not opened, error) stand under that header.
   The session can be closed from the object navigator ("Déconnecter",
   `disconnect`), or by the server: the view then shows it closed, with
   "Reconnecter", which opens a new one in place, on the last current
   database of the editor. Running a query or refreshing a tab on the
   closed session opens it again the same way, then runs. A
   session opened on a server older than the oldest version Prisme supports
-  shows a warning.
+  shows a warning, as one opened without databases of its source that could
+  not be opened, each with why.
   Three panels share the height, in a splitter of Prisme (`split/`), each
   under its header, in the style of the Pivoteur's: the editor ("Éditeur",
   with its buttons), the results ("Résultat", with the bar of their tabs)
@@ -70,7 +71,7 @@ import {
 
 import { analyzeSql } from '@/api/analyze'
 import { beautify } from '@/api/beautify'
-import { serverLabel, versionWarning } from '@/api/connections'
+import { serverLabel, unavailableWarning, versionWarning } from '@/api/connections'
 import {
   closeSession,
   deleteResult,
@@ -79,6 +80,7 @@ import {
   reorderResults,
   updateResult,
 } from '@/api/editors'
+import type { AttachedDatabase } from '@/api/generated/AttachedDatabase'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { SelectionRange } from '@/api/generated/SelectionRange'
 import type { TextEnd } from '@/api/generated/TextEnd'
@@ -92,7 +94,9 @@ import {
   refreshState,
   useQuerySession,
 } from '@/api/querySession'
+import { innerLevel } from '@/api/namespaceLevels'
 import { useCatalogStore } from '@/stores/catalog'
+import { useConnectionsStore } from '@/stores/connections'
 import { useSettingsStore } from '@/stores/settings'
 
 import EditorTransactionBadge from '@/components/editor/EditorTransactionBadge.vue'
@@ -160,6 +164,11 @@ const emit = defineEmits<{
    */
   transaction: [open: boolean]
   /**
+   * The databases attached to the session were told, at its opening or
+   * after a change; `null` until then, and for a server.
+   */
+  databases: [databases: AttachedDatabase[] | null]
+  /**
    * The progress of the last batch has changed (`null` before the first one).
    */
   progress: [progress: BatchProgress | null]
@@ -197,6 +206,7 @@ const session = useQuerySession(
   props.openingDatabase,
 )
 const catalog = useCatalogStore()
+const connections = useConnectionsStore()
 const state = session.state
 
 /**
@@ -418,6 +428,12 @@ const versionNotice = computed(() => {
   const warning = state.server ? versionWarning(state.server) : null
   return state.server && warning ? `${serverLabel(state.server)}\n${warning}` : null
 })
+
+/**
+ * Warning of a session opened without some databases of its source, which
+ * could not be opened, `null` otherwise.
+ */
+const databasesNotice = computed(() => (state.server ? unavailableWarning(state.server) : null))
 
 /**
  * Run button that started the running queries: "Exécuter" (`one`),
@@ -775,6 +791,52 @@ watch(
 )
 
 watch(
+  () => state.databases,
+  (databases) => emit('databases', databases),
+  { immediate: true },
+)
+
+// A database copied into a file: a message says where.
+watch(
+  () => state.backedUp,
+  (copy) => {
+    if (copy !== null) {
+      notify(`Base « ${copy.schema} » enregistrée dans ${copy.location.address}`)
+    }
+  },
+)
+
+/**
+ * Was a database just attached "Dans la connexion"? The list of the
+ * connections is then read again once the session tells its databases.
+ */
+let savedAttachment = false
+
+// The session attached or detached a database: the navigator shows its
+// schemas again, and the list of the connections a database saved in the
+// connection. The first list, told as the session opens, changes nothing.
+watch(
+  () => state.databases,
+  (_, before) => {
+    if (before !== null) {
+      catalog.load(props.connection.id, true, props.editorId).catch(() => {})
+    }
+    if (savedAttachment) {
+      savedAttachment = false
+      connections.load().catch(() => {})
+    }
+  },
+)
+
+// A request refused: no database was saved.
+watch(
+  () => state.error,
+  () => {
+    savedAttachment = false
+  },
+)
+
+watch(
   () => batchProgress(state),
   (progress, before) => {
     if (progress?.progress !== before?.progress || progress?.fraction !== before?.fraction) {
@@ -797,12 +859,49 @@ async function disconnect(): Promise<void> {
   }
 }
 
+/**
+ * Copies a database of the session into a new file ("Enregistrer dans un
+ * fichier…" of the navigator).
+ *
+ * @param schema Schema of the database.
+ * @param location Location of the file, as typed.
+ */
+function backupDatabase(schema: string, location: string): void {
+  session.backupDatabase(schema, location)
+}
+
+/**
+ * Attaches a database to the session ("Attacher une base…" of the
+ * navigator), and with `save` to the connection too.
+ *
+ * @param schema Schema of the database.
+ * @param location Location of the database, as typed, or `:memory:`.
+ * @param save Is it also added to the connection?
+ */
+function attachDatabase(schema: string, location: string, save: boolean): void {
+  savedAttachment = save
+  session.attachDatabase(schema, location, save)
+}
+
+/**
+ * Detaches a database from the session ("Détacher pour la session" of the
+ * navigator); it comes back with the next session.
+ *
+ * @param schema Schema of the database.
+ */
+function detachDatabase(schema: string): void {
+  session.detachDatabase(schema)
+}
+
 defineExpose({
   run,
   runWhenReady,
   showTableWhenReady,
   writeIndexOperationsWhenReady,
   changeDatabaseWhenReady,
+  backupDatabase,
+  attachDatabase,
+  detachDatabase,
   disconnect,
 })
 </script>
@@ -906,6 +1005,7 @@ defineExpose({
           <ui-button label="Reconnecter" @click="session.reopen()" />
         </ui-alert>
         <ui-alert v-if="versionNotice" tone="warning" :title="versionNotice" />
+        <ui-alert v-if="databasesNotice" tone="warning" :title="databasesNotice" />
         <ui-alert v-if="state.error" tone="error" :title="state.error" />
 
         <sql-editor
@@ -916,6 +1016,7 @@ defineExpose({
           :version="state.server?.version ?? null"
           :ansi-quotes="state.server?.ansi_quotes ?? false"
           :schemas="catalogSchemas"
+          :level="innerLevel(state.server?.capabilities)"
           :default-schema="state.database"
           :indent-size="indentSize"
           @run="run"

@@ -1,4 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
+import { MYSQL_SOURCE } from '@/api/__tests__/capabilities'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
@@ -38,7 +39,11 @@ let streamed: number[] = []
 vi.mock('@/api/navigator', () => ({
   streamCatalog: async (connectionId: number, onEvent: (event: unknown) => void) => {
     streamed.push(connectionId)
-    onEvent({ type: 'schemas', schemas: schemaNames })
+    onEvent({
+      type: 'namespaces',
+      source: MYSQL_SOURCE,
+      namespaces: schemaNames.map((name) => ({ namespace: [name], system: false })),
+    })
     onEvent({ type: 'done' })
   },
 }))
@@ -93,16 +98,17 @@ function connection(id: number, name: string): ConnectionSummary {
     id,
     name,
     engine: 'mysql',
-    host: 'localhost',
-    port: 3306,
-    username: 'root',
-    database_name: '',
+    settings: {
+      family: 'server',
+      host: 'localhost',
+      port: 3306,
+      username: 'root',
+      database_name: '',
+    },
     init_sql: '',
     session_timeout_minutes: 5,
     show_system_schemas: true,
-    server_flavor: null,
-    server_version: null,
-    connected_at: null,
+    probe: null,
     created_at: '2026-10-13T00:00:00Z',
   }
 }
@@ -120,7 +126,7 @@ function mountNavigator(props: {
   active?: boolean
 }) {
   return mount(NavigatorPanel, {
-    props: { editorId: 1, active: true, ...props, sessionStatus: null },
+    props: { editorId: 1, active: true, ...props, sessionStatus: null, sessionDatabases: null },
     attachTo: document.body,
   })
 }

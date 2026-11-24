@@ -1,4 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
+import { MYSQL_SOURCE } from '@/api/__tests__/capabilities'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, isReactive } from 'vue'
 
@@ -14,15 +15,11 @@ vi.mock('@/api/connections', () => ({
       id: 7,
       name: 'prod',
       engine: 'mysql',
-      host: 'db',
-      port: 3306,
-      username: 'root',
-      database_name: '',
+      settings: { family: 'server', host: 'db', port: 3306, username: 'root', database_name: '' },
       init_sql: '',
       session_timeout_minutes: 5,
       show_system_schemas: true,
-      server_flavor: null,
-      server_version: null,
+      probe: null,
       created_at: '2026-10-12T20:00:00.000Z',
     },
   ],
@@ -39,7 +36,11 @@ vi.mock('@/api/connections', () => ({
 
 vi.mock('@/api/navigator', () => ({
   streamCatalog: async (_id: number, onEvent: (event: unknown) => void) => {
-    onEvent({ type: 'schemas', schemas: ['app', 'logs'] })
+    onEvent({
+      type: 'namespaces',
+      source: MYSQL_SOURCE,
+      namespaces: ['app', 'logs'].map((name) => ({ namespace: [name], system: false })),
+    })
     onEvent({ type: 'done' })
   },
 }))
@@ -54,6 +55,10 @@ vi.mock('@/api/settings', () => ({
     indent_size: 4,
     concat_max_bytes: 1000,
     pivot_refresh_ms: 1000,
+    remote_connect_timeout_seconds: 10,
+    remote_download_timeout_minutes: 5,
+    remote_max_mebibytes: 1024,
+    remote_cache_days: 30,
   }),
   updateSettings: async (update: SettingsUpdate) => ({
     ...update,
@@ -68,7 +73,11 @@ beforeEach(() => {
 describe('connections', () => {
   it('selects the created connection', async () => {
     const store = useConnectionsStore()
-    await store.create({ name: 'prod', host: 'db', port: 3306, username: 'root', password: 'x' })
+    await store.create({
+      name: 'prod',
+      engine: 'mysql',
+      settings: { family: 'server', host: 'db', port: 3306, username: 'root', password: 'x' },
+    })
     expect(store.selectedId).toBe(7)
     expect(store.selected?.name).toBe('prod')
   })
@@ -76,8 +85,8 @@ describe('connections', () => {
   it('detects in the background the server of a connection never connected', async () => {
     const store = useConnectionsStore()
     await store.load()
-    await vi.waitFor(() => expect(store.connections[0]?.server_flavor).toBe('mariadb'))
-    expect(store.connections[0]?.server_version).toBe('11.4.2-MariaDB')
+    await vi.waitFor(() => expect(store.connections[0]?.probe?.flavor).toBe('mariadb'))
+    expect(store.connections[0]?.probe?.version).toBe('11.4.2-MariaDB')
   })
 })
 

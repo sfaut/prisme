@@ -49,6 +49,8 @@ import { errorMessage } from './errorMessage'
 import { describe } from './messages'
 import { markRaw, onScopeDispose, reactive } from 'vue'
 
+import type { AttachedDatabase } from './generated/AttachedDatabase'
+import type { Location as DatabaseLocation } from './generated/Location'
 import type { ColumnTypeInfo } from './generated/ColumnTypeInfo'
 import type { GridDisplay } from './generated/GridDisplay'
 import type { LimitReport } from './generated/LimitReport'
@@ -56,7 +58,7 @@ import type { ClientMessage } from './generated/ClientMessage'
 import type { ResultTab } from './generated/ResultTab'
 import type { ResumedQuery } from './generated/ResumedQuery'
 import type { SelectionRange } from './generated/SelectionRange'
-import type { ServerInfo } from './generated/ServerInfo'
+import type { SourceInfo } from './generated/SourceInfo'
 import type { ServerMessage } from './generated/ServerMessage'
 import type { NoticeLevel } from './generated/NoticeLevel'
 import type { OutcomeCounts } from './generated/OutcomeCounts'
@@ -387,7 +389,7 @@ export interface SessionState {
   /**
    * Identity of the target server, known once the session is ready.
    */
-  server: ServerInfo | null
+  server: SourceInfo | null
   /**
    * Current database on the target server (it changes with `USE`), `null` if none.
    */
@@ -398,6 +400,16 @@ export interface SessionState {
    * `ready` tells it again.
    */
   transaction: boolean
+  /**
+   * Databases attached to the session's connection, told by the server
+   * each time a request changes them; `null` until then.
+   */
+  databases: AttachedDatabase[] | null
+  /**
+   * Last copy of a database into a file, told by the server; `null` if
+   * none.
+   */
+  backedUp: { schema: string; location: DatabaseLocation } | null
   /**
    * Tabs: the pinned ones of the previous batches, then the queries of the current batch.
    */
@@ -468,6 +480,8 @@ export function initialState(): SessionState {
     server: null,
     database: null,
     transaction: false,
+    databases: null,
+    backedUp: null,
     tabs: [],
     batch: 0,
     nextTabId: 1,
@@ -629,6 +643,12 @@ export function applyMessage(
       break
     case 'transaction':
       state.transaction = message.open
+      break
+    case 'databases':
+      state.databases = message.databases
+      break
+    case 'backed_up':
+      state.backedUp = { schema: message.schema, location: message.location }
       break
     case 'resume':
       resumeBatch(state, message.queries, message.running, now)
@@ -1736,6 +1756,46 @@ export function useQuerySession(
   }
 
   /**
+   * Copies a database of the session into a new file (`backup`); the
+   * server answers `backed_up`, or a session error.
+   *
+   * @param schema Schema of the database.
+   * @param location Location of the file, as typed.
+   */
+  function backupDatabase(schema: string, location: string): void {
+    if (state.status === 'ready') {
+      send({ type: 'backup', schema, location })
+    }
+  }
+
+  /**
+   * Attaches a database to the session (`attach`), and with `save` to the
+   * connection too; the server answers with the databases of the session,
+   * or a session error.
+   *
+   * @param schema Schema of the database.
+   * @param location Location of the database, as typed, or `:memory:`.
+   * @param save Is it also added to the connection?
+   */
+  function attachDatabase(schema: string, location: string, save: boolean): void {
+    if (state.status === 'ready') {
+      send({ type: 'attach', schema, location, save })
+    }
+  }
+
+  /**
+   * Detaches a database from the session (`detach`); the server answers
+   * with the databases left, or a session error.
+   *
+   * @param schema Schema of the database.
+   */
+  function detachDatabase(schema: string): void {
+    if (state.status === 'ready') {
+      send({ type: 'detach', schema })
+    }
+  }
+
+  /**
    * Stops all the running queries: they end with a "query interrupted"
    * error, and those waiting for their turn do not start. A stopped refresh
    * gives its tab back as it was; the waiting refreshes are cancelled.
@@ -1873,6 +1933,9 @@ export function useQuerySession(
     run,
     reopen,
     changeDatabase,
+    backupDatabase,
+    attachDatabase,
+    detachDatabase,
     cancel,
     refresh,
     stopRefresh,

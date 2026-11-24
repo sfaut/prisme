@@ -7,12 +7,22 @@
   its cell empty. The data come first, with their own verbs (`INSERT`,
   `UPDATE`, `DELETE`, `TRUNCATE`) in the same columns, above a line.
 
-  Greyed out and inactive with `disabled`: while the sessions are read-only,
-  the database would refuse every write.
+  With `readOnly`, while the sessions are read-only, the check boxes are
+  greyed out and inactive, the database refusing their writes; only those
+  of `READ_ONLY_KINDS` (`ATTACH`) stay active.
+
+  The settings are the user's, for every connection: each switch stays
+  shown, and its tooltip names the engines it concerns ("Pour MySQL et
+  MariaDB"), read from the server (`GET /api/engines`).
 -->
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
+
+import { fetchEngines, flavorsOfWriteKind } from '@/api/engines'
+import type { EngineInfo } from '@/api/generated/EngineInfo'
 import type { WriteKind } from '@/api/generated/WriteKind'
 import {
+  READ_ONLY_KINDS,
   WRITE_KIND_GROUPS,
   WRITE_KIND_STATEMENTS,
   type WriteKindGroup,
@@ -21,17 +31,41 @@ import {
 
 import { vTooltip } from '@/components/ui/tooltip'
 
-defineProps<{
+const props = defineProps<{
   /**
-   * Check boxes greyed out and inactive.
+   * Sessions read-only: the check boxes of the writes they refuse are greyed
+   * out and inactive.
    */
-  disabled?: boolean
+  readOnly?: boolean
 }>()
 
 /**
  * Kinds of write allowed.
  */
 const model = defineModel<WriteKind[]>({ required: true })
+
+/**
+ * Engines of Prisme, `null` until read: the tooltips then name no engine.
+ */
+const engines = ref<EngineInfo[] | null>(null)
+
+onMounted(async () => {
+  try {
+    engines.value = await fetchEngines()
+  } catch {
+    // Server unreachable: the tooltips name no engine.
+  }
+})
+
+/**
+ * Tooltip of a kind: its statement, its note, the engines it concerns.
+ *
+ * @param kind Kind of write.
+ */
+function tooltipOf(kind: WriteKind) {
+  const flavors = engines.value === null ? null : flavorsOfWriteKind(engines.value, kind)
+  return writeKindTooltip(kind, flavors)
+}
 
 /**
  * Verbs of the objects, one column each, in this order.
@@ -52,6 +86,16 @@ const COLUMNS = ['col-start-2', 'col-start-3', 'col-start-4', 'col-start-5']
 const PARTS: WriteKindGroup[][] = [WRITE_KIND_GROUPS.slice(0, 1), WRITE_KIND_GROUPS.slice(1)]
 
 /**
+ * Is the check box of a kind greyed out and inactive? While the sessions are
+ * read-only, for the kinds they refuse.
+ *
+ * @param kind Kind of write.
+ */
+function locked(kind: WriteKind): boolean {
+  return props.readOnly && !READ_ONLY_KINDS.includes(kind)
+}
+
+/**
  * Class of the column of a kind: that of its verb for an object, its rank for
  * the data, whose verbs are their own.
  *
@@ -65,11 +109,7 @@ function columnOf(verb: string, rank: number): string {
 </script>
 
 <template>
-  <fieldset
-    :disabled="disabled"
-    class="flex flex-col gap-3 disabled:opacity-50"
-    aria-label="Écritures autorisées"
-  >
+  <fieldset class="flex flex-col gap-3" aria-label="Écritures autorisées">
     <template v-for="(groups, part) in PARTS" :key="part">
       <div
         class="grid grid-cols-[--spacing(39)_repeat(4,minmax(0,1fr))] items-center gap-2"
@@ -80,14 +120,15 @@ function columnOf(verb: string, rank: number): string {
           <label
             v-for="({ kind, verb }, rank) in group.kinds"
             :key="kind"
-            class="flex h-8 min-w-0 items-center gap-2 rounded-control border border-line px-2 font-mono text-fg-strong has-checked:border-primary/40 has-checked:bg-primary/10"
+            class="flex h-8 min-w-0 items-center gap-2 rounded-control border border-line px-2 font-mono text-fg-strong has-checked:border-primary/40 has-checked:bg-primary/10 has-disabled:opacity-50"
             :class="columnOf(verb, rank)"
-            v-tooltip="disabled ? null : writeKindTooltip(kind)"
+            v-tooltip="locked(kind) ? null : tooltipOf(kind)"
           >
             <input
               v-model="model"
               type="checkbox"
               :value="kind"
+              :disabled="locked(kind)"
               :aria-label="WRITE_KIND_STATEMENTS[kind]"
               class="size-5 shrink-0 accent-primary"
             />

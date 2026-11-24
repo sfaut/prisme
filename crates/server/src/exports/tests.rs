@@ -15,12 +15,19 @@ use tower::ServiceExt;
 
 use super::table::{self, NewExport};
 use super::{ExportState, interrupt_unfinished};
-use crate::api::{AppState, router};
-use crate::connections::{self, NewConnection};
+use crate::api::{AppState, Folders, router};
+use crate::connections::{self, NewConnection, NewServerSettings, NewSettings};
+use crate::editors::{self, NewEditor};
 use crate::master_key::MasterKey;
 use crate::store;
-use prisme_connectors::mysql::{Flavor, MysqlTarget};
+use crate::test_support::{
+    allow_writes, attachable_database, files_connection, run_on_session, serve,
+};
+use prisme_connectors::api::Engine;
+use prisme_connectors::flavor::Flavor;
+use prisme_connectors::mysql::MysqlTarget;
 use prisme_connectors::test_servers;
+use prisme_dialects::classify::WriteKind;
 
 /// Application whose exports go to a temporary folder.
 struct TestApp {
@@ -38,26 +45,42 @@ impl TestApp {
     /// Application with, for its user, a connection to `target` and the
     /// exports that `prepare` saves in its internal database.
     fn new(target: &MysqlTarget, prepare: impl FnOnce(&rusqlite::Connection, i64)) -> Self {
-        let db = store::open_in_memory();
-        let key = MasterKey::generate();
-        let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let connection = NewConnection {
             name: "test".to_string(),
-            host: target.host.clone(),
-            port: target.port,
-            username: target.username.clone(),
-            password: target.password.clone(),
-            database_name: target.database_name.clone(),
+            engine: Engine::Mysql,
+            settings: NewSettings::Server(NewServerSettings {
+                host: target.host.clone(),
+                port: target.port,
+                username: target.username.clone(),
+                password: target.password.clone(),
+                database_name: target.database_name.clone(),
+            }),
             init_sql: String::new(),
             session_timeout_minutes: 5,
             show_system_schemas: true,
         };
-        connections::insert(&db, &key, user_id, &connection).unwrap();
+        Self::with_connection(&connection, prepare)
+    }
+
+    /// Application with, for its user, the connection `connection` and what
+    /// `prepare` saves in its internal database.
+    fn with_connection(
+        connection: &NewConnection,
+        prepare: impl FnOnce(&rusqlite::Connection, i64),
+    ) -> Self {
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let user_id = store::ensure_user(&db, "test@example.com").unwrap();
+        connections::insert(&db, &key, user_id, connection).unwrap();
         prepare(&db, user_id);
         let data = tempfile::tempdir().unwrap();
         let folder = data.path().join(super::FOLDER);
         std::fs::create_dir(&folder).unwrap();
-        let state = AppState::new(db, key, user_id, folder.clone());
+        let folders = Folders {
+            exports: folder.clone(),
+            ..Folders::of(data.path())
+        };
+        let state = AppState::new(db, key, user_id, folders);
         Self {
             app: router(state.clone()),
             state,
@@ -450,5 +473,44 @@ async fn stops_refuses_and_fails_exports() {
                 );
             })
             .await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn exports_from_the_databases_of_the_session_of_its_editor() {
+    let mut editor_id = 0;
+    let folder = tempfile::tempdir().unwrap();
+    let connection = files_connection(folder.path());
+    let test = TestApp::with_connection(&connection, |db, user_id| {
+        allow_writes(
+            db,
+            user_id,
+            &[WriteKind::Attach, WriteKind::CreateTable, WriteKind::Insert],
+        );
+        let editor = NewEditor {
+            connection_id: Some(1),
+        };
+        editor_id = editors::create(db, user_id, &editor).unwrap().id;
+    });
+    let address = serve(test.app.clone()).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+    run_on_session(&mut socket, "CREATE TABLE scratch.t (x INTEGER)").await;
+    run_on_session(&mut socket, "INSERT INTO scratch.t VALUES (1), (2)").await;
+    let other = attachable_database(folder.path(), "other");
+    run_on_session(&mut socket, &format!("ATTACH '{other}' AS other")).await;
+
+    // A table in memory of the session, then one of the database it attached.
+    for (sql, rows) in [("SELECT x FROM scratch.t", 2), ("SELECT a FROM other.u", 3)] {
+        let mut request = export_request(sql, &[]);
+        request["editor_id"] = json!(editor_id);
+        let (status, started) = test.send("POST", "/api/exports", Some(request)).await;
+        assert_eq!(status, StatusCode::ACCEPTED, "{started}");
+        let id = started["id"].as_i64().unwrap();
+        let ended = test
+            .wait_for(id, |export| export["state"] != "running")
+            .await;
+        assert_eq!(ended["state"], "ready", "{sql}: {ended}");
+        assert_eq!(ended["rows"], rows, "{sql}");
     }
 }

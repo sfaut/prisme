@@ -4,11 +4,11 @@
 [![Release](https://img.shields.io/github/v/release/sfaut/prisme)](https://github.com/sfaut/prisme/releases/latest)
 [![License](https://img.shields.io/github/license/sfaut/prisme)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-informational)
-![Databases](https://img.shields.io/badge/databases-MySQL%20%7C%20MariaDB-informational)
+![Databases](https://img.shields.io/badge/databases-MySQL%20%7C%20MariaDB%20%7C%20SQLite-informational)
 
 Prisme is a multi-database web client shaped like a SQL notebook: several sources, one view. It runs on your computer as a single executable and opens in your browser.
 
-Prisme is at the start of its first version (v1). Today it queries **MySQL and MariaDB**, in **read-only** mode. PostgreSQL, SQLite, DuckDB and translation between SQL dialects come next.
+Prisme is at the start of its first version (v1). Today it queries **MySQL**, **MariaDB** and **SQLite**, read-only by default: each kind of write is allowed by its own switch of the preferences. PostgreSQL, DuckDB and translation between SQL dialects come next.
 
 > The interface is currently in French. This guide quotes its labels as they appear on screen, with a translation, for example **Exécuter** (Run).
 
@@ -21,6 +21,7 @@ Prisme is at the start of its first version (v1). Today it queries **MySQL and M
   - [Command-line options](#command-line-options)
 - [Using Prisme](#using-prisme)
   - [Connections](#connections)
+  - [SQLite databases](#sqlite-databases)
   - [Object navigator](#object-navigator)
   - [Editors](#editors)
   - [Running queries](#running-queries)
@@ -44,7 +45,7 @@ Prisme is at the start of its first version (v1). Today it queries **MySQL and M
 2. **Run it** from a terminal. On Linux and macOS, first make it executable (see [Installation](#installation)).
 3. **Answer the two setup questions**: listening port and your email address. Press Enter to keep the defaults (`10000`, `me@local`).
 4. **Open** <http://prisme.localhost:10000> in your browser (or <http://127.0.0.1:10000>).
-5. **Add a connection**: in the top bar, open the menu of **Nouveau** (New) by its chevron, choose **Connexion** (Connection), keep **MySQL / MariaDB**, click **Suivant** (Next), fill in name, host, port, user and password, click **Tester** (Test), then **Enregistrer** (Save).
+5. **Add a connection**: in the top bar, open the menu of **Nouveau** (New) by its chevron, choose **Connexion** (Connection), keep **MySQL / MariaDB**, click **Suivant** (Next), fill in name, host, port, user and password, click **Tester** (Test), then **Enregistrer** (Save). For a database file, choose **SQLite** instead (see [SQLite databases](#sqlite-databases)).
 6. **Query**: **Ctrl+click** the new source (**Cmd+click** on macOS), type a query in the editor, press **Ctrl+Enter**.
 
 ## Installation
@@ -139,16 +140,44 @@ The version of Prisme shows next to its name, at the top left.
 
 Connections are managed in the **Connexions** (Connections) window, opened from the account menu of the [top bar](#top-bar), from **Nouveau** › **Connexion** (New › Connection) on a new connection, and from **Modifier** (Edit) in the **⋮** menu of a source, on that connection:
 
-- **List**: your connections on the left, grouped by kind of source (database servers; files are coming), with a filter on their names and addresses. A green dot marks a connection that has connected at least once.
+- **List**: your connections on the left, grouped by kind of source (database servers, database files), with a filter on their names and addresses. A green dot marks a connection that has connected at least once.
 - **Edit**: the connection shown has its card at the top, with its server, its version and its last connection, and the buttons **Tester** (Test), **Dupliquer** (Duplicate) and **Supprimer** (Delete, after confirmation); then all its settings, on one page. A blank password keeps the current one. A connection changed and not saved keeps its changes while you look at another one: the list marks it in amber, **modifiée, non enregistrée** (changed, not saved). **Enregistrer** (Save) saves the connection shown, **Annuler les modifications** (Discard the changes) goes back to its saved settings. Closing the window drops the changes not saved.
-- **Create**: **Nouvelle connexion** (New connection) goes in three steps: the kind of source (MySQL / MariaDB for now; the kinds to come show greyed out), the settings, then the result of their test, before saving; a failed test does not prevent saving, for a server not reachable yet. The creation in progress waits under the button while you look at other connections.
+- **Create**: **Nouvelle connexion** (New connection) goes in three steps: the kind of source (MySQL / MariaDB or SQLite; the kinds to come show greyed out), the settings, then the result of their test, before saving; a failed test does not prevent saving, for a server not reachable yet. The creation in progress waits under the button while you look at other connections.
 - **Duplicate**: starts a creation from the settings of the connection shown, at its settings step, under the name followed by `-copie`; left blank, its password is that of the copied connection.
 - **Refresh, test, delete**: also in the **⋮** menu of each source.
-- **Session settings**: the **À la connexion** (On connect) field runs queries each time a connection opens, separated by `;`, for example `SET NAMES utf8mb4; SET SESSION sql_mode = ...`. Only session settings are allowed.
-- **System databases** (`information_schema`, `mysql`, `performance_schema`, `sys`) can be hidden per source.
-- **Supported versions**: MySQL from 8.0.11, MariaDB from 10.6.3. An older server still works, without guarantee: the connection test and the editor connected to it show a warning.
+- **Session settings**: the **À la connexion** (On connect) field runs queries each time a connection opens, separated by `;`, for example `SET NAMES utf8mb4; SET SESSION sql_mode = ...`. Only session settings are allowed: for SQLite, the pragmas of the connection (see [SQLite databases](#sqlite-databases)).
+- **System databases** (`information_schema`, `mysql`, `performance_schema`, `sys`; the schema `temp` of SQLite) can be hidden per source.
+- **Supported versions**: MySQL from 8.0.11, MariaDB from 10.6.3. An older server still works, without guarantee: the connection test and the editor connected to it show a warning. SQLite is built into Prisme (version 3.54.1): nothing to install.
 
 Passwords are encrypted on disk and never sent back to the browser.
+
+### SQLite databases
+
+A SQLite connection is a **main database** and up to ten **attached databases**, read by Prisme on your computer. Choose **SQLite** as the kind of source, then fill in:
+
+- **Base principale** (Main database), its **Origine** (Origin): **Fichier existant** (Existing file), opened as it is; **Nouveau fichier** (New file), created empty when the connection is saved, refused if the file exists already; **En mémoire** (In memory), empty at each session and gone when the session closes.
+- Its **Emplacement** (Location):
+  - an absolute path, with `\` or `/` (`D:\data\sales.db`, `D:/data/sales.db`, `/srv/sales.db`), or a `file:///` URL;
+  - the address of a file on a web server, `https://…` or `http://…`, without an account. Prisme copies the file into [your data](#your-data), then reads the copy, always read-only; it downloads it again only when the server says the file changed. The **Bases distantes** (Remote databases) section of the preferences sets the timeouts, the largest size, and the days a copy no session opened is kept.
+
+  The protocol read from what you type shows next to the field: `file`, `https`, `memory`. Other protocols (`s3`, `ftp`...) are refused, with a message that names them.
+- **Bases attachées** (Attached databases): **Attacher une base** (Attach a database) adds one, with its schema (the name that qualifies its tables: `sales.orders`), its origin and its location. `main` and `temp` are taken. Removing an attached database from a saved connection strikes it through; **Rétablir** (Restore) brings it back until you save. Its file stays on the disk.
+- **À la connexion** (On connect): pragmas run each time a connection opens, among the settings of the connection that the field lists (`PRAGMA foreign_keys = ON;`).
+- **Afficher le schéma système** (Show the system schema): the schema `temp`, which holds the temporary tables of the session.
+
+The **Vérification** (Check) step of a creation tests each database: its size, its journal and whether it is read-only; a file to create; a database in memory; or what is wrong (missing file, not a database, unreachable address), with its fixes: **Le créer** (Create it), **L’ouvrir tel quel** (Open it as it is), **Retirer** (Remove). A database that cannot be opened does not prevent saving: the sessions open without it, and the editor says so in a banner. Only the main database is required.
+
+In the navigator and the editor:
+
+- The navigator shows the schemas of the source (`main`, the attached databases, `temp`), each with the protocol of its database: `file`, `https`, `memdb` for a database in memory of the connection, `memory` for one attached by `ATTACH ':memory:'`. SQLite has no current database to change (no **Utiliser cette base**), no procedures, functions nor events, and gives no row counts. A table without a schema is searched in `temp`, then `main`, then the attached databases in their order; a table created without a schema goes into `main`.
+- The **⋮** menu of the source has **Attacher une base…** (Attach a database): an existing file or a database in memory, **Pour cette session** (For this session) or **Dans la connexion** (In the connection), which also adds it to the connection, without closing the session. The menu of an attached database has **Détacher pour la session** (Detach for the session: it comes back at the next session) and **Retirer de la connexion…** (Remove from the connection); that of a database in memory has **Enregistrer dans un fichier…** (Save to a file), into a new file only. These actions need no switch.
+- The queries of an editor see the same databases: the queries run in parallel, the navigator and the exports share its databases in memory and its attachments. After an `ATTACH ':memory:'`, which only the editor's connection sees, the queries run one after another.
+- An `ATTACH` written in SQL needs its switch (see [Running queries](#running-queries)) and names its file by a literal absolute path, `':memory:'`, or the URI of a file (`file:///D:/data/sales.db?vfs=win32`; `vfs=unix` on Linux and macOS). When the main database is in memory, a path alone is refused, as SQLite would open an empty database in memory under that name instead of the file: the message gives the URI to write.
+- **Pragmas**: those that read run freely (`PRAGMA table_info(orders)`, `SELECT * FROM pragma_index_list('orders')`); the settings of the connection change with a value (`PRAGMA foreign_keys = ON`); `optimize`, `wal_checkpoint` and `incremental_vacuum` need the **VACUUM** switch; any other pragma is refused, as SQLite would run it without a word, even one that does not exist.
+- **Values**: numbers in plain decimal (`100`, `100000000000000000000`, where SQLite writes `100.0` and `1.0e+20`), binary data in hexadecimal (`0x…`). A column without a declared type takes the type of its first value. A write tells its rows inserted, found or deleted; SQLite sends no warnings.
+- **Errors** name their SQLite code: **SQLite a répondu (SQLITE_CONSTRAINT_UNIQUE, code 2067)** (SQLite answered).
+- The **CTE** and the **`IN` clause** copied from a result are written for SQLite: dates and times as texts, bytes in hexadecimal (`X'FF001A'`).
+- On an index, the navigator writes `CREATE INDEX`, `REINDEX` and `DROP INDEX`; SQLite cannot rename an index, nor drop that of a primary key or of a `UNIQUE` constraint.
 
 ### Object navigator
 
@@ -210,12 +239,14 @@ The current database of each editor (the last `USE`, or the database made curren
 - Syntax errors are **underlined in red** as you type, with the message on hover.
 - **Row limit**: when a query has no `LIMIT`, Prisme shows at most 1,000 rows (adjustable up to 50,000 with the list next to the buttons) and reports a truncated result. A query that has its own `LIMIT` runs as written.
 - **Writes**: reads are always allowed (`SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`). Each write is allowed by its own switch of the preferences (**Écritures autorisées**, see [Top bar](#top-bar)), all off by default: `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, then `CREATE`, `ALTER`, `RENAME`, `DROP` of the tables, `CREATE`, `ALTER`, `RENAME`, `DROP` of the temporary tables, `CREATE`, `DROP` of the views, functions and procedures, `CREATE`, `ALTER`, `DROP` of the events. `REPLACE` needs `INSERT` and `DELETE`, `INSERT ... ON DUPLICATE KEY UPDATE` needs `INSERT` and `UPDATE`, `CREATE INDEX` / `DROP INDEX` need `ALTER TABLE`, `ALTER VIEW` needs `CREATE VIEW`. The switches of the **Tables temporaires** (Temporary tables) group allow changing the temporary tables without touching the permanent ones: Prisme follows the temporary tables created by the editor's session, and an `ALTER`, `RENAME` or `DROP` that names only them needs these switches; `CREATE TEMPORARY TABLE` and `DROP TEMPORARY TABLE` always do. Their data stays under the switches of the data (`INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`). A table name written in another case than at its creation is taken for a permanent table. The other writes are always refused: `CALL`, databases, triggers, `LOAD DATA`, accounts, global `SET`, `SELECT ... INTO`. A setting of the session (`SET @v = 1`, `SET SESSION sql_mode = ...`, `SET NAMES`) is always allowed, and so are transactions (see [Transactions](#transactions)). While **Sessions en lecture seule** (Read-only sessions), on by default, is on, the database itself refuses the writes, and Prisme refuses them all first. A procedure, function or event whose body is a `BEGIN ... END` block is written after a `DELIMITER` command (`DELIMITER //`, the body, `//`).
+- **Writes in SQLite**: SQLite has no `TRUNCATE`, no `RENAME` of a table, no functions, procedures nor events; the tooltip of each switch names the engines it concerns. The **Fichiers SQLite** (SQLite files) group adds **ATTACH** (`ATTACH` and `DETACH` written in SQL, allowed even while the sessions are read-only: the database attached is then read-only too) and **VACUUM** (`VACUUM`, `REINDEX`, `ANALYZE`, and the pragmas that write in the file). `INSERT OR REPLACE` and `REPLACE` need `INSERT` and `DELETE`, `UPDATE OR REPLACE` needs `UPDATE` and `DELETE`, `INSERT ... ON CONFLICT DO UPDATE` needs `INSERT` and `UPDATE`, `CREATE VIRTUAL TABLE` needs `CREATE TABLE`; a table of the schema `temp` is a temporary table. `VACUUM INTO` and triggers are always refused.
 
 ### Transactions
 
 A transaction lives on the session of its editor: its queries run on the session's connection, one after another, and each editor has its own transactions.
 
 - **Allowed statements**, always, without a switch, read-only sessions included: `START TRANSACTION` (`READ ONLY`, `WITH CONSISTENT SNAPSHOT`), `BEGIN`, `COMMIT`, `ROLLBACK` (`AND [NO] CHAIN`, `[NO] RELEASE`), `SAVEPOINT`, `ROLLBACK TO SAVEPOINT`, `RELEASE SAVEPOINT`, `SET [SESSION] TRANSACTION` (isolation level, access mode), `SET autocommit`. The writes inside a transaction stay under their own switches (see [Running queries](#running-queries)).
+- **SQLite** writes its transactions `BEGIN [DEFERRED | IMMEDIATE | EXCLUSIVE]`, `COMMIT` or `END`, `ROLLBACK`, `SAVEPOINT`, `RELEASE`, `ROLLBACK TO`; it has no `START TRANSACTION`. A statement that fails leaves the transaction open, and a query stopped inside a transaction rolls the whole transaction back.
 - **Read-only sessions**: while **Sessions en lecture seule** (Read-only sessions) is on, Prisme refuses what would lift the read-only mode, which the servers would otherwise apply: `START TRANSACTION READ WRITE`, `SET [SESSION] TRANSACTION READ WRITE`, and the variables `transaction_read_only` and `tx_read_only`. A plain `START TRANSACTION` and `SET autocommit = 0` keep the session read-only.
 - **Always refused**: `SET GLOBAL TRANSACTION`, which changes the default of every session of the server, and XA (distributed) transactions (`XA START`, `XA PREPARE`, `XA COMMIT`...): a prepared XA transaction outlives its session and keeps its locks.
 - **Indicator**: while a transaction is open on the session, a **Transaction ouverte** (Transaction open) badge shows at the end of the editor's buttons, until its `COMMIT` or `ROLLBACK`. With `SET autocommit = 0`, a transaction opens again with the first query after each `COMMIT`, and the badge with it. A page that comes back during the transaction shows the badge again.
@@ -299,7 +330,7 @@ Each query gets its own tab:
 
   The export menu copies it (**Presse-papiers**) or writes it at the cursor of the editor (**Éditeur**), in place of the selected text if any. The values are those of the CTE, in the dialect and the modes of the editor's server: numbers bare, strings quoted, dates typed. A value, or a row of values, met several times is written once. `NULL` never matches in an `IN`: it is left out of a single column (a selection of `NULL` alone is refused), and a row of several columns that holds it is kept as it is. The selected rows must all be selected on the same columns, which need not be side by side: otherwise the choice stays inactive (**Sélection malformée**).
 - **Full export** (**Résultat complet en CSV (requête relancée)** in the export menu) runs the query again on the server, as written, without Prisme's row limit (a `LIMIT` you wrote still applies), and writes the same CSV file in the `exports` folder of [your data](#your-data), however many rows. Columns keep their displayed order; the sort and the filter of the grid do not apply: write them in SQL (`ORDER BY`, `WHERE`). Only reads can be exported. The export runs on a read-only connection of its own, on the current database of the editor: it sees neither the temporary tables nor the variables of the editor's session, nor its open transaction. The [exports manager](#top-bar) follows it, and a message tells when its file is ready, with a **Télécharger** (Download) button.
-- **Display**: the header shows each column's type (hover for the full name). Numbers and dates are right-aligned, `CHAR` columns use a monospaced font, web addresses are clickable, `NULL` is shown in small grey capitals.
+- **Display**: the header shows each column's type (hover for the full name). Numbers and dates are right-aligned; numbers are written in plain decimal, never in scientific notation (a `DOUBLE` of 10²⁰ shows `100000000000000000000`, where the server sends `1e20`). `CHAR` columns use a monospaced font, web addresses are clickable, `NULL` is shown in small grey capitals.
 - **Data explorer**: a panel on the right of each editor shows the values selected in a column of type `JSON`, or in a text column that holds JSON or XML: a cell, the whole column, or ranges of it. The values are indented with 4 spaces and highlighted; numbers and texts stay exactly as stored. Several values are gathered into one document: a `[…]` array for JSON (`NULL` becomes `null`), a `<data>…</data>` element for XML (`NULL` is left out, `<?xml?>` declarations are removed). Each level folds with the arrows in the margin; the buttons fold or unfold everything, or every node at the depth of the cursor. The line wrap button wraps long lines to the width of the panel; it is off by default and your choice is remembered. The search button finds values with JSONPath or XPath (see [Searching the data explorer](#searching-the-data-explorer)). The copy button, or Ctrl+A then Ctrl+C, copies valid JSON or XML, folded parts included. Each editor has its own explorer, which follows the selection of its grid and keeps its own search; drag its left edge to resize it, below its smallest width to close it: whether it is open and its width are remembered for the editor, and a new editor starts closed, at the default width.
 
 ### Searching the data explorer
@@ -472,7 +503,8 @@ Both tabs are kept in the internal database, 30 days by default: the **Historiqu
     - **Requêtes** (Queries): the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; **Écritures autorisées** (Writes allowed), the switches of the writes, one row per object and one column per verb, greyed out while the sessions are read-only;
     - **Éditeur SQL** (SQL editor): the **Indentation** of the editor and of **Enjoliver**, from 1 to 8 spaces (4 by default);
     - **Pivoteur**: the longest text of a `GROUP_CONCAT` of the [Pivoteur](#pivoteur), from 100 to 1,048,576 bytes (1,000 by default); **Mise à jour pendant la réception** (Update during the reception), the shortest delay between two computations of its table while the rows arrive, from 0.2 to 60 seconds (1 by default);
-    - **Console**: how many days the [console](#console) keeps its history and its debug log.
+    - **Console**: how many days the [console](#console) keeps its history and its debug log;
+    - **Bases distantes** (Remote databases): the reading of the databases held on a web server (`http`, `https`): **Délai de connexion** (Connection timeout), from 1 to 300 seconds (10 by default); **Durée d’un téléchargement** (Download duration), from 1 to 1,440 minutes (5 by default); **Taille la plus grande** (Largest size), from 1 MiB to 100 GiB (1,024 MiB by default); **Copies inutilisées** (Unused copies), the days after which Prisme deletes its copy of a remote database no session opened, from 1 to 3,650 (30 by default).
 
 ## Your data
 
@@ -488,7 +520,7 @@ It holds two files that go together:
 - **`prisme.db`**: the internal database (settings, connections, editors, results, history of the queries, debug log). It also keeps the display: the theme, the panels and their sizes, the object navigator, the position in the SQL text, the columns, sort, filter and scroll of each result grid, the console. Opening Prisme from another browser or another computer finds them as you left them; the browser itself only keeps a copy of the theme, for the first paint.
 - **`prisme.key`**: the master key, created on first launch. It encrypts the passwords of your connections.
 
-The **`exports`** folder holds the files of the full exports, until you remove them from the exports manager.
+The **`exports`** folder holds the files of the full exports, until you remove them from the exports manager. The **`cache`** folder holds the copies of the SQLite databases read from a web server, each deleted once no session opened it for the days set in the preferences.
 
 - **Back up** both files. Without the key, saved passwords cannot be read and must be typed again; everything else is kept.
 - **Protect** the folder: whoever has both files can read the saved passwords. By default, only your user account can read it.

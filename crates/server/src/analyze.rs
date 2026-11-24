@@ -9,7 +9,7 @@
 //! units, like the editor's.
 
 use crate::error_detail::ErrorDetail;
-use prisme_connectors::mysql::Flavor;
+use prisme_connectors::flavor::Flavor;
 use prisme_dialects::Dialect;
 use prisme_dialects::syntax::syntax_error;
 use prisme_splitter::{Statement, split, text_end};
@@ -80,21 +80,15 @@ pub fn dialect_of(flavor: Flavor) -> Dialect {
     match flavor {
         Flavor::MySql => Dialect::MySql,
         Flavor::MariaDb => Dialect::MariaDb,
-    }
-}
-
-/// Flavor of a dialect's servers, the inverse of `dialect_of`.
-pub fn flavor_of(dialect: Dialect) -> Flavor {
-    match dialect {
-        Dialect::MySql => Flavor::MySql,
-        Dialect::MariaDb => Flavor::MariaDb,
+        Flavor::Sqlite => Dialect::Sqlite,
     }
 }
 
 /// Analyses the editor's text.
 pub fn analyze(request: &AnalyzeRequest) -> Analysis {
     let dialect = dialect_of(request.flavor);
-    let statements = split(&request.sql);
+    let rules = dialect.lexical_rules();
+    let statements = split(&request.sql, rules);
     Analysis {
         errors: statements
             .iter()
@@ -108,7 +102,7 @@ pub fn analyze(request: &AnalyzeRequest) -> Analysis {
             })
             .collect(),
         text_end: {
-            let end = text_end(&request.sql);
+            let end = text_end(&request.sql, rules);
             TextEnd {
                 delimiter: end.delimiter,
                 open_end: end.open_end,

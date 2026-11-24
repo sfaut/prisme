@@ -288,8 +288,10 @@ onBeforeUnmount(() => {
     white-space: nowrap;
   }
 
+  /* A description of several parts gives each its line. */
   .tooltip-description {
     color: var(--tooltip-fg-subtle);
+    white-space: pre-line;
   }
 
   /* On the right of its element, centered on it; on its left when there is

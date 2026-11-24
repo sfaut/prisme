@@ -4,20 +4,23 @@
 //! JSON lines (`application/x-ndjson`), one `CatalogEvent` message per line,
 //! sent as soon as it is ready:
 //!
-//! 1. `schemas`: names of all the databases, with the server's flavor (also
-//!    remembered on the connection, for the navigator's badge);
-//! 2. `objects`: tables, views, procedures, functions and events, database by
-//!    database;
+//! 1. `namespaces`: all the namespaces of the source (databases of a server),
+//!    with the identity of the source (also remembered on the connection,
+//!    for the navigator's badge), whose capabilities tell the levels of the
+//!    namespaces and the kinds of objects;
+//! 2. `objects`: objects of each namespace (tables, views, routines,
+//!    events...), namespace by namespace;
 //! 3. `details`: columns, indexes, foreign keys and triggers of the tables,
-//!    database by database;
+//!    namespace by namespace;
 //! 4. `done`, or `error` if a read fails.
 //!
-//! The interface therefore shows the databases almost at once, then the
+//! The interface therefore shows the namespaces almost at once, then the
 //! objects and their details as they arrive. `?editor=` names the editor
 //! whose navigator reads the catalog: its queries go to the console of that
-//! editor. The database chosen in the
-//! connection is read first, the system databases (`information_schema`,
-//! `mysql`...) last.
+//! editor, and its connection opens on the databases of the session of that
+//! editor, its databases in memory and those it attached
+//! (`query_session::Shared`). The namespace chosen in the connection is read first, those the
+//! source provides itself (`information_schema`, `mysql`...) last.
 
 use std::convert::Infallible;
 
@@ -28,8 +31,10 @@ use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use futures_util::stream;
-use prisme_connectors::mysql::catalog::{self, SchemaObjects, TableDetails};
-use prisme_connectors::mysql::{self, Connection, Flavor, ServerInfo};
+use prisme_connectors::api::{CatalogReader, ConnectorError, Namespace, OpenOptions, SourceInfo};
+use prisme_connectors::catalog::{NamespaceInfo, ObjectInfo, TableDetails};
+use prisme_connectors::drivers;
+use prisme_connectors::flavor::Flavor;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::Instrument;
@@ -42,9 +47,6 @@ use crate::connections::{self, ConnectionsError};
 use crate::console::{self, Action};
 use crate::error_detail::ErrorDetail;
 
-/// Databases provided by the server itself, read last.
-const SYSTEM_SCHEMAS: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
-
 /// Number of messages waiting to be sent beyond which reading waits.
 const BUFFER: usize = 16;
 
@@ -53,24 +55,24 @@ const BUFFER: usize = 16;
 #[ts(export)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CatalogEvent {
-    /// Names of all the databases, in alphabetical order, and flavor and
-    /// version (raw result of `SELECT VERSION()`) of the server.
-    Schemas {
-        schemas: Vec<String>,
-        flavor: Flavor,
-        version: String,
+    /// All the namespaces, in alphabetical order, and the identity of the
+    /// source.
+    Namespaces {
+        source: SourceInfo,
+        namespaces: Vec<NamespaceInfo>,
     },
-    /// Objects of a database: tables, views, procedures, functions and events.
+    /// Objects of a namespace: tables, views, routines, events...
     Objects {
-        schema: String,
-        objects: SchemaObjects,
+        namespace: Namespace,
+        objects: Vec<ObjectInfo>,
     },
-    /// Details of the tables of a database: columns, indexes, foreign keys, triggers.
+    /// Details of the tables of a namespace: columns, indexes, foreign keys,
+    /// triggers.
     Details {
-        schema: String,
+        namespace: Namespace,
         tables: Vec<TableDetails>,
     },
-    /// Failure of a read; the stream goes on with the next database. The
+    /// Failure of a read; the stream goes on with the next namespace. The
     /// English message of the logs, and the detail for the interface.
     Error {
         message: String,
@@ -104,9 +106,10 @@ async fn stream_catalog(
     Query(query): Query<CatalogQuery>,
 ) -> Result<Response, ApiError> {
     let user_id = user.id;
+    let locations = state.locations();
     let (target, name) = state
         .with_db(move |db, key| {
-            let target = connections::load_target(db, key, user_id, id)?;
+            let target = connections::load_target(db, key, user_id, id, &locations)?;
             let name = connections::name_of(db, user_id, id)?;
             Ok::<_, ConnectionsError>(target.map(|target| (target, name)))
         })
@@ -114,20 +117,30 @@ async fn stream_catalog(
         .ok_or(ApiError::NotFound)?;
     // The queries of the catalog go to the history of the queries.
     let span = console::sql_span(user_id, &name, query.editor, Action::Navigator);
-    let mut connection = mysql::connect(&target).instrument(span.clone()).await?;
-    let server = mysql::server_info(&mut connection)
-        .instrument(span.clone())
-        .await?;
+    let (target, options) =
+        state
+            .sessions
+            .for_editor(query.editor, id, target, OpenOptions::default());
+    let opening = drivers::of(target.engine).open(&target, options);
+    let mut connection = opening.instrument(span.clone()).await?;
+    let server = connection.info().clone();
     let remembered = server.clone();
     state
         .with_db(move |db, _| connections::remember_server(db, user_id, id, &remembered))
         .await?;
 
     let (sender, receiver) = mpsc::channel(BUFFER);
+    let preferred = target.namespace();
     tokio::spawn(
         async move {
-            read_catalog(&mut connection, &target.database_name, server, &sender).await;
-            let _ = connection.disconnect().await;
+            read_catalog(
+                connection.catalog().as_mut(),
+                preferred.as_ref(),
+                server,
+                &sender,
+            )
+            .await;
+            connection.close().await;
         }
         .instrument(span),
     );
@@ -146,55 +159,52 @@ async fn stream_catalog(
         .into_response())
 }
 
-/// Reads the catalog database by database and sends each part as soon as it is read.
+/// Reads the catalog namespace by namespace and sends each part as soon as it
+/// is read.
 ///
 /// Stops as soon as the client has closed the response.
 async fn read_catalog(
-    connection: &mut Connection,
-    preferred: &str,
-    server: ServerInfo,
+    catalog: &mut dyn CatalogReader,
+    preferred: Option<&Namespace>,
+    source: SourceInfo,
     sender: &mpsc::Sender<CatalogEvent>,
 ) {
-    let flavor = server.flavor;
-    let schemas = match catalog::schemas(connection).await {
-        Ok(schemas) => schemas,
+    let flavor = source.flavor;
+    let namespaces = match catalog.namespaces().await {
+        Ok(namespaces) => namespaces,
         Err(error) => {
             let _ = sender.send(error_event(None, flavor, &error)).await;
             return;
         }
     };
-    let order = reading_order(&schemas, preferred);
+    let order = reading_order(&namespaces, preferred);
     if sender
-        .send(CatalogEvent::Schemas {
-            schemas,
-            flavor,
-            version: server.version,
-        })
+        .send(CatalogEvent::Namespaces { source, namespaces })
         .await
         .is_err()
     {
         return;
     }
 
-    for schema in &order {
-        let event = match catalog::objects(connection, schema).await {
+    for namespace in &order {
+        let event = match catalog.objects(namespace).await {
             Ok(objects) => CatalogEvent::Objects {
-                schema: schema.clone(),
+                namespace: namespace.clone(),
                 objects,
             },
-            Err(error) => error_event(Some(schema), flavor, &error),
+            Err(error) => error_event(Some(namespace), flavor, &error),
         };
         if sender.send(event).await.is_err() {
             return;
         }
     }
-    for schema in &order {
-        let event = match catalog::details(connection, schema).await {
+    for namespace in &order {
+        let event = match catalog.details(namespace).await {
             Ok(tables) => CatalogEvent::Details {
-                schema: schema.clone(),
+                namespace: namespace.clone(),
                 tables,
             },
-            Err(error) => error_event(Some(schema), flavor, &error),
+            Err(error) => error_event(Some(namespace), flavor, &error),
         };
         if sender.send(event).await.is_err() {
             return;
@@ -203,11 +213,15 @@ async fn read_catalog(
     let _ = sender.send(CatalogEvent::Done).await;
 }
 
-/// Error message for a failed catalog read: of the list of the databases
-/// (`schema` absent), or of a database.
-fn error_event(schema: Option<&str>, flavor: Flavor, error: &mysql::MysqlError) -> CatalogEvent {
+/// Error message for a failed catalog read: of the list of the namespaces
+/// (`namespace` absent), or of a namespace.
+fn error_event(
+    namespace: Option<&Namespace>,
+    flavor: Flavor,
+    error: &ConnectorError,
+) -> CatalogEvent {
     let detail = ErrorDetail::CatalogUnreadable {
-        schema: schema.map(str::to_owned),
+        schema: namespace.map(|namespace| namespace.name().to_string()),
         flavor,
         cause: error.cause(),
     };
@@ -217,36 +231,45 @@ fn error_event(schema: Option<&str>, flavor: Flavor, error: &mysql::MysqlError) 
     }
 }
 
-/// Reading order of the databases: the preferred database, then the user's
-/// databases, then the system databases.
-fn reading_order(schemas: &[String], preferred: &str) -> Vec<String> {
-    let rank = |schema: &String| {
-        if schema == preferred {
+/// Reading order of the namespaces: the preferred one, then the user's, then
+/// those the source provides itself.
+fn reading_order(namespaces: &[NamespaceInfo], preferred: Option<&Namespace>) -> Vec<Namespace> {
+    let rank = |info: &NamespaceInfo| {
+        if Some(&info.namespace) == preferred {
             0
-        } else if SYSTEM_SCHEMAS.contains(&schema.as_str()) {
+        } else if info.system {
             2
         } else {
             1
         }
     };
-    let mut order = schemas.to_vec();
+    let mut order: Vec<&NamespaceInfo> = namespaces.iter().collect();
     // Stable sort: the alphabetical order is kept at equal rank.
-    order.sort_by_key(rank);
+    order.sort_by_key(|info| rank(info));
     order
+        .into_iter()
+        .map(|info| info.namespace.clone())
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
+    use prisme_connectors::api::Engine;
+    use prisme_dialects::classify::WriteKind;
     use secrecy::SecretString;
+    use serde_json::json;
     use tower::ServiceExt;
 
-    use crate::api::{AppState, router};
-    use crate::connections::{self, NewConnection};
-    use crate::exports;
+    use crate::api::{AppState, Folders, router};
+    use crate::connections::{self, NewConnection, NewServerSettings, NewSettings};
+    use crate::editors::{self, NewEditor};
     use crate::master_key::MasterKey;
     use crate::store;
+    use crate::test_support::{
+        allow_writes, attachable_database, files_connection, run_on_session, serve,
+    };
 
     /// Sends `GET uri` to an application whose connection 1 targets a closed port.
     async fn status_of(uri: &str) -> StatusCode {
@@ -255,18 +278,21 @@ mod tests {
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let new = NewConnection {
             name: "closed".to_string(),
-            host: "127.0.0.1".to_string(),
-            // Port 1: no server listens there.
-            port: 1,
-            username: "root".to_string(),
-            password: SecretString::from(""),
-            database_name: String::new(),
+            engine: Engine::Mysql,
+            settings: NewSettings::Server(NewServerSettings {
+                host: "127.0.0.1".to_string(),
+                // Port 1: no server listens there.
+                port: 1,
+                username: "root".to_string(),
+                password: SecretString::from(""),
+                database_name: String::new(),
+            }),
             init_sql: String::new(),
             session_timeout_minutes: 5,
             show_system_schemas: true,
         };
         connections::insert(&db, &key, user_id, &new).unwrap();
-        let app = router(AppState::new(db, key, user_id, exports::unused_folder()));
+        let app = router(AppState::new(db, key, user_id, Folders::unused()));
 
         let request = Request::get(uri)
             .header("host", "localhost:8484")
@@ -277,11 +303,25 @@ mod tests {
 
     #[test]
     fn reads_the_preferred_schema_first_and_system_schemas_last() {
-        let schemas: Vec<String> = ["information_schema", "mysql", "shop", "sys", "xlist"]
-            .map(String::from)
-            .to_vec();
+        use prisme_connectors::api::Namespace;
+        use prisme_connectors::catalog::NamespaceInfo;
+
+        let namespaces: Vec<NamespaceInfo> = [
+            ("information_schema", true),
+            ("mysql", true),
+            ("shop", false),
+            ("sys", true),
+            ("xlist", false),
+        ]
+        .map(|(name, system)| NamespaceInfo {
+            namespace: Namespace::single(name),
+            system,
+        })
+        .to_vec();
+        let order = super::reading_order(&namespaces, Some(&Namespace::single("xlist")));
+        let names: Vec<&str> = order.iter().map(Namespace::name).collect();
         assert_eq!(
-            super::reading_order(&schemas, "xlist"),
+            names,
             ["xlist", "shop", "information_schema", "mysql", "sys"]
         );
     }
@@ -291,6 +331,63 @@ mod tests {
         assert_eq!(
             status_of("/api/connections/42/catalog").await,
             StatusCode::NOT_FOUND
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn reads_the_databases_of_the_session_of_its_editor() {
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let user_id = store::ensure_user(&db, "test@example.com").unwrap();
+        let folder = tempfile::tempdir().unwrap();
+        let connection = files_connection(folder.path());
+        let id = connections::insert(&db, &key, user_id, &connection).unwrap();
+        allow_writes(&db, user_id, &[WriteKind::Attach, WriteKind::CreateTable]);
+        let editor = NewEditor {
+            connection_id: Some(id),
+        };
+        let editor_id = editors::create(&db, user_id, &editor).unwrap().id;
+        let app = router(AppState::new(db, key, user_id, Folders::unused()));
+        let address = serve(app.clone()).await;
+        let url = format!("ws://{address}/api/editors/{editor_id}/session");
+        let (mut socket, _) = tokio_tungstenite::connect_async(&url).await.unwrap();
+        run_on_session(&mut socket, "CREATE TABLE scratch.t (x INTEGER)").await;
+        let other = attachable_database(folder.path(), "other");
+        run_on_session(&mut socket, &format!("ATTACH '{other}' AS other")).await;
+
+        let request = Request::get(format!("/api/connections/{id}/catalog?editor={editor_id}"))
+            .header("host", "localhost:8484")
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let events: Vec<serde_json::Value> = String::from_utf8(bytes.to_vec())
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let objects = |schema: &str| -> Vec<String> {
+            events
+                .iter()
+                .filter(|event| event["type"] == "objects" && event["namespace"] == json!([schema]))
+                .flat_map(|event| {
+                    let objects = event["objects"].as_array().unwrap().clone();
+                    objects.into_iter().map(|object| object["name"].to_string())
+                })
+                .collect()
+        };
+        // The table of the session in memory, beside `sqlite_schema`, and
+        // that of the database it attached.
+        assert!(
+            objects("scratch").contains(&"\"t\"".to_string()),
+            "{events:?}"
+        );
+        assert!(
+            objects("other").contains(&"\"u\"".to_string()),
+            "{events:?}"
         );
     }
 

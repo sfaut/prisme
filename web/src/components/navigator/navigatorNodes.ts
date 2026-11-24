@@ -28,16 +28,19 @@
  * depend on the display.
  */
 
+import type { Capabilities } from '@/api/generated/Capabilities'
 import type { ColumnInfo } from '@/api/generated/ColumnInfo'
-import type { EventInfo } from '@/api/generated/EventInfo'
+import type { Engine } from '@/api/generated/Engine'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
 import type { IndexInfo } from '@/api/generated/IndexInfo'
-import type { RoutineInfo } from '@/api/generated/RoutineInfo'
+import type { Location } from '@/api/generated/Location'
+import type { NamespaceLevel } from '@/api/generated/NamespaceLevel'
+import { innerLevel } from '@/api/namespaceLevels'
+import type { ObjectKind } from '@/api/generated/ObjectKind'
 import type { TableDetails } from '@/api/generated/TableDetails'
-import type { TableKind } from '@/api/generated/TableKind'
 import type { TriggerInfo } from '@/api/generated/TriggerInfo'
-import type { Catalog, CatalogSchema, CatalogTable } from '@/stores/catalog'
+import { type Catalog, type CatalogObject, type CatalogSchema, relationsOf } from '@/stores/catalog'
 import type { TableSort } from '@/stores/navigator'
 import { compactCount } from '@/utils/compactCount'
 
@@ -56,6 +59,44 @@ export interface Place {
 }
 
 /**
+ * Where the databases of a source held in files lie, by schema in
+ * lowercase (SQLite tells its schemas apart without their case); `null` for
+ * a database private to its connection (`ATTACH ':memory:'`).
+ */
+export type DatabaseLocations = ReadonlyMap<string, Location | null>
+
+/**
+ * Locations of databases, by schema in lowercase.
+ *
+ * @param databases Databases, each with its schema and its location.
+ */
+export function locationsByName(
+  databases: { schema: string; location: Location | null }[],
+): DatabaseLocations {
+  return new Map(databases.map(({ schema, location }) => [schema.toLowerCase(), location]))
+}
+
+/**
+ * Pill of a database held in files: the protocol of its location, `memdb`
+ * for a database in memory shared by the session, `memory` for one private
+ * to its connection; `undefined` if its location is unknown (`temp`).
+ *
+ * @param locations Locations of the databases of the source.
+ * @param schema Schema of the database.
+ */
+export function placePill(locations: DatabaseLocations, schema: string): string | undefined {
+  const name = schema.toLowerCase()
+  if (!locations.has(name)) {
+    return undefined
+  }
+  const location = locations.get(name)!
+  if (location === null) {
+    return 'memory'
+  }
+  return location.scheme === 'memory' ? 'memdb' : location.scheme
+}
+
+/**
  * Data source, a root of the tree.
  */
 export interface Source {
@@ -67,6 +108,15 @@ export interface Source {
    * Name of the connection, chosen by the user.
    */
   name: string
+  /**
+   * Engine of the connection, which gives the icon of its kind.
+   */
+  engine: Engine
+  /**
+   * Where its databases lie, for a source held in files; `null` for a
+   * server.
+   */
+  locations: DatabaseLocations | null
   /**
    * Catalog of the connection, `undefined` if it was never read.
    */
@@ -92,16 +142,10 @@ export interface Source {
    */
   version: string | null
   /**
-   * Are the system databases (`SYSTEM_SCHEMAS`) shown?
+   * Are the namespaces provided by the source itself shown?
    */
   showSystemSchemas: boolean
 }
-
-/**
- * Databases provided by the server itself, which the connection's setting
- * can hide in the navigator.
- */
-export const SYSTEM_SCHEMAS = ['information_schema', 'mysql', 'performance_schema', 'sys']
 
 /**
  * Nature of a catalog node that has no role, to choose its icon.
@@ -165,6 +209,24 @@ export interface NavigatorNode extends Place {
    * Current database of the query session (shown in bold).
    */
   current?: boolean
+  /**
+   * Can the session make this database its current one (`USE`)? Only on a
+   * database node, of a source that changes its namespace.
+   */
+  usable?: boolean
+  /**
+   * Level of a database node's namespace, which names it (`base`, `schéma`).
+   */
+  level?: NamespaceLevel
+  /**
+   * Engine of a source node, which gives its icon.
+   */
+  engine?: Engine
+  /**
+   * Pill after the label of a database held in files: the protocol of its
+   * location (`file`, `https`), `memdb` or `memory` (`placePill`).
+   */
+  pill?: string
   /**
    * Source of the editor, its chosen connection (shown in bold).
    */
@@ -288,6 +350,7 @@ export function sourceNodes(
       isLeaf: false,
       ...place,
       role: 'source' as const,
+      engine: source.engine,
       chosen: source.chosen,
       receiving: source.receiving,
       badge: source.flavor ?? undefined,
@@ -299,9 +362,11 @@ export function sourceNodes(
               source.connectionId,
               source.showSystemSchemas
                 ? catalog.schemas
-                : catalog.schemas.filter((schema) => !SYSTEM_SCHEMAS.includes(schema.name)),
+                : catalog.schemas.filter((schema) => !schema.system),
               source.currentDatabase,
               tablesByRows,
+              catalog.source?.capabilities ?? null,
+              source.locations,
             ),
     }
   })
@@ -314,12 +379,20 @@ export function sourceNodes(
  * @param schemas Catalog of the server, possibly incomplete.
  * @param currentDatabase Current database of the query session, `null` if none.
  * @param tablesByRows Keys of the "Tables" folders sorted by row count.
+ * @param capabilities
+ *     Capabilities of the source, which set the folders and the actions;
+ *     `null` while unknown, everything offered.
+ * @param locations
+ *     Where the databases lie, for a source held in files; `null` for a
+ *     server.
  */
 export function catalogNodes(
   connectionId: number,
   schemas: CatalogSchema[],
   currentDatabase: string | null = null,
   tablesByRows: ReadonlySet<string> = new Set(),
+  capabilities: Capabilities | null = null,
+  locations: DatabaseLocations | null = null,
 ): NavigatorNode[] {
   const references = referencesByTable(schemas)
   return schemas.map((schema) => {
@@ -332,16 +405,18 @@ export function catalogNodes(
       ...place,
       role: 'database' as const,
       current: schema.name === currentDatabase,
+      usable: capabilities?.switch_namespace ?? true,
+      level: innerLevel(capabilities),
+      pill: locations === null ? undefined : placePill(locations, schema.name),
       children:
-        schema.tables === null || schema.routines === null || schema.events === null
+        schema.objects === null
           ? [loadingNode(key, place)]
           : schemaFolders(
               place,
-              schema.tables,
-              schema.routines,
-              schema.events,
+              schema.objects,
               references.get(schema.name) ?? new Map(),
               tablesByRows,
+              capabilities?.object_kinds ?? null,
             ),
     }
   })
@@ -357,7 +432,7 @@ export function catalogNodes(
 function referencesByTable(schemas: CatalogSchema[]): Map<string, Map<string, Reference[]>> {
   const references = new Map<string, Map<string, Reference[]>>()
   for (const schema of schemas) {
-    for (const table of schema.tables ?? []) {
+    for (const table of relationsOf(schema)) {
       for (const key of table.details?.foreign_keys ?? []) {
         let tables = references.get(key.referenced_schema)
         if (tables === undefined) {
@@ -413,60 +488,79 @@ function placeKey(place: Place): string {
 }
 
 /**
- * Folders of a database: tables, views, procedures, functions, events.
+ * Folder of a namespace.
+ */
+type Folder = 'tables' | 'views' | 'procedures' | 'functions' | 'events'
+
+/**
+ * Folder of a namespace that receives each kind of object: a new kind of an
+ * engine gets its folder here, which the compiler asks for.
+ */
+const FOLDER_OF: Record<ObjectKind, Folder> = {
+  table: 'tables',
+  view: 'views',
+  system_table: 'views',
+  procedure: 'procedures',
+  function: 'functions',
+  event: 'events',
+}
+
+/**
+ * Folders of a namespace: tables, views, procedures, functions, events, those
+ * of the kinds of objects of the source only.
  *
- * @param place Connection and database.
- * @param tables Tables and views of the database.
- * @param routines Procedures and functions of the database.
- * @param events Scheduled events of the database.
- * @param references Foreign keys that reference the tables of the database, by table.
+ * @param place Connection and namespace.
+ * @param objects Objects of the namespace.
+ * @param references Foreign keys that reference the tables of the namespace, by table.
  * @param tablesByRows Keys of the "Tables" folders sorted by row count.
+ * @param kinds Kinds of objects of the source, `null` while unknown: every folder.
  */
 function schemaFolders(
   place: Place,
-  tables: CatalogTable[],
-  routines: RoutineInfo[],
-  events: EventInfo[],
+  objects: CatalogObject[],
   references: Map<string, Reference[]>,
   tablesByRows: ReadonlySet<string>,
+  kinds: readonly ObjectKind[] | null,
 ): NavigatorNode[] {
   const base = placeKey(place)
-  const routineNode = (routine: RoutineInfo): NavigatorNode => ({
+  const inFolder = (name: Folder) => objects.filter((object) => FOLDER_OF[object.kind] === name)
+  const offered = (name: Folder) => kinds === null || kinds.some((kind) => FOLDER_OF[kind] === name)
+  const routineNode = (routine: CatalogObject): NavigatorNode => ({
     key: `routine:${base}.${routine.name}:${routine.kind}`,
     label: routine.name,
     isLeaf: true,
     entry: routine.kind === 'procedure' ? 'procedure' : 'function',
     ...place,
   })
-  const eventNode = (event: EventInfo): NavigatorNode => ({
+  const eventNode = (event: CatalogObject): NavigatorNode => ({
     key: `event:${base}.${event.name}`,
-    label: event.enabled ? event.name : `${event.name} · désactivé`,
+    label: event.enabled === false ? `${event.name} · désactivé` : event.name,
     isLeaf: true,
     entry: 'event',
     ...place,
   })
-  return [
-    tablesFolder(place, tables, references, tablesByRows),
-    folder(
-      `views:${base}`,
-      'Vues',
-      place,
-      tables.filter((table) => table.kind !== 'table').map((table) => tableNode(place, table, [])),
-    ),
-    folder(
-      `procedures:${base}`,
-      'Procédures',
-      place,
-      routines.filter((routine) => routine.kind === 'procedure').map(routineNode),
-    ),
-    folder(
-      `functions:${base}`,
-      'Fonctions',
-      place,
-      routines.filter((routine) => routine.kind === 'function').map(routineNode),
-    ),
-    folder(`events:${base}`, 'Événements', place, events.map(eventNode)),
+  const folders: [Folder, NavigatorNode][] = [
+    ['tables', tablesFolder(place, inFolder('tables'), references, tablesByRows)],
+    [
+      'views',
+      folder(
+        `views:${base}`,
+        'Vues',
+        place,
+        inFolder('views').map((view) => tableNode(place, view, [])),
+      ),
+    ],
+    [
+      'procedures',
+      folder(`procedures:${base}`, 'Procédures', place, inFolder('procedures').map(routineNode)),
+    ],
+    [
+      'functions',
+      folder(`functions:${base}`, 'Fonctions', place, inFolder('functions').map(routineNode)),
+    ],
+    ['events', folder(`events:${base}`, 'Événements', place, inFolder('events').map(eventNode))],
   ]
+  return folders.filter(([name]) => offered(name)).map(([, node]) => node)
 }
 
 /**
@@ -476,21 +570,20 @@ function schemaFolders(
  * line lets change.
  *
  * @param place Connection and database.
- * @param tables Tables and views of the database, by name.
+ * @param tables Tables of the database, by name.
  * @param references Foreign keys that reference the tables of the database, by table.
  * @param tablesByRows Keys of the "Tables" folders sorted by row count.
  */
 function tablesFolder(
   place: Place,
-  tables: CatalogTable[],
+  tables: CatalogObject[],
   references: Map<string, Reference[]>,
   tablesByRows: ReadonlySet<string>,
 ): NavigatorNode {
   const key = `tables:${placeKey(place)}`
   const sort: TableSort = tablesByRows.has(`folder:${key}`) ? 'rows' : 'name'
-  const kept = tables.filter((table) => table.kind === 'table')
   // The sort is stable: equal counts keep the order of the names.
-  const sorted = sort === 'rows' ? kept.sort((a, b) => (b.rows ?? -1) - (a.rows ?? -1)) : kept
+  const sorted = sort === 'rows' ? tables.sort((a, b) => (b.rows ?? -1) - (a.rows ?? -1)) : tables
   const node = folder(
     key,
     'Tables',
@@ -509,11 +602,11 @@ function tablesFolder(
  * @param table Table or view.
  * @param references Foreign keys that reference the table.
  */
-function tableNode(place: Place, table: CatalogTable, references: Reference[]): NavigatorNode {
+function tableNode(place: Place, table: CatalogObject, references: Reference[]): NavigatorNode {
   const key = `table:${placeKey(place)}.${table.name}`
   return {
     key,
-    label: table.kind === 'system' ? `${table.name} (système)` : table.name,
+    label: table.kind === 'system_table' ? `${table.name} (système)` : table.name,
     isLeaf: false,
     entry: table.kind === 'view' ? 'view' : 'table',
     ...place,
@@ -531,13 +624,13 @@ function tableNode(place: Place, table: CatalogTable, references: Reference[]): 
  * triggers. A view only has its columns.
  *
  * @param place Connection and database.
- * @param kind Nature of the table.
+ * @param kind Kind of the table.
  * @param details Details received from the server.
  * @param references Foreign keys that reference the table.
  */
 function tableFolders(
   place: Place,
-  kind: TableKind,
+  kind: ObjectKind,
   details: TableDetails,
   references: Reference[],
 ): NavigatorNode[] {

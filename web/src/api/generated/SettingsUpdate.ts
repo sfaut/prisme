@@ -38,4 +38,22 @@ export type SettingsUpdate = {
    * reception, in milliseconds (`PIVOT_REFRESH_MS`).
    */
   pivot_refresh_ms: number;
+  /**
+   * New wait for the connection to a web server, in seconds
+   * (`REMOTE_CONNECT_TIMEOUT_SECONDS`).
+   */
+  remote_connect_timeout_seconds: number;
+  /**
+   * New wait for a whole download, in minutes
+   * (`REMOTE_DOWNLOAD_TIMEOUT_MINUTES`).
+   */
+  remote_download_timeout_minutes: number;
+  /**
+   * New largest remote file, in mebibytes (`REMOTE_MAX_MEBIBYTES`).
+   */
+  remote_max_mebibytes: number;
+  /**
+   * New delay of the purge of the cache, in days (`REMOTE_CACHE_DAYS`).
+   */
+  remote_cache_days: number;
 };

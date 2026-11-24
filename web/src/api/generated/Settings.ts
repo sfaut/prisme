@@ -46,4 +46,23 @@ export type Settings = {
    * milliseconds, 1000 by default.
    */
   pivot_refresh_ms: number;
+  /**
+   * Longest wait for the connection to a web server of a remote
+   * database, in seconds, 10 by default.
+   */
+  remote_connect_timeout_seconds: number;
+  /**
+   * Longest wait for the whole download of a remote database, in
+   * minutes, 5 by default.
+   */
+  remote_download_timeout_minutes: number;
+  /**
+   * Largest remote database downloaded, in mebibytes, 1024 by default.
+   */
+  remote_max_mebibytes: number;
+  /**
+   * Days after which a copy of a remote database no session opened is
+   * deleted from the cache, 30 by default.
+   */
+  remote_cache_days: number;
 };

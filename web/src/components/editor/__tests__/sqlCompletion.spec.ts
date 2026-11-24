@@ -1,19 +1,21 @@
 import { describe, expect, it } from 'vitest'
 
+import { routine, schema, table, view } from '@/stores/__tests__/catalogFixtures'
 import type { CatalogSchema } from '@/stores/catalog'
 
 import { completionSchema } from '../sqlCompletion'
 
 describe('completionSchema', () => {
+  it('names a namespace by the level of the source', () => {
+    const schemas: CatalogSchema[] = [schema('main', [])]
+    type Named = Record<string, { self: { detail: string } }>
+    expect((completionSchema(schemas) as Named).main!.self.detail).toBe('base')
+    const sqlite = completionSchema(schemas, false, new Set(), 'schema') as Named
+    expect(sqlite.main!.self.detail).toBe('schéma')
+  })
+
   it('quotes the names that are not plain identifiers, according to ANSI_QUOTES', () => {
-    const schemas: CatalogSchema[] = [
-      {
-        name: 'ma base',
-        tables: [{ name: 'clients', kind: 'table', rows: 0, details: null }],
-        routines: [],
-        events: [],
-      },
-    ]
+    const schemas: CatalogSchema[] = [schema('ma base', [table('clients', 0)])]
     const backticks = completionSchema(schemas) as Record<string, { self: { apply?: string } }>
     expect(backticks['ma base']!.self.apply).toBe('`ma base`')
     const ansi = completionSchema(schemas, true) as Record<
@@ -25,8 +27,8 @@ describe('completionSchema', () => {
   })
 
   it('quotes the names starting with a digit, which the server could read as numbers', () => {
-    const schemas: CatalogSchema[] = ['123', '1e5', '2fa', 'été_2026', '$total', 't1'].map(
-      (name) => ({ name, tables: [], routines: [], events: [] }),
+    const schemas: CatalogSchema[] = ['123', '1e5', '2fa', 'été_2026', '$total', 't1'].map((name) =>
+      schema(name, []),
     )
     const names = completionSchema(schemas) as Record<string, { self: { apply?: string } }>
     expect(names['123']!.self.apply).toBe('`123`')
@@ -39,31 +41,21 @@ describe('completionSchema', () => {
 
   it('quotes the names that are reserved words of the server, whatever their case', () => {
     const schemas: CatalogSchema[] = [
-      {
-        name: 'shop',
-        tables: [
-          {
-            name: 'order',
-            kind: 'table',
-            rows: 0,
-            details: {
-              table: 'order',
-              columns: ['Select', 'total'].map((name) => ({
-                name,
-                column_type: 'int',
-                nullable: false,
-                key: '',
-                auto_increment: false,
-              })),
-              indexes: [],
-              foreign_keys: [],
-              triggers: [],
-            },
-          },
-        ],
-        routines: [],
-        events: [],
-      },
+      schema('shop', [
+        table('order', 0, {
+          table: 'order',
+          columns: ['Select', 'total'].map((name) => ({
+            name,
+            column_type: 'int',
+            nullable: false,
+            key: '',
+            auto_increment: false,
+          })),
+          indexes: [],
+          foreign_keys: [],
+          triggers: [],
+        }),
+      ]),
     ]
     const namespace = completionSchema(schemas, false, new Set(['ORDER', 'SELECT']))
     expect(namespace).toMatchObject({
@@ -81,38 +73,27 @@ describe('completionSchema', () => {
 
   it('offers databases, tables, columns and routines with their nature, even with an incomplete catalog', () => {
     const schemas: CatalogSchema[] = [
-      {
-        name: 'shop',
-        tables: [
-          {
-            name: 'orders',
-            kind: 'table',
-            rows: 0,
-            details: {
-              table: 'orders',
-              columns: [
-                {
-                  name: 'id',
-                  column_type: 'int(10) unsigned',
-                  nullable: false,
-                  key: 'PRI',
-                  auto_increment: true,
-                },
-              ],
-              indexes: [],
-              foreign_keys: [],
-              triggers: [],
+      schema('shop', [
+        table('orders', 0, {
+          table: 'orders',
+          columns: [
+            {
+              name: 'id',
+              column_type: 'int(10) unsigned',
+              nullable: false,
+              key: 'PRI',
+              auto_increment: true,
             },
-          },
-          { name: 'v_orders', kind: 'view', rows: null, details: null },
-        ],
-        routines: [
-          { name: 'total_ttc', kind: 'function' },
-          { name: 'purge', kind: 'procedure' },
-        ],
-        events: [],
-      },
-      { name: 'pas_encore', tables: null, routines: null, events: null },
+          ],
+          indexes: [],
+          foreign_keys: [],
+          triggers: [],
+        }),
+        view('v_orders'),
+        routine('total_ttc', 'function'),
+        routine('purge', 'procedure'),
+      ]),
+      schema('pas_encore', null),
     ]
     expect(completionSchema(schemas)).toEqual({
       shop: {

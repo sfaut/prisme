@@ -11,7 +11,9 @@
 
 use secrecy::SecretString;
 
-use crate::mysql::{Connection, Flavor, MysqlTarget, connect, execute};
+use crate::api::{Engine, ServerSettings, Settings, Target};
+use crate::flavor::Flavor;
+use crate::mysql::{Connection, MysqlTarget, connect, execute};
 
 /// A development server of `compose.yaml`.
 #[derive(Debug, Clone, Copy)]
@@ -85,6 +87,23 @@ impl Server {
             password: SecretString::from(""),
             database_name: database.to_string(),
             init_statements: Vec::new(),
+        }
+    }
+
+    /// The source of the server, in the form of the contracts
+    /// (`crate::api`), on `database` (empty: none).
+    pub fn source(&self, database: &str) -> Target {
+        let target = self.target(database);
+        Target {
+            engine: Engine::Mysql,
+            settings: Settings::Server(ServerSettings {
+                host: target.host,
+                port: target.port,
+                username: target.username,
+                password: target.password,
+                database_name: target.database_name,
+            }),
+            init_statements: target.init_statements,
         }
     }
 

@@ -8,9 +8,12 @@
 
 use std::time::{Duration, Instant};
 
-use prisme_connectors::mysql::catalog::{self, RoutineKind, TableKind};
+use prisme_connectors::api::{Driver, OpenOptions};
+use prisme_connectors::catalog::ObjectKind;
+use prisme_connectors::flavor::Flavor;
+use prisme_connectors::mysql::catalog;
 use prisme_connectors::mysql::{
-    Connection, Flavor, connect, execute, in_transaction, kill_query, probe, read_warnings,
+    Connection, DRIVER, connect, execute, in_transaction, kill_query, probe, read_warnings,
 };
 use prisme_connectors::outcome::{NoticeLevel, OutcomeCounts, StatementOutcome};
 use prisme_connectors::test_servers::SERVERS;
@@ -95,6 +98,38 @@ async fn outcome_of(connection: &mut Connection, sql: &str) -> StatementOutcome 
     let outcome = stream.outcome(verb);
     stream.discard().await;
     outcome
+}
+
+#[tokio::test]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
+async fn writes_floating_point_numbers_in_plain_decimal() {
+    for server in SERVERS {
+        let mut connection = connect(&server.target("")).await.unwrap();
+        let mut stream = execute(
+            &mut connection,
+            "SELECT 1e20, 1.5e-7, 123456789012345678e0, PI() + 0e0, 100e0,              CAST(1e20 AS DECIMAL(30, 2)), CAST(1e20 AS CHAR)",
+        )
+        .await
+        .unwrap();
+        let row = stream.next_row().await.unwrap().unwrap();
+        assert_eq!(
+            row,
+            [
+                "100000000000000000000",
+                "0.00000015",
+                "123456789012345680",
+                "3.141592653589793",
+                "100",
+                // A DECIMAL keeps its scale, a text its writing.
+                "100000000000000000000.00",
+                "1e20",
+            ]
+            .map(|text| Some(text.to_string())),
+            "{}",
+            server.name
+        );
+        stream.discard().await;
+    }
 }
 
 #[tokio::test]
@@ -306,37 +341,29 @@ async fn reads_the_catalog_schema_by_schema() {
                     .await
                     .unwrap();
                 let kinds: Vec<_> = objects
-                    .tables
                     .iter()
-                    .map(|table| (table.name.as_str(), table.kind, table.rows))
+                    .map(|object| {
+                        (
+                            object.name.as_str(),
+                            object.kind,
+                            object.rows,
+                            object.enabled,
+                        )
+                    })
                     .collect();
                 // Empty tables are estimated at 0 rows; a view has no estimate.
                 assert_eq!(
                     kinds,
                     [
-                        ("p", TableKind::Table, Some(0)),
-                        ("t", TableKind::Table, Some(0)),
-                        ("v", TableKind::View, None)
+                        ("p", ObjectKind::Table, Some(0), None),
+                        ("t", ObjectKind::Table, Some(0), None),
+                        ("v", ObjectKind::View, None, None),
+                        ("do_nothing", ObjectKind::Procedure, None, None),
+                        ("one", ObjectKind::Function, None, None),
+                        ("e_daily", ObjectKind::Event, None, Some(true)),
+                        ("e_paused", ObjectKind::Event, None, Some(false)),
                     ]
                 );
-                let routines: Vec<_> = objects
-                    .routines
-                    .iter()
-                    .map(|routine| (routine.name.as_str(), routine.kind))
-                    .collect();
-                assert_eq!(
-                    routines,
-                    [
-                        ("do_nothing", RoutineKind::Procedure),
-                        ("one", RoutineKind::Function)
-                    ]
-                );
-                let events: Vec<_> = objects
-                    .events
-                    .iter()
-                    .map(|event| (event.name.as_str(), event.enabled))
-                    .collect();
-                assert_eq!(events, [("e_daily", true), ("e_paused", false)]);
 
                 let details = catalog::details(&mut connection, &target.database_name)
                     .await
@@ -469,6 +496,7 @@ async fn tells_the_origin_of_the_columns_of_a_result() {
                 let derived = match server.flavor {
                     Flavor::MySql => "f",
                     Flavor::MariaDb => "d",
+                    Flavor::Sqlite => unreachable!("a server of compose.yaml"),
                 };
                 assert_eq!(
                     origins(&mut connection, "SELECT id FROM (SELECT id FROM f) AS d").await,
@@ -515,6 +543,43 @@ async fn tells_a_connection_the_server_closed() {
                     .discard()
                     .await;
                 assert!(in_transaction(&mut connection, true).await.is_err());
+            })
+            .await;
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
+async fn read_only_session_refuses_writes() {
+    // Every server, MariaDB before 11.1 included: MariaDB 10.6 knows
+    // `tx_read_only`, not `transaction_read_only`.
+    for server in SERVERS {
+        server
+            .with_database("read_only_session", async |target| {
+                let mut writer = connect(&target).await.unwrap();
+                execute(&mut writer, "CREATE TABLE t (a INT)")
+                    .await
+                    .unwrap()
+                    .discard()
+                    .await;
+
+                let source = server.source(&target.database_name);
+                let read_only = OpenOptions {
+                    read_only: true,
+                    ..OpenOptions::default()
+                };
+                let mut reader = DRIVER.open(&source, read_only).await.unwrap();
+                reader
+                    .execute("SELECT a FROM t")
+                    .await
+                    .unwrap()
+                    .discard()
+                    .await;
+                let Err(error) = reader.execute("INSERT INTO t VALUES (1)").await else {
+                    panic!("the write went through a read-only session");
+                };
+                assert!(error.to_string().contains("READ ONLY"), "{error}");
+                reader.close().await;
             })
             .await;
     }

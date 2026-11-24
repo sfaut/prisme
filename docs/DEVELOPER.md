@@ -188,7 +188,7 @@ Rules:
 
 | Icon | Action | Where |
 |---|---|---|
-| `Plus` | New editor; add a connection | top bar, first of its right group, filled in the primary color (`TopBar`); connections manager (`ConnectionManagerList`) |
+| `Plus` | New editor; add a connection; attach a database to a connection or a session | top bar, first of its right group, filled in the primary color (`TopBar`); connections manager (`ConnectionManagerList`, `ConnectionFormFiles`); source's menu ("Attacher une base…") |
 | `ChevronDown` | Menu of what "Nouveau" creates | top bar, joined to "Nouveau" (`UiSplitButton`) |
 | `Code`, `Server` | Create an editor, a connection | menu of "Nouveau" |
 | `History` | Reopen a closed editor | editors' bar |
@@ -221,7 +221,9 @@ Rules:
 | `PencilRuler` | Write the operations on an index | line's button |
 | `Pencil` | Edit a connection, in the connections manager | source's menu |
 | `RefreshCw` | Reload the catalog of a connection, of all of them | source's menu; sources' menu |
-| `Trash2` | Delete a connection | source's menu; connections manager |
+| `Trash2` | Delete a connection; remove a database attached to a connection | source's menu; database's menu ("Retirer de la connexion…"); connections manager (`ConnectionFormFiles`, `ConnectionCheckFiles`) |
+| `Unlink` | Detach a database for the session ("Détacher pour la session") | database's menu |
+| `Save` | Copy a database in memory into a file ("Enregistrer dans un fichier…") | database's menu |
 | `EllipsisVertical` | Menu of a line | line's button |
 
 #### Connections manager
@@ -260,7 +262,9 @@ Rules:
 | `Database`, `DatabaseArrowDown`, `DatabaseArrowUp`, `DatabaseCheck`, `DatabaseX` | Exchanges with the internal database: none, reading, writing, synced, failed | top bar (`SyncStatus`) |
 | `Info`, `CircleCheckBig`, `CircleAlert`, `CircleX` | Message: information, success, warning, error | `UiAlert` |
 | `CircleCheckBig`, `CircleX` | Transient message: success, error, as in `UiAlert` | `UiToaster` |
-| `Eye` / `EyeOff` | Show / hide the password | connections manager (`ConnectionForm`) |
+| `Eye` / `EyeOff` | Show / hide the password | connections manager (`ConnectionFormServer`) |
+| `Undo2` | Restore a database removed from a saved connection, until saving | connections manager (`ConnectionFormFiles`) |
+| `FileCheck`, `FilePlus`, `MemoryStick` | Origin of a database held in files: existing file, new file, memory; fixes "L’ouvrir tel quel" and "Le créer" of the "Vérification" step | connections manager (`ConnectionFormFiles`, `ConnectionCheckFiles`) |
 | `ChevronDown`, `Check` | Open a list; chosen item | `UiSelect` |
 | `Sun`, `Monitor`, `Moon` | Color mode: light, system, dark | top bar (`UiChoiceSwitch`) |
 | `User`, `Server`, `Settings` | Profile, connections, preferences | account menu |
@@ -442,6 +446,8 @@ cargo fmt                            # formatting
 
 - **Unit tests** sit at the bottom of each `.rs` file, in a `#[cfg(test)] mod tests` block. They also cover the API: HTTP requests go to the application in memory, on an in-memory internal database, without opening a port.
 - **Integration tests** sit in the `tests/` folder of each crate.
+- **Contract suite** (`crates/connectors/tests/contract/`): the tests of the contracts of the connectors (`crates/connectors/src/api.rs`), written once against the traits and run on every engine, through the `Fixture` of each one (`mysql.rs`: the six development servers, ignored by default as the tests on real servers; `sqlite.rs`: a main database and one attached, empty files of a temporary folder). An engine joins it with its fixture and a line of `contract_tests!` (`main.rs`).
+- **SQLite** needs no server: its tests (connector, contract suite, query sessions, the CTE of a result read back by `sqlite_reads_back_the_cte` in `crates/connectors/tests/cte.rs`) run in memory and on files of a temporary folder, with a plain `cargo test`.
 - **Tests on real servers** (connector, query sessions, exports) connect to the development servers (see "Development servers", and `crates/connectors/src/test_servers.rs`): each one runs on every server of the engines it concerns, in a database of its own, created for it, then dropped. They are ignored by default: start the servers (`docker compose up --detach --wait`), then add `-- --include-ignored`. A server that does not answer fails its tests, with that command.
 
 `cargo test` also regenerates the TypeScript types of `web/src/api/generated/` from the Rust structures (`ts-rs`). After changing a structure exchanged with the interface, run `cargo test`, then `npm run type-check`, and commit the generated types with the Rust change.
@@ -580,6 +586,236 @@ The command runs each case of `bench/sql/cases.mjs` alone, on every engine:
 
 It prints the table of the values, one column per server, and writes the values, the types, the warnings and the errors to `target/sql-comparison/results.json`.
 
+### SQLite embedded in Prisme
+
+`bench/sqlite/` measures the SQLite library that Prisme ships, through `rusqlite` at the version and with the features of Prisme, as the SQLite connector calls it: read-only inherited by an attachment, files created or not by an attachment, databases in memory shared between connections (`memdb`), text of the real numbers, values kept by `INT`, `NUMERIC` and `REAL` columns, interruption, transaction state after an error, `DETACH` while in use, paths on Windows, lexical rules of the texts (comments, quotes, end of a statement and of a trigger, `sqlite3_complete`), `LIMIT` after `VALUES`, pragmas, outcome of a write (`changes()`, `last_insert_rowid()`), opening of the databases of a connection (flags of a database in memory, `ATTACH` with parameters, `database_list`, `table_list`), literals of a CTE and of an `IN` clause, operations on an index. Its results are in `docs/SQL-COMPARISON.md`, section 6. From the root of the repository:
+
+```
+cargo run --release --manifest-path bench/sqlite/Cargo.toml --target-dir target/sqlite-measures
+```
+
+The program works in a temporary folder of its own, deleted at the end, and prints each measure with what SQLite answered.
+
+## SQLite engine
+
+SQLite is the library that Prisme embeds (`rusqlite` 0.41.1, `bundled`: SQLite 3.54.1), the first engine of the family of the sources held in files. Its connector is `crates/connectors/src/sqlite/`, its dialect the `Dialect::Sqlite` of `crates/dialects`. Each behaviour of the library that a rule below relies on is measured by `bench/sqlite` and recorded in `docs/SQL-COMPARISON.md`, section 6; the decisions are in `docs/TODO-SQLITE.md`.
+
+### Version
+
+The version is that of the library shipped, read by `sqlite_version()` when a session opens: no oldest supported version (`docs/V1.md`, section 2.10), no keyword limited to a version. `rusqlite` serves both the internal database and the sources: every crate takes the same version, as they share a single `libsqlite3-sys`.
+
+### Source and locations
+
+A connection is a main database (schema `main`) and 0 to 10 databases attached to it, each one a schema and a location (`connection_files`, `Settings::Files`). Ten is the limit of SQLite (`SQLITE_MAX_ATTACHED`). The schema `temp` is reserved, and two databases cannot share a schema, whatever its case. A location (`crates/connectors/src/location.rs`) is:
+
+| Protocol | Typed | Opened |
+|---|---|---|
+| `file` | an absolute path, with `\` or `/` (`D:\data\v.db`, `D:/data/v.db`, `/srv/v.db`), or a `file:///` URL | as it is, read-write unless the session is read-only |
+| `http`, `https` | a public URL, without an account | a copy downloaded into the cache of the data folder (`cache/locations/<user>/`), always read-only (`mode=ro`); downloaded again only when the server says the file changed (`ETag`, `Last-Modified`), within the limits of the preferences (**Bases distantes**) |
+| `memory` | `:memory:` | a database in memory of the session (`memdb`, see "SQLite databases in memory") |
+
+A protocol Prisme knows without serving it yet (`s3`, `ftp`...) is refused by a message that names it; a relative path, too. **Nouveau fichier** (new file) is only for `file`: the server creates the empty file when the connection is saved, refuses a file that exists, and deletes it again if the connection is not saved (`crates/server/src/new_files.rs`).
+
+### Opening a session
+
+`crates/connectors/src/sqlite/open.rs`. The connection:
+
+1. computes the local form of each database on the async side (`plan`): the path of a file, the copy of a remote file, found in the cache or downloaded, or the name of a database in memory;
+2. opens the main database without `SQLITE_OPEN_CREATE`: a session never creates a file, and its attachments inherit the flag. A missing file, a file that is not a database or a file that cannot be read fails the opening, with its own failure (`ConnectFailure::FileNotFound`, `NotADatabase`, `FileUnreadable`, `Location` for a protocol or a download);
+3. attaches the other databases, each by a URI that names its file system (`file:///D:/data/v.db?vfs=win32`, `vfs=unix` elsewhere; `sqlite_files::file_uri`), so that a file is read from the disk even on a main database in memory. A database that cannot be attached is left out: the session opens without it, and the identity of the source tells why (`SourceInfo::databases`, a state per database, the main one included). The interface shows it in a banner of the editor and in the **Vérification** (Check) step of the connections manager;
+4. runs the SQL of the connection (**À la connexion**), whose statements may only change a setting of the connection: the pragmas of `SESSION_PRAGMAS` (`busy_timeout`, `cache_size`, `case_sensitive_like`, `defer_foreign_keys`, `foreign_keys`, `recursive_triggers`, `temp_store`), which the capabilities of the engine carry (`session_settings`) and the field states.
+
+A read-only session (**Sessions en lecture seule**) opens its connection with `SQLITE_OPEN_READ_ONLY`, which its attachments inherit: the library refuses every write ("attempt to write a readonly database"), whatever the switches.
+
+Testing a connection (`probe`) opens it the same way, then reads the identity. A main database that cannot be opened gets its state, the other databases theirs, attached to a database in memory in its place; a session, though, does not open without its main database.
+
+### Sessions and connections
+
+- **A thread per connection** (`crates/connectors/src/blocking.rs`): the library blocks, so each connection lives on a thread of its own, which runs the orders of the async side one after the other. A result sends its rows through a bounded channel, which holds the thread while the reader is behind.
+- **Several connections per session**: the editor's, one per query run in parallel, the navigator's, the exports'. Each one opens the databases of the session, with the same key (`OpenOptions::session_key`): the databases in memory (`memdb`) are shared, and the databases attached to the session's connection, from the navigator or by an `ATTACH` written in SQL, are attached by the other connections too (`crates/server/src/query_session/shared.rs`). A database private to its connection (`ATTACH ':memory:'`) cannot be: the session then runs its batches in sequence, on its own connection.
+- **Current schema**: SQLite has no statement that changes it. A session stays on `main` (`switch_namespace` refused, **Utiliser cette base** absent); a name without a schema is searched in `temp`, then `main`, then the attached databases in the order of their attachment, and an object created without a schema goes into `main` (`temp` for a temporary one).
+- **Attaching and detaching** from the navigator (`Session::attach`, `detach`; WebSocket messages `attach`, `detach`), without a switch: **Attacher une base…** in the **⋮** menu of the source (an existing file or a database in memory, for the session or in the connection), **Détacher pour la session** and **Retirer de la connexion…** in the menu of an attached database. A `DETACH` fails while a transaction or a read uses the database ("database other is locked").
+- **Copy of a database into a file** (`Session::backup`, WebSocket message `backup`): **Enregistrer dans un fichier…** in the menu of a database in memory, through the backup API of SQLite; a file that exists is refused. No switch: the copy writes no database of the session, so a read-only session copies too.
+
+### Values and types
+
+`crates/connectors/src/sqlite/statement.rs`. The first row of a result is read before its columns are sent: a statement fails at its first step as at its preparation (a broken constraint, a read-only database), and a column without a declared type takes the type of its first value.
+
+- **Type of a column**: its declared type (`column_decltype`), by the rules of the affinity of SQLite: a name holding `INT` is an integer; `CHAR`, `CLOB` or `TEXT` a text; `BLOB` binary data; `REAL`, `FLOA` or `DOUB` a floating-point number; any other name is numeric: a date, a date-time or a time when it is `DATE`, `DATETIME` / `TIMESTAMP` or `TIME`, JSON when it is `JSON`, else a decimal. Without a declared type (an expression), the storage class of the first value: `INTEGER`, `REAL`, `TEXT`, `BLOB`, or `Other` when it is `NULL`. The value of a cell keeps its own class: SQLite types values, not columns.
+- **Origin of a column**: its database, its table and its column (`column_metadata`), for the navigator and the grid.
+- **Text of a value**: an integer in decimal; a real number in plain decimal, with the fewest digits that read back the same value (`100`, `100000000000000000000`, `0.0000001`; SQLite itself writes `100.0` and `1.0e+20`; `crates/connectors/src/number_text.rs`, `docs/TODO-SQLITE.md`, decision 14); a text as it is; a blob in hexadecimal (`0x...`), as MySQL shows its binary data.
+
+### Outcome of a write
+
+From `changes()` and `last_insert_rowid()`, once the statement ran. `changes()` keeps the count of the last write after a statement that writes nothing: it counts only when `total_changes()` grew. SQLite counts the rows a statement wrote itself, triggers left out: an `UPDATE` counts its rows found, changed or not; an upsert its rows inserted and updated together; a replacement its rows written, without those it deleted. The tab therefore tells the rows inserted, found or deleted (`sqlite::statement::outcome`), an upsert and a replacement their rows written together (**lignes concernées**, rows affected), and the row id of the row inserted when a statement inserted a single one. SQLite sends no warning: the engine has no notices (`notices` false), and the tab never shows any.
+
+### Transactions
+
+- Statements: `BEGIN [DEFERRED | IMMEDIATE | EXCLUSIVE] [TRANSACTION]`, `COMMIT` / `END`, `ROLLBACK`, `SAVEPOINT`, `RELEASE`, `ROLLBACK TO`. `START TRANSACTION` is not SQLite: the library refuses it as a syntax error.
+- State: read after each request by `is_autocommit()`, without a statement. A failed statement (a broken constraint, a syntax error) leaves the transaction open; `INSERT OR ROLLBACK` that fails rolls it back.
+- An interruption inside a transaction rolls the whole transaction back: the rows written before the interrupted statement are gone.
+
+### Cancellation
+
+The canceller calls `sqlite3_interrupt` (`InterruptHandle` of `rusqlite`), from any thread: the running statement stops at once with "interrupted", and the connection stays usable. An interruption sent while no statement runs stops nothing; ending the session marks it ended too, so that the orders still waiting fail instead of running.
+
+### Errors
+
+An error of the library is an answer of the engine (`FailureCause::Engine`, `crates/connectors/src/sqlite/failure.rs`): its extended code, the name of that code and its message. The interface writes "SQLite a répondu (SQLITE_CONSTRAINT_UNIQUE, code 2067)". The other errors of `rusqlite` (a value it cannot convert, a statement it refuses) are the driver's, which the interface names "Le pilote de connexion (rusqlite) a signalé".
+
+### Catalog
+
+`crates/connectors/src/sqlite/catalog.rs`, read on the thread of the connection by the pragmas of the library:
+
+- one level of namespaces, the schemas (`NamespaceLevel::Schema`): `main`, the attached databases, and `temp` once the connection created a temporary object. `temp` is a schema of the system, hidden when the connection hides its system schemas. Each schema of the navigator carries the protocol of its location (`file`, `https`), `memdb` or `memory` (see "SQLite databases in memory");
+- tables, views, and tables of the system (`sqlite_schema`, `sqlite_sequence`, `sqlite_stat1`..., and the shadow tables of the virtual tables) in their own folder; no procedure, function nor event, which SQLite does not have;
+- no row estimate (`rows_estimate` false): the tables show no count;
+- columns, indexes, foreign keys, references and triggers, in the neutral forms of MySQL: the primary key is an index named `PRIMARY`, even that of a rowid table; the column `INTEGER PRIMARY KEY` is `auto_increment`, as SQLite fills it; a foreign key, which SQLite does not name, is named by its number in its table (`fk_0`); the index of a constraint keeps the name SQLite gives it (`sqlite_autoindex_t_1`).
+
+### Dialect
+
+- **Lexical rules** (`crates/dialects/src/lib.rs`, read by the splitter and the editor): `--` opens a comment without a space after it, `#` opens none; a block comment does not nest; the backslash escapes nothing; a quote is doubled (`'it''s'`); names in double quotes, backticks or square brackets (`[a b]`); the body of a trigger (`BEGIN ... END;`) holds its `;` without a `DELIMITER` command.
+- **Keywords**: `crates/dialects/keywords/sqlite.yaml`, the 147 keywords of the library, checked against `sqlite3_keyword_name` by the test `sqlite_keywords_are_those_of_the_library`.
+- **Parser**: the `SQLiteDialect` of `sqlparser`, with the statements Prisme parses itself: `PRAGMA`, `DETACH`, `VACUUM`, `REINDEX` (`crates/dialects/src/sqlite_statements.rs`).
+- **Default limit** (`crates/dialects/src/limit.rs`): `LIMIT -1` and `LIMIT a, b` are limits written. A `LIMIT` belongs to a `SELECT`: a query whose last term is a `VALUES` takes none (`capped`), and Prisme stops reading it after the extra row.
+- **Session settings**: the pragmas of the connection (`SESSION_PRAGMAS`), with a value, change like a `SET SESSION` of MySQL, in the editor and in the SQL of the connection.
+
+### Writes and pragmas
+
+The classification (`crates/dialects/src/classify.rs`) gives each statement its switches, as for MySQL (`docs/V1.md`, section 2.4). What SQLite adds:
+
+- two switches of its own: **ATTACH / DETACH** (an `ATTACH` or `DETACH` written in SQL, for the session, read-only sessions included; the file within the restrictions of "SQLite databases in memory") and **Maintenance** (`VACUUM`, `REINDEX`, `ANALYZE`, and the pragmas that write in the file: `optimize`, `wal_checkpoint`, `incremental_vacuum`, and the function `pragma_optimize()`);
+- the switches SQLite does not need: `TRUNCATE`, `RENAME` of the tables, the functions, procedures and events. The settings show every switch for every engine, and the tooltip of each one names the engines it concerns (`GET /api/engines`);
+- `INSERT OR REPLACE` and `REPLACE` need `INSERT` and `DELETE`, `UPDATE OR REPLACE` needs `UPDATE` and `DELETE`, `ON CONFLICT DO UPDATE` needs `INSERT` and `UPDATE`; `CREATE VIRTUAL TABLE` needs `CREATE TABLE`; `CREATE INDEX` and `DROP INDEX` need `ALTER TABLE`, `REINDEX` needs **Maintenance**;
+- a table of the schema `temp`, written `temp.t` or created by `CREATE TEMP TABLE`, is a temporary table, and an index named in `temp` an operation on a temporary table;
+- pragmas: SQLite runs an unknown pragma without an error, and reads `name = value` and `name(value)` alike, so the text alone cannot tell a read from a setting. A closed list of the pragmas of the library gives each its role (`crates/dialects/src/sqlite_pragmas.rs`): a read without a value; a read with an argument (`table_info(t)`); a setting of the connection; a write in the file, under **Maintenance**. Any other assignment, and a pragma out of the list, are refused. The `pragma_*()` functions read in a `SELECT`;
+- always refused: `VACUUM INTO` (a file written outside the switches), triggers (`CREATE TRIGGER`, whose body would write later under no switch), and an `ATTACH` of a computed name or a relative path.
+
+### Interface
+
+What the interface knows of SQLite (`web/src/api/flavors.ts`, `FLAVORS.sqlite`), besides its capabilities:
+
+- **Editor**: operators `*+-%<>!=&|/~`, parameters `@`, `:`, `?`, `$`; no `_charset` cast nor unquoted bit literal; names in square brackets highlighted as names (`editorDialect`, `web/src/components/editor/sqlDialect.ts`).
+- **CTE and `IN` clause of a result** (`web/src/components/result/cte.ts`, `inClause.ts`): rows written `(…)` without `ROW`, dates and times as texts (SQLite has no typed literal of a date), bytes in hexadecimal (`X'FF001A'`), names in double quotes, the backslash doubled nowhere. A CTE for another dialect follows that dialect's default lexical rules.
+- **Operations on an index** (`web/src/components/navigator/indexOperations.ts`): `CREATE [UNIQUE] INDEX "s".new_index_name ON "t" (...)`, the schema on the index name; `REINDEX "s"."i"`; `DROP INDEX "s"."i"`, never for `PRIMARY` nor an index whose name starts with `sqlite_`. SQLite has no `ALTER INDEX`: no renaming.
+- **Badge**: teal (`--badge-sqlite`, `web/src/assets/main.css`).
+- **Connections manager**: the form of the sources held in files (`ConnectionFormFiles.vue`: main database, attached databases, SQL run at connection with the pragmas it accepts, schema `temp` in the navigator), and the **Vérification** step database by database (`ConnectionCheckFiles.vue`).
+
+## SQLite databases in memory
+
+Decided on 2026-11-23. The measures behind each point are in `docs/SQL-COMPARISON.md`, section 6.
+
+### Why the main database in memory is a `memdb` database
+
+A SQLite connection whose main database is **En mémoire** (or a `:memory:` database of its settings, or one attached from the navigator) holds a scratch database that lives with its session. A session opens several connections on the same source: the editor's, one per query run in parallel (Ctrl+Shift+Enter), the navigator's, the exports'. A database opened as `:memory:` belongs to its connection alone: a table created in the editor would be missing from the navigator, the parallel queries and the exports. The connector therefore opens these databases in the file system (VFS) `memdb` of SQLite, under a name of the session (`file:/prisme/<session key>/<schema>?vfs=memdb`, `crates/connectors/src/sqlite/open.rs`): every connection of the session sees the same database, freed once the last one closes.
+
+Two kinds of databases in memory follow, which the navigator tells apart by their badge (`docs/TODO-SQLITE.md`, step 6):
+
+| Badge | Database | Seen by |
+|---|---|---|
+| `memdb` | Main database **En mémoire**, `:memory:` database of the settings or attached from the navigator | Every connection of the session |
+| `memory` | `ATTACH ':memory:'` written in SQL | Its connection alone: the batches of the session then run in sequence on it |
+
+### Why `ATTACH` written in SQL has restrictions
+
+SQLite opens an attached database in the file system of the main database, unless the `ATTACH` names another one. On a main database in `memdb`, `ATTACH 'D:\data\sales.db' AS sales` thus attaches an empty database in memory named after the path, and never reads the file: `SELECT * FROM sales.orders` answers "no such table", and a `CREATE TABLE sales.t` writes into memory, lost with the session. On a main database held in a file, the same `ATTACH` reads the file. The behaviour comes from the choice of `memdb`, which the user does not see; the same text works in SQLite alone (`sqlite3 :memory:`). Prisme answers for it.
+
+The file of an `ATTACH` written in SQL is therefore (`crates/dialects/src/sqlite_files.rs`):
+
+- a literal absolute path (`D:\data\sales.db`, `D:/data/sales.db`, `/srv/sales.db`), refused on a main database in memory;
+- `':memory:'`;
+- the URI of a file in the file system of the disk, its only parameter `vfs`, which names it: `vfs=win32` on Windows, `vfs=unix` on Linux and macOS (`file:///D:/data/sales.db?vfs=win32`, `file:/D:/data/sales.db?vfs=win32`, `file:D:/data/sales.db?vfs=win32`, `file://localhost/D:/data/sales.db?vfs=win32`). Naming the file system opens the file on the disk whatever the main database.
+
+Refused, before anything runs:
+
+- a computed name (`'/srv/' || 'sales.db'`) and a relative path, read from the folder where Prisme runs: the classification of the statement (`crates/dialects/src/classify.rs`), a write that no switch allows (`write_forbidden`);
+- any other URI: `vfs=memdb` would name a database in memory of another session, of the same user or of another, and the parameters `mode` and `cache` would change the opening that the connector chose (read-only, no creation of a file). Same refusal;
+- a path alone on a connection whose main database is in memory: the connector (`check_attached_paths`, `crates/connectors/src/sqlite/driver.rs`) gives `attach_path_in_memory`, whose message gives the URI to write for the system Prisme runs on (`file:///D:/data/sales.db?vfs=win32` on Windows, `file:///srv/sales.db?vfs=unix` elsewhere).
+
+The attachments of the navigator and of the settings go through that URI already (`sqlite_files::file_uri`): only the `ATTACH` written in SQL meets these restrictions.
+
+### Solutions considered
+
+| Solution | Decision | Reason |
+|---|---|---|
+| One connection shared by the editor, the parallel queries, the navigator and the exports | Dropped | A SQLite connection runs one statement at a time: the parallel queries would run in sequence, the navigator and the exports would wait for a long query, and an interruption stops every statement of its connection. |
+| `:memory:` on each connection | Dropped | Each connection would get a database of its own: a table created in the editor would be missing elsewhere. |
+| Shared cache (`file::memory:?cache=shared`) instead of `memdb` | Dropped | SQLite discourages the shared cache, and its locks between the connections of a session were never measured; `memdb` gives the same sharing. |
+| Prisme rewrites the path of the `ATTACH` into its URI, the editor unchanged | Dropped | The user types one text and Prisme runs another. |
+| Prisme rewrites the text of the editor before running it | Dropped | The editor would hold a form tied to one system (`vfs=win32` fails on Linux), and its text would change under the user's eyes. |
+| Let the path alone through, the limit documented | Dropped | It attaches an empty database without a word, against rule 2 of `CLAUDE.md` (never a silent approximation). |
+| A badge on the main database alone, without a refusal | Dropped | It warns the user beforehand, but does not prevent the empty database. Kept alongside the refusal. |
+| Refuse the path alone, the message giving the URI for the system, and a badge `memdb` / `memory` in the navigator | **Kept** | The user writes what runs, the refusal explains the cause and the fix, the badge shows the file system beforehand. |
+
+## Connections in the internal database
+
+A connection is split by family of settings (migration `0037_connections_by_family.sql`): what every engine shares in `connections`, the settings of its family in a table of their own, keyed by the connection. The engines, their flavors and the protocols of the locations are reference tables, which a new engine, flavor or protocol joins by an `INSERT` of its migration, without rebuilding `connections`.
+
+| Table | Content |
+|---|---|
+| `setting_families` | Families of settings: `server`, `files`. Each one names the table of the settings of its connections. |
+| `engines` | Engines of the sources, one row per connector (`Engine`): `mysql`, `sqlite`, each with its family. |
+| `flavors` | Flavors an engine detects on connection (`Flavor`): `mysql` and `mariadb` of the engine `mysql`, `sqlite`. |
+| `schemes` | Protocols of the locations Prisme serves (`Scheme`): `file`, `http`, `https`, `memory`. |
+| `connections` | Name, engine, SQL run at connection (`init_sql`), session kept (`session_timeout_minutes`), system namespaces shown (`show_system_schemas`), date of creation. |
+| `connection_servers` | Family `server` (MySQL, MariaDB): host, port, account, password encrypted (AES-256-GCM, `password_secret`), database. Only the password is encrypted, so that the connections are listed without decrypting anything. |
+| `connection_files` | Family `files` (SQLite): one row per database, `main` at position 0, then the databases attached, in their order of attachment; schema (unique in the connection whatever its case, `temp` refused), protocol, location (empty for `memory`). |
+| `connection_probes` | Last successful connection of each connection: flavor, version, date. A connection never connected has no row. |
+| `write_kinds` | Kinds of write that a switch allows (`WriteKind`), `attach` and `maintenance` of SQLite included (migration `0040_write_kinds_sqlite.sql`); `user_allowed_writes` holds those a user allows. |
+
+The API sends the settings tagged by their family (`"family": "server"`, `"family": "files"`, see "Testing the API by hand"); `crates/server/src/connections.rs` reads and writes them, and repeats the lengths of the `CHECK`s in its validation.
+
+## Adding an engine
+
+An engine fills the contracts that MySQL and SQLite fill: the server asks its driver to the registry, and the components read its capabilities. SQLite is the model of an engine held in files and whose library blocks (DuckDB), MySQL that of a server reached over the network (PostgreSQL, ClickHouse). Its plan is decided with the maintainer first: contracts, procedures, design canvas.
+
+Measures, first:
+
+1. Each behaviour of the engine that a rule of Prisme will rely on is measured (`bench/sql/cases.mjs` for a behaviour compared between engines, a benchmark of its own for its library, as `bench/sqlite`) or quoted from a source, then recorded in `docs/SQL-COMPARISON.md` (rule 11 of `CLAUDE.md`).
+
+Connector (`crates/connectors`):
+
+2. `Engine` (`src/api.rs`): its variant, its key, its place in `Engine::ALL`. `Flavor` (`src/flavor.rs`): the flavors it detects, their key, their engine (`Flavor::engine`), their oldest supported version (`Flavor::oldest_supported`).
+3. A module `src/<engine>/` (with `src/<engine>.rs`, its module comment) that implements `Driver` (`probe`, `open`), `Session`, `Rows`, `CatalogReader` and `Canceller`, behind boxed futures; `capabilities()`, and `DialectOptions` read from the source. An operation the engine does not have answers `ConnectorError::Unsupported`. A library that blocks runs on the threads of `src/blocking.rs`.
+4. The values in the neutral forms: `ColumnMeta` and its `TypeFamily` (a new family only as a new variant: the saved tabs keep theirs), numbers in plain decimal (`src/number_text.rs`), `StatementOutcome`, errors in `FailureCause` and `ConnectFailure`, the catalog in `Namespace`, `NamespaceLevel` and `ObjectKind`.
+5. Its line in the registry `drivers::of` (`src/drivers.rs`).
+6. Its `Fixture` in the contract suite (`tests/contract/<engine>.rs`) and its line of `contract_tests!` (`tests/contract/main.rs`); a server engine also gets its development servers (`compose.yaml`, `src/test_servers.rs`, section "Development servers").
+
+Dialect (`crates/dialects`, `crates/splitter`):
+
+7. `Dialect`: its variant, its place in `Dialect::ALL`, its `DialectSpec` (`src/lib.rs`): `LexicalRules` (comments, quotes, escapes, `DELIMITER`, bodies), `sqlparser` dialect, statements Prisme parses itself, `LIMIT` after `VALUES`, schema of the temporary tables. The splitter and the editor read its lexical rules, without code of their own.
+8. Its keyword file (`keywords/<dialect>.yaml`), with a test against the list of the engine when it gives one (`sqlite_keywords_are_those_of_the_library`).
+9. Its rules in the default limit (`src/limit.rs`), the classification (`src/classify.rs`: its writes, its session settings, `ends_transaction`) and the verbs (`src/verb.rs`), each with its tests. A kind of write of its own is a variant of `WriteKind`.
+10. The dialect of its flavors in `dialect_of` (`crates/server/src/analyze.rs`).
+
+Internal database (`crates/server/migrations/`):
+
+11. A migration that inserts its rows into `engines` and `flavors`, and its kinds of write into `write_kinds`. A new family of settings gets its row in `setting_families`, its table `connection_<family>` (each column with its comment, its length and its `CHECK`), its variant of `Settings` (`crates/connectors/src/api.rs`) and its reading and writing in `crates/server/src/connections.rs`.
+
+Interface (`web/`), where the compiler names each missing entry (`Record<Flavor, …>`, `Record<Engine, …>`):
+
+12. `FLAVORS` (`src/api/flavors.ts`): name, driver, tokens of the editor, syntax of the CTE; `FALLBACK_DIALECTS` (`src/components/editor/SqlEditor.vue`), `CTE_HINTS` (`src/components/result/ResultView.vue`), the operations on an index (`src/components/navigator/indexOperations.ts`).
+13. `ENGINE_FAMILIES` (`src/components/connections/connectionForm.ts`) and `ENGINE_TYPES` (`src/components/connections/sourceTypes.ts`): its family of settings and its kind of source, ready to create; a new family gets its form (`ConnectionForm<Family>.vue`) and its check.
+14. Its badge: two colors of the theme (`--badge-<flavor>`, `--badge-<flavor>-bg`, `src/assets/main.css`) and its rule in `ConnectionFlavorBadge.vue`, checked in both modes.
+15. Its kinds of write in `WRITE_KIND_STATEMENTS`, `WRITE_KIND_GROUPS` and, when needed, `WRITE_KIND_NOTES` (`src/api/writeKinds.ts`).
+16. A component tests a capability, never a flavor: a behaviour of the engine missing from `Capabilities` becomes a field of it.
+
+Documentation:
+
+17. A section of this guide on the specifics of the engine, as "SQLite engine"; `docs/V1.md` (sections 2.4, 2.5, 2.10, 3.2 for its crate), `README.md` (connections, navigator, writes, transactions), `docs/SQL-COMPARISON.md`.
+
+## Adding a protocol
+
+A protocol is a way to reach a database held in files (`crates/connectors/src/location.rs`): `file`, `http`, `https` and `memory` today.
+
+1. `Scheme`: its variant, its key, its place in `Scheme::ALL`; its key leaves `KNOWN_SCHEMES` (the protocols known but not served, refused by a message that names them), and `Location::parse` reads its address.
+2. A provider (`src/location/<protocol>.rs`) that implements `LocationProvider`: its capabilities (writable, creatable, read where it is), the state of a location (`probe`: exists, size, date, version tag, read-only), the creation of an empty database when it can (`create`), and the local form an engine opens (`materialize`): a path, a copy in the cache of the data folder, revalidated as the web copies are, or a database in memory.
+3. Its line in the registry `locations::of`.
+4. A migration that inserts it into `schemes`. A protocol that needs secrets (`s3`, `sftp`) gets a table of them per location, encrypted as the passwords (`crates/server/src/secrets.rs`), never in clear nor in the logs.
+5. Tests of the provider, on a local server of the tests when the protocol is remote (`axum` serves the web files of the tests of `prisme-connectors`: `ETag`, redirects, missing file).
+6. Interface: its pill shows as it is (`ConnectionSchemeBadge.vue`), read from the typing by `schemeOf` (`src/components/connections/connectionForm.ts`); **Nouveau fichier** stays reserved to a creatable protocol.
+7. Documentation: the table of the locations of "SQLite engine", `README.md`, `docs/V1.md` (section 3.2 for a crate).
+
 ## Testing the API by hand
 
 Start Prisme on a throwaway data folder, to delete to start from scratch:
@@ -596,22 +832,39 @@ $api = "http://127.0.0.1:10000/api"
 # Is the server up?
 Invoke-RestMethod "$api/health"
 
-# Save a connection
+# Save a connection: the common settings, then those of its family ("server": host, port, account)
 $connection = @{
-    name = "local"; host = "127.0.0.1"; port = 3322
-    username = "root"; password = ""; database_name = ""
+    name = "local"; engine = "mysql"
+    settings = @{
+        family = "server"; host = "127.0.0.1"; port = 3322
+        username = "root"; password = ""; database_name = ""
+    }
 } | ConvertTo-Json
 Invoke-RestMethod "$api/connections" -Method Post -ContentType "application/json" -Body $connection
+
+# Save a source held in files ("files": the main database first, then those attached to it;
+# a location is an absolute path, a URL or ":memory:", "create" makes an empty file that must not exist)
+$files = @{
+    name = "local files"; engine = "sqlite"
+    settings = @{
+        family = "files"
+        databases = @(
+            @{ schema = "main"; location = "D:\data\main.db"; create = $true },
+            @{ schema = "scratch"; location = ":memory:" }
+        )
+    }
+} | ConvertTo-Json -Depth 4
+Invoke-RestMethod "$api/connections" -Method Post -ContentType "application/json" -Body $files
 
 # List the connections (the password never appears)
 Invoke-RestMethod "$api/connections"
 
-# Connect: returns the flavor (mysql or mariadb) and the server version
+# Connect: returns the flavor (mysql, mariadb or sqlite) and the version
 Invoke-RestMethod "$api/connections/1/probe" -Method Post
 
 # Settings: read, then change (row limit 1000, 2000, 5000, 10000 or 50000; retentions 1 to 3650 days; indentation 1 to 8 spaces; longest GROUP_CONCAT 100 to 1048576 bytes; delay of the Pivoteur 200 to 60000 milliseconds)
 Invoke-RestMethod "$api/settings"
-Invoke-RestMethod "$api/settings" -Method Put -ContentType "application/json" -Body '{"row_limit": 5000, "read_only_session": false, "allowed_writes": ["insert", "update"], "history_retention_days": 30, "debug_retention_days": 30, "indent_size": 4, "concat_max_bytes": 1000, "pivot_refresh_ms": 1000}'
+Invoke-RestMethod "$api/settings" -Method Put -ContentType "application/json" -Body '{"row_limit": 5000, "read_only_session": false, "allowed_writes": ["insert", "update"], "history_retention_days": 30, "debug_retention_days": 30, "indent_size": 4, "concat_max_bytes": 1000, "pivot_refresh_ms": 1000, "remote_connect_timeout_seconds": 10, "remote_download_timeout_minutes": 5, "remote_max_mebibytes": 1024, "remote_cache_days": 30}'
 ```
 
 On error (status 4xx or 5xx), PowerShell raises an exception, and the JSON body holds Prisme's message in English and its detail: `{"error": "...", "detail": {"code": "...", ...}}`. The interface writes its own message from the detail (`web/src/api/messages.ts`); the texts written outside Prisme (the target server's answer, the driver's message) stay in their own fields, quoted as they are.
@@ -620,12 +873,15 @@ On error (status 4xx or 5xx), PowerShell raises an exception, and the JSON body 
 |---|---|---|
 | `GET /api/health` | Answers `ok`. | — |
 | `GET /api/version` | Version of the executable: `{"version": "0.2.0"}`. The interface shows it next to the name. | — |
-| `GET /api/connections` | Lists the connections, without passwords. | — |
-| `POST /api/connections` | Saves a connection, returns `{"id": ...}` (201). | 400 invalid input, 409 name already taken |
-| `POST /api/connections/{id}/copies` | Saves a copy of the connection with the settings received, returns `{"id": ...}` (201). An empty password takes that of the copied connection. | 400 invalid input, 404 unknown connection, 409 name already taken |
-| `POST /api/connections/{id}/probe` | Connects, returns `{"flavor": ..., "version": ...}`. | 404 unknown connection, 502 server unreachable or access denied, 504 no answer within 10 s |
-| `GET /api/settings` | Settings: `{"row_limit": 1000, "row_limit_choices": [...], "read_only_session": true, "allowed_writes": [], "history_retention_days": 30, "debug_retention_days": 30, "indent_size": 4, "concat_max_bytes": 1000, "pivot_refresh_ms": 1000}`. `allowed_writes`: the kinds of write allowed (`insert`, `create_table`...), in the order of `WriteKind::ALL`. | — |
-| `PUT /api/settings` | Changes the default limit, the read-only sessions, the allowed writes, the retention of the console (1 to 3,650 days), the indentation of the SQL editor (1 to 8 spaces), the longest text of a `GROUP_CONCAT` of the Pivoteur (100 to 1,048,576 bytes) and the shortest delay between two computations of the Pivoteur during the reception of the rows (200 to 60,000 milliseconds), returns the updated settings. | 400 limit not among the choices, retention, indentation, longest text or delay out of bounds; 422 unknown kind of write |
+| `GET /api/engines` | Engines of Prisme, each with its flavors and its capabilities (`EngineInfo`): the tooltip of each switch of the writes in the settings names the engines it concerns, and the field of the SQL run at connection states the settings of the session its engine allows (`session_settings`, the pragmas of the connection for SQLite). | — |
+| `GET /api/connections` | Lists the connections, without passwords: `engine`, `settings` tagged by their family (`"family": "server"`, `"family": "files"` with the `databases`, each a `schema` and a `location` `{scheme, address}`), and `probe`, the last successful connection (`flavor`, `version`, `connected_at`), `null` if none. | — |
+| `POST /api/connections` | Saves a connection (`name`, `engine`, `settings` of the family of the engine, `init_sql`...), returns `{"id": ...}` (201). A database held in files with `"create": true` is created first, an empty file, and removed again if the connection is not saved. | 400 invalid input, settings of another family, database refused (`main_database_first`, `too_many_databases`, `duplicate_schema`, `reserved_schema`, `location`: location not understood, file that exists already...), 409 name already taken |
+| `POST /api/connections/{id}/copies` | Saves a copy of the connection with the settings received, returns `{"id": ...}` (201). An empty password takes that of the copied connection. | 400 invalid input, 404 unknown connection or of another engine, 409 name already taken |
+| `PUT /api/connections/{id}` | Changes the connection (204). An empty password keeps the saved one; the engine of a saved connection does not change. | 400 invalid input, 404 unknown connection or of another engine, 409 name already taken |
+| `DELETE /api/connections/{id}` | Deletes the connection, with its settings and its last connection (204). | 404 unknown connection |
+| `POST /api/connections/{id}/probe` | Connects, returns the identity of the source (`SourceInfo`: flavor, version, modes of the session, capabilities; for a source held in files, the state of each database in `databases`, the main one included, even when it cannot be opened). | 404 unknown connection, 502 server unreachable or access denied, 504 no answer within 10 s |
+| `GET /api/settings` | Settings: `{"row_limit": 1000, "row_limit_choices": [...], "read_only_session": true, "allowed_writes": [], "history_retention_days": 30, "debug_retention_days": 30, "indent_size": 4, "concat_max_bytes": 1000, "pivot_refresh_ms": 1000, "remote_connect_timeout_seconds": 10, "remote_download_timeout_minutes": 5, "remote_max_mebibytes": 1024, "remote_cache_days": 30}`. `allowed_writes`: the kinds of write allowed (`insert`, `create_table`...), in the order of `WriteKind::ALL`. | — |
+| `PUT /api/settings` | Changes the default limit, the read-only sessions, the allowed writes, the retention of the console (1 to 3,650 days), the indentation of the SQL editor (1 to 8 spaces), the longest text of a `GROUP_CONCAT` of the Pivoteur (100 to 1,048,576 bytes) the shortest delay between two computations of the Pivoteur during the reception of the rows (200 to 60,000 milliseconds), and the reading of the remote databases (`http`, `https`): wait for the connection to the web server (1 to 300 seconds), for a whole download (1 to 1,440 minutes), largest file downloaded (1 to 102,400 MiB), days after which a copy no session opened leaves the cache (1 to 3,650); returns the updated settings. | 400 limit not among the choices, retention, indentation, longest text, delay or preference of the remote databases out of bounds; 422 unknown kind of write |
 | `GET /api/profile` | Profile: `{"email": "...", "first_name": "", "last_name": ""}`. | — |
 | `PUT /api/profile` | Changes the names (trimmed, 100 characters at most), returns the profile. | 400 name too long |
 | `GET /api/console/history` | Page of the history of the queries, in chronological order: `?before=` (id of the oldest query already read), `?limit=` (500 by default, 2,000 at most), `?action=` (an action kept, the key repeated for several: `?action=run&action=run_all`; all when absent), `?editor=` (the queries of an editor, `editor_id`: those of its session, of its object navigator and of its exports; 0 for those sent outside an editor, a connection test; all when absent). | 400 unknown action |
@@ -663,32 +919,39 @@ Prisme answers `{"type":"ready",...}` once connected to the target server. Then 
 {"type": "run", "sql": "SELECT 1 FROM DUAL WHERE 1 = 0", "selection": [{"start": 0, "end": 18}], "exact": true}
 {"type": "cancel"}
 {"type": "cancel_query", "query": 1}
+{"type": "backup", "schema": "main", "location": "D:\\data\\copy.db"}
 ```
+
+`backup` copies a database of the session (a database in memory, from the navigator) into a new file, which must not exist: `backed_up` tells the copy, a session `error` its failure. A read-only session copies too: the copy writes no database of the session.
+
+`attach` (`{"type": "attach", "schema": "other", "location": "D:\\data\\other.db"}`, the location an absolute path, a URL or `:memory:`) and `detach` (`{"type": "detach", "schema": "other"}`) attach a database to the session and detach it, from the navigator: no switch applies, unlike an `ATTACH` written in SQL. With `"save": true`, `attach` also adds the database after those of the connection ("Dans la connexion"), without closing the session; a database the connection cannot take (schema already there whatever its case, too many databases) is refused and detached again from the session. `databases` answers them, a session `error` tells a database refused (schema `main` or `temp`, location not understood) or that cannot be opened.
 
 Prisme first announces the queries of the batch (`batch`, each one numbered), then, for each query, messages carrying its number (`query`), in this order:
 
 1. `started`: the query starts (in parallel, it may wait for its turn).
-2. `columns`: column names and types, columns right-aligned by the grid (numbers, dates and times), the text actually run, how the limit was handled (`added` if Prisme added `LIMIT N + 1`, `user_limit` if the query had one, `not_applicable` for `SHOW` or `EXPLAIN`), the maximum row count (`expected_rows`, `null` if unknown), the execution time measured by the server (`execution_us`, in microseconds) and the end of the execution (`executed_at`, in milliseconds since the Unix epoch).
+2. `columns`: column names and types, columns right-aligned by the grid (numbers, dates and times), the text actually run, how the limit was handled (`added` if Prisme added `LIMIT N + 1`, `user_limit` if the query had one, `not_applicable` for `SHOW` or `EXPLAIN`, `unparsed` for a query Prisme could not parse and `capped` for one that takes no `LIMIT`, such as a `VALUES` of SQLite: for both, the server stops reading after `N + 1` rows), the maximum row count (`expected_rows`, `null` if unknown), the execution time measured by the server (`execution_us`, in microseconds) and the end of the execution (`executed_at`, in milliseconds since the Unix epoch).
 3. `rows`: the rows, each cell as text or `null`, in batches that follow their arrival (`RowBatches`, `crates/server/src/query_session/execution.rs`). A batch leaves as soon as the target server pauses (the next row has not arrived yet), once it weighs 1 MB, or once its first row has waited 20 ms (first batch of the result) or 100 ms (the next ones). A slow result thus shows as it arrives, a fast one in regular messages, and heavy rows in messages of 1 MB at most; a row heavier than that leaves alone.
 4. `done`: row count, `truncated` (rows beyond the limit were dropped), the verb of the statement (`verb`: `insert`, `update`, `delete`, `schema`..., from its AST, `crates/dialects/src/verb.rs`), what its engine reported (`outcome`: the neutral form of `crates/connectors/src/outcome.rs`, filled by the connector, each field absent when the engine does not report it), duration.
 
 On failure or cancellation, an `error` message replaces the rest of that query, and the session goes on. `batch_done` ends the batch. In parallel, messages of different queries interleave.
 
-The session of an editor (`ws://127.0.0.1:10000/api/editors/{id}/session`) outlives its WebSocket, and saves its results in chunks of rows. A WebSocket that reattaches to it receives `ready`, then `resume`: the last batch where it stands, each query with the number of rows it received so far (`resumed_rows`). These rows follow in `resumed_rows` messages, a saved chunk each, then the next messages of the batch.
+An `ATTACH` written in SQL names its file within the restrictions of "SQLite databases in memory"; a path alone on a main database in memory gets `attach_path_in_memory`, with the URI to write. A session of a source held in files tells its databases in `databases` right after `ready`, and again after a batch that attached or detached one (`ATTACH`, `DETACH` of SQLite) and changed them, before `batch_done`: the databases of the session's connection, the main one first, each with its `schema` and its `location` (`null` for a database private to the connection, as an `ATTACH ':memory:'`). The page then reads the catalog of the navigator again (not after the first one, which follows the opening), and the navigator shows where each database lies. The parallel queries, the navigator and the exports of the editor open their connections on these databases; a database private to the connection runs the batches in sequence on it.
+
+The session of an editor (`ws://127.0.0.1:10000/api/editors/{id}/session`) outlives its WebSocket, and saves its results in chunks of rows. A WebSocket that reattaches to it receives `ready`, `databases` for a source held in files, then `resume`: the last batch where it stands, each query with the number of rows it received so far (`resumed_rows`). These rows follow in `resumed_rows` messages, a saved chunk each, then the next messages of the batch.
 
 On opening, the page reads the list of the saved tabs (`GET /api/editors/{id}/results`) and shows them at once, then opens the WebSocket without waiting for their rows. These are read in the background, a chunk at a time (`GET /api/results/{id}/chunks/{position}`), the tab shown first, and go through the same grouping as the messages of the WebSocket (`saved_rows`, `web/src/api/querySession.ts`): an ended query counts as running until its last row (`awaitedRows`), as after `resume`, so that the grid and the Pivoteur follow them. A tab taken back by `resume` is no longer read from its chunks: its rows come by `resumed_rows`.
 
-Only reads pass: `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` and `USE`. Writes (`UPDATE`, `DELETE`, `DROP`, `CALL`...) are refused until the write switches exist, as are queries Prisme cannot analyse.
+Reads always pass: `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`, and the pragmas of SQLite that read. A write passes when the settings of the user allow each of its switches, and the session is not read-only (`docs/V1.md`, section 2.4); otherwise, like a query Prisme cannot analyse, it gets an `error` that names the switches missing, and does not run.
 
 ### Database servers
 
 The development servers serve here too (see "Development servers"): the connection above goes to the latest MariaDB LTS, port `3322`; the latest MySQL LTS answers on port `3312`, also as `root` without a password.
 
-To look at the internal database, open `./tmp/prisme.db` with any SQLite client (DBeaver, DB Browser for SQLite, `sqlite3`). The `password_secret` column only holds encrypted bytes.
+To look at the internal database, open `./tmp/prisme.db` with any SQLite client (DBeaver, DB Browser for SQLite, `sqlite3`). The `password_secret` column of `connection_servers` only holds encrypted bytes.
 
 ## SQL keywords
 
-Syntax highlighting and the beautifier share the keywords of each dialect, one file per dialect, edited directly: `crates/dialects/keywords/mysql.yaml` and `mariadb.yaml`. They list reserved words, non-reserved keywords, types and values, with, when needed, the version a word appeared in (`since`). The editor only highlights the words of the server's version. The beautifier rules are described in section 2.9 of [V1.md](V1.md).
+Syntax highlighting and the beautifier share the keywords of each dialect, one file per dialect, edited directly: `crates/dialects/keywords/mysql.yaml`, `mariadb.yaml` and `sqlite.yaml`. They list reserved words, non-reserved keywords, types and values, with, when needed, the version a word appeared in (`since`). The editor only highlights the words of the server's version. The beautifier rules are described in section 2.9 of [V1.md](V1.md).
 
 ## Continuous integration and releases
 
@@ -759,6 +1022,7 @@ The APIs that only take pixels are workarounds too, listed apart, with their the
 | `sqlparser` 0.64.0 | Bug | `SET GLOBAL TRANSACTION ...` and `SET SESSION TRANSACTION ...` give the tree of `SET TRANSACTION ...`: the scope is dropped, so a setting of the whole server would read as one of the session. | `crates/dialects/src/parse.rs`: before `sqlparser`, `mysql_statements.rs` parses `SET [GLOBAL | SESSION | LOCAL] TRANSACTION` itself, with its scope; `classify.rs` forbids the global one. | `sqlparser` carries the scope of `SET TRANSACTION`. | Ticket drafted, not posted yet: [sqlparser-set-transaction-scope.md](upstream/sqlparser-set-transaction-scope.md). | 2026-10-25 |
 | `sqlparser` 0.64.0 | Missing capability | The compound time units of MySQL and MariaDB (`YEAR_MONTH`, `DAY_HOUR`...) in `EXTRACT` and `INTERVAL`. | `crates/dialects/src/mysql_parser.rs`: a dialect that wraps `MySqlDialect` and parses them; the methods it delegates are those of 0.64, hence the pin (see "Pinned versions"). | `sqlparser` parses the compound units: the dialect and the pin go away. | [sqlparser #2693](https://github.com/apache/datafusion-sqlparser-rs/issues/2693), open; the fix proposed by [sqlparser PR #2700](https://github.com/apache/datafusion-sqlparser-rs/pull/2700) was closed without a merge on 2026-11-01, under the AI policy of the project. | 2026-10-25 |
 | `sqlparser` 0.64.0 | Missing capability | The MySQL and MariaDB syntax of stored routines (`CREATE PROCEDURE`, `CREATE FUNCTION`), of events (`CREATE`, `ALTER`, `DROP EVENT`) of the operations of `ALTER TABLE` on an existing index (`ALTER INDEX i VISIBLE`, `IGNORED`, `RENAME KEY`), `START TRANSACTION WITH CONSISTENT SNAPSHOT`, and the `[NO] RELEASE` of `COMMIT` and `ROLLBACK`. | `crates/dialects/src/mysql_statements.rs` parses them with the primitives of `sqlparser`, into Prisme's own nodes; `temporary.rs` then only knows the table of such an `ALTER TABLE`. | `sqlparser` gives them nodes of its tree. | None | 2026-10-25 |
+| `sqlparser` 0.64.0 | Missing capability | In its SQLite dialect: `PRAGMA` whose value is a name or a keyword (`journal_mode = WAL`, `foreign_keys = ON`) or whose argument is a name (`table_info(t)`), `DETACH`, `VACUUM ... INTO` and `REINDEX`; `REPLACE INTO`, parsed for MySQL only. | `crates/dialects/src/sqlite_statements.rs` parses them before `sqlparser`, with its primitives, into Prisme's own nodes (`parse.rs`); `REPLACE` through `Parser::parse_insert`, as `INSERT OR REPLACE`. | `sqlparser` parses them. | None | 2026-11-22 |
 | `sqlparser` 0.64.0 | Missing capability | `ParserError` is a text: the position of the error is only written at its end, in English (` at Line: 1, Column: 29`). | `crates/dialects/src/syntax.rs` (`with_location`) reads it from the text; a change of the wording gives line 0, without error. | `ParserError` carries its position. | None | 2026-10-25 |
 | `sqlparser` 0.64.0 | Missing capability | No MariaDB dialect. `sqlparser` reads a syntax specific to one database in that database's dialect and in `GenericDialect` (rule of its README), and accepts queries the database rejects: `MySqlDialect` serves MySQL and MariaDB, and no ticket asks for a MariaDB dialect. | `crates/dialects/src/lib.rs`: MariaDB is parsed with Prisme's MySQL dialect (`mysql_parser.rs`). Telling MySQL from MariaDB stays with Prisme. | Lasting: no MariaDB dialect is planned. Checked again if one appears. | None | 2026-10-25 |
 | `codemirror` 6.0.2 | Missing capability | `basicSetup` takes no options: its fold gutter cannot be left out. | `web/src/components/editor/sqlSetup.ts`: a copy of `basicSetup` without `foldGutter()`, as CodeMirror's documentation advises; the copy follows `basicSetup` when it changes. | `basicSetup` takes options. | None | 2026-10-25 |
@@ -769,8 +1033,8 @@ The APIs that only take pixels are workarounds too, listed apart, with their the
 
 ```
 crates/
-  connectors/      access to target databases (MySQL / MariaDB for now)
-    tests/         integration tests on the development servers
+  connectors/      access to target databases (MySQL / MariaDB and SQLite for now): contracts (api.rs), registry of the drivers, one module per engine
+    tests/         integration tests on the development servers; contract/: contract suite of the engines
   dialects/        query analysis: default limit, read / write, beautifier, keywords
   splitter/        splitting a text into queries, per dialect
   store/           rows of a result in columns, for the Worker of the Pivoteur
@@ -805,6 +1069,7 @@ bench/             benchmarks, outside the workspace
   pivot/           engine of the Pivoteur: native, WebAssembly, JavaScript (run.mjs)
   reload/          saved results: their save, and their reading again by the page (run.mjs)
   sql/             answers of the SQL engines to the same expressions, for docs/SQL-COMPARISON.md (run.mjs)
+  sqlite/          behaviours of the SQLite embedded in Prisme that its connector relies on, for docs/SQL-COMPARISON.md (cargo run)
   store/           reception of a result, and windows of rows asked to a Worker (run.mjs, trace.mjs, profile.mjs)
 docs/              design decisions and notes
   upstream/        drafts of tickets for the dependencies and for Chromium

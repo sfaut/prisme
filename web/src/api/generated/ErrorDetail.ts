@@ -3,6 +3,7 @@ import type { ConnectFailure } from "./ConnectFailure";
 import type { FailureCause } from "./FailureCause";
 import type { Field } from "./Field";
 import type { Flavor } from "./Flavor";
+import type { LocationError } from "./LocationError";
 import type { WriteKind } from "./WriteKind";
 
 /**
@@ -63,6 +64,46 @@ export type ErrorDetail =
      * Name taken.
      */
     name: string;
+  }
+  | {
+    "code": "settings_family";
+    /**
+     * Key of the engine.
+     */
+    engine: string;
+  }
+  | { "code": "main_database_first" }
+  | {
+    "code": "too_many_databases";
+    /**
+     * Databases attached at most.
+     */
+    max: number;
+  }
+  | {
+    "code": "duplicate_schema";
+    /**
+     * Name given twice.
+     */
+    schema: string;
+  }
+  | {
+    "code": "reserved_schema";
+    /**
+     * Name refused.
+     */
+    schema: string;
+  }
+  | {
+    "code": "location";
+    /**
+     * Schema of the database.
+     */
+    schema: string;
+    /**
+     * Why the location is refused.
+     */
+    error: LocationError;
   }
   | {
     "code": "init_sql_not_understood";
@@ -149,6 +190,17 @@ export type ErrorDetail =
      * Kinds of write the query needs and the settings do not allow.
      */
     kinds: Array<WriteKind>;
+  }
+  | {
+    "code": "attach_path_in_memory";
+    /**
+     * Path written in the `ATTACH`.
+     */
+    path: string;
+    /**
+     * URI that opens the file on the disk.
+     */
+    uri: string;
   }
   | { "code": "write_forbidden" }
   | { "code": "read_write_transaction_read_only" }

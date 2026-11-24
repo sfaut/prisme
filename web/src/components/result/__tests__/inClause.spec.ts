@@ -89,6 +89,11 @@ describe('IN clause', () => {
     expect(await clause([['2026-10-12']], ['date'])).toBe("IN (DATE'2026-10-12')")
     expect(await clause([['[1]']], ['json'])).toBe("IN (CAST('[1]' AS JSON))")
     expect(await clause([['[1]']], ['json'], { flavor: 'mariadb' })).toBe("IN ('[1]')")
+    const sqlite = { flavor: 'sqlite' as const, backslashEscapes: false }
+    expect(await clause([['2026-10-12'], ['a\\b']], ['date'], sqlite)).toBe(
+      "IN ('2026-10-12', 'a\\b')",
+    )
+    expect(await clause([['0x6162']], ['binary'], sqlite)).toBe("IN (X'6162')")
     // A value of a numeric column that does not read as a number is a string.
     expect(await clause([['1); DROP TABLE t; --']], ['integer'])).toBe(
       "IN ('1); DROP TABLE t; --')",

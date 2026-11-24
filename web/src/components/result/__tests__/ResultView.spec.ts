@@ -1,4 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
+import { MYSQL_CAPABILITIES } from '@/api/__tests__/capabilities'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
@@ -6,7 +7,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import type { ExportInfo } from '@/api/generated/ExportInfo'
 import type { ExportRequest } from '@/api/generated/ExportRequest'
-import type { ServerInfo } from '@/api/generated/ServerInfo'
+import type { SourceInfo } from '@/api/generated/SourceInfo'
 import { type QueryTab, formatInstant } from '@/api/querySession'
 
 import ResultView from '../ResultView.vue'
@@ -24,8 +25,19 @@ vi.mock('@/api/exports', () => ({
   }),
 }))
 
-vi.mock('@/api/keywords', () => ({
-  fetchKeywords: async () => ({ reserved: ['SELECT'], keywords: [], types: [], literals: [] }),
+vi.mock('@/api/dialectSyntax', () => ({
+  // The lexical rules that the CTE of another dialect follows: those of
+  // MySQL and MariaDB, or of SQLite.
+  fetchDialectSyntax: async (flavor: string) => {
+    const mysql = flavor !== 'sqlite'
+    return {
+      reserved: ['SELECT'],
+      keywords: [],
+      types: [],
+      literals: [],
+      lexical: { double_quoted_strings: mysql, backslash_escapes: mysql },
+    }
+  },
 }))
 
 beforeEach(() => {
@@ -36,12 +48,13 @@ beforeEach(() => {
 /**
  * MariaDB server of the editor, in its default modes.
  */
-const MARIADB: ServerInfo = {
+const MARIADB: SourceInfo = {
   flavor: 'mariadb',
   version: '11.4.13-MariaDB',
   ansi_quotes: false,
   no_backslash_escapes: false,
   oldest_supported: null,
+  capabilities: MYSQL_CAPABILITIES,
 }
 
 /**
@@ -51,7 +64,7 @@ const MARIADB: ServerInfo = {
  * @param tab Tab of the query.
  * @param server Server of the editor.
  */
-function mountTab(tab: QueryTab, server: ServerInfo | null = MARIADB) {
+function mountTab(tab: QueryTab, server: SourceInfo | null = MARIADB) {
   return mount(ResultView, {
     props: {
       tab,
@@ -245,7 +258,7 @@ describe('ResultView', () => {
     ])
     const file = menuItem(wrapper, 'Fichier', 'Résultat affiché en CTE')
     expect(file?.disabled).toBe(false)
-    expect(file?.items?.map((item) => item.label)).toEqual(['MariaDB', 'MySQL'])
+    expect(file?.items?.map((item) => item.label)).toEqual(['MariaDB', 'MySQL', 'SQLite'])
 
     await wrapper.find('.grid-corner').trigger('mousedown')
     expect(menuItem(wrapper, 'Presse-papiers', 'Sélection')?.label).toBe('Sélection en CTE')

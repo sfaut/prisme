@@ -30,7 +30,7 @@ use std::time::Duration;
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use prisme_connectors::mysql::{MysqlTarget, ServerInfo};
+use prisme_connectors::api::{AttachedDatabase, SourceInfo};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep_until};
@@ -82,12 +82,15 @@ impl SessionHandle {
 /// State of the session that a new WebSocket receives before what follows.
 #[derive(Default)]
 struct Replay {
-    /// Identity of the target server, known once the session is ready.
-    server: Option<ServerInfo>,
+    /// Identity of the source, known once the session is ready.
+    server: Option<SourceInfo>,
     /// Current database of the session.
     database: Option<String>,
     /// Is a transaction open on the session's connection?
     transaction: bool,
+    /// Databases attached to the session's connection, once a request
+    /// changed them.
+    databases: Option<Vec<AttachedDatabase>>,
     /// Is a batch running?
     running: bool,
 }
@@ -106,8 +109,6 @@ pub(crate) struct Relay {
     pub(crate) outbox: mpsc::WeakSender<ServerMessage>,
     /// Stopping of the running queries.
     pub(crate) cancellation: Arc<Cancellation>,
-    /// Connection settings, to interrupt the queries.
-    pub(crate) target: MysqlTarget,
     /// Recorder of the editor's results, absent outside an editor.
     pub(crate) recorder: Option<Recorder>,
     /// Stop signal of the session.
@@ -193,7 +194,6 @@ impl Relay {
                 self.requests.clone(),
                 self.outbox.clone(),
                 Arc::clone(&self.cancellation),
-                self.target.clone(),
             )
             .in_current_span(),
         );
@@ -201,7 +201,8 @@ impl Relay {
     }
 
     /// Sends a reattaching WebSocket the state of the session: `ready` if it
-    /// is ready, then the editor's last batch if there is one, without its
+    /// is ready, its databases if a request changed them, then the editor's
+    /// last batch if there is one, without its
     /// rows, then the rows of each query, a saved chunk per message, sent as
     /// saved, then those received since its last chunk.
     async fn send_replay(
@@ -219,6 +220,12 @@ impl Relay {
             transaction: replay.transaction,
         };
         send(sink, &ready).await?;
+        if let Some(databases) = &replay.databases {
+            let databases = ServerMessage::Databases {
+                databases: databases.clone(),
+            };
+            send(sink, &databases).await?;
+        }
         let Some(recorder) = &self.recorder else {
             return Ok(());
         };
@@ -277,6 +284,7 @@ impl Relay {
                 replay.transaction = *transaction;
             }
             ServerMessage::Transaction { open } => replay.transaction = *open,
+            ServerMessage::Databases { databases } => replay.databases = Some(databases.clone()),
             ServerMessage::Database { database } | ServerMessage::Done { database, .. } => {
                 replay.database = database.clone();
             }
@@ -298,7 +306,7 @@ impl Relay {
             return;
         }
         let _ = self.stop.send(true);
-        self.cancellation.cancel(&self.target).await;
+        self.cancellation.cancel().await;
         if let Some(on_end) = self.on_end.take() {
             on_end();
         }
@@ -354,7 +362,6 @@ async fn read_messages(
     requests: mpsc::Sender<SessionRequest>,
     outbox: mpsc::WeakSender<ServerMessage>,
     cancellation: Arc<Cancellation>,
-    target: MysqlTarget,
 ) {
     while let Some(Ok(message)) = incoming.next().await {
         let Message::Text(text) = message else {
@@ -381,10 +388,33 @@ async fn read_messages(
                     break;
                 }
             }
-            Ok(ClientMessage::Cancel) => cancellation.cancel(&target).await,
-            Ok(ClientMessage::CancelQuery { query }) => {
-                cancellation.cancel_query(&target, query).await
+            Ok(ClientMessage::Backup { schema, location }) => {
+                let request = SessionRequest::Backup { schema, location };
+                if requests.send(request).await.is_err() {
+                    break;
+                }
             }
+            Ok(ClientMessage::Attach {
+                schema,
+                location,
+                save,
+            }) => {
+                let request = SessionRequest::Attach {
+                    schema,
+                    location,
+                    save,
+                };
+                if requests.send(request).await.is_err() {
+                    break;
+                }
+            }
+            Ok(ClientMessage::Detach { schema }) => {
+                if requests.send(SessionRequest::Detach(schema)).await.is_err() {
+                    break;
+                }
+            }
+            Ok(ClientMessage::Cancel) => cancellation.cancel().await,
+            Ok(ClientMessage::CancelQuery { query }) => cancellation.cancel_query(query).await,
             Err(error) => {
                 let Some(sender) = outbox.upgrade() else {
                     break;

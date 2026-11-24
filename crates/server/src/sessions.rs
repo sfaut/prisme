@@ -20,6 +20,9 @@ use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use axum::extract::ws::WebSocket;
 
+use prisme_connectors::api::{OpenOptions, Target};
+
+use crate::query_session::Shared;
 use crate::session_relay::SessionHandle;
 
 /// Open editor sessions.
@@ -38,19 +41,23 @@ struct Entry {
     id: u64,
     /// Connection of the session.
     connection_id: i64,
+    /// Resources of the session, shared with the navigator and the exports
+    /// of the editor.
+    shared: Arc<Shared>,
     /// Access to the session.
     handle: SessionHandle,
 }
 
 impl Sessions {
     /// Reattaches `socket` to the session of editor `editor_id` if it is open
-    /// on connection `connection_id`, otherwise opens one with `open`, which
-    /// receives the WebSocket and the function to call at the end of the
-    /// session.
+    /// on connection `connection_id`, otherwise opens one of resources
+    /// `shared` with `open`, which receives the WebSocket and the function to
+    /// call at the end of the session.
     pub(crate) fn attach(
         self: &Arc<Self>,
         editor_id: i64,
         connection_id: i64,
+        shared: Arc<Shared>,
         socket: WebSocket,
         open: impl FnOnce(WebSocket, Box<dyn FnOnce() + Send + Sync>) -> SessionHandle,
     ) {
@@ -79,9 +86,33 @@ impl Sessions {
             Entry {
                 id,
                 connection_id,
+                shared,
                 handle,
             },
         );
+    }
+
+    /// `target` and `options` of a connection that reads for the editor
+    /// `editor_id` on connection `connection_id`: on the databases of the
+    /// session of that editor, sharing its databases in memory, when it is
+    /// open on that connection; as they are otherwise.
+    pub(crate) fn for_editor(
+        &self,
+        editor_id: Option<i64>,
+        connection_id: i64,
+        target: Target,
+        options: OpenOptions,
+    ) -> (Target, OpenOptions) {
+        let shared = editor_id.and_then(|editor_id| {
+            self.lock()
+                .get(&editor_id)
+                .filter(|entry| entry.connection_id == connection_id)
+                .map(|entry| Arc::clone(&entry.shared))
+        });
+        match shared {
+            Some(shared) => (shared.target(&target), shared.options(options)),
+            None => (target, options),
+        }
     }
 
     /// Stops the session of editor `editor_id`, if it has one.

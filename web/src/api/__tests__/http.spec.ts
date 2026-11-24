@@ -82,8 +82,8 @@ describe('request', () => {
 describe('streamCatalog', () => {
   it('passes on each line as soon as it is complete, even split between two chunks', async () => {
     const chunks = [
-      '{"type":"schemas","schemas":["a"]}\n{"type":"tab',
-      'les","schema":"a","tables":[]}\n',
+      '{"type":"namespaces","namespaces":[]}\n{"type":"obj',
+      'ects","namespace":["a"],"objects":[]}\n',
       '{"type":"done"}\n',
     ]
     const body = new ReadableStream<Uint8Array>({
@@ -102,7 +102,7 @@ describe('streamCatalog', () => {
 
     // Read for editor 5, whose console receives the queries.
     expect(fake.mock.calls[0]?.[0]).toBe('/api/connections/3/catalog?editor=5')
-    expect(events.map((event) => event.type)).toEqual(['schemas', 'tables', 'done'])
+    expect(events.map((event) => event.type)).toEqual(['namespaces', 'objects', 'done'])
   })
 
   it('throws an ApiError if the target server is unreachable', async () => {

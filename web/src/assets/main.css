@@ -124,13 +124,15 @@
   --tooltip-fg: light-dark(var(--color-zinc-100), var(--color-zinc-100));
   --tooltip-fg-subtle: light-dark(var(--color-zinc-400), var(--color-zinc-400));
 
-  /* Badge of a source's server flavor, in the navigator: text in the engine's
-     color (MySQL blue, MariaDB brown) on a background tinted with the same
-     color. */
+  /* Badge of a source's flavor, in the navigator: text in the engine's
+     color (MySQL blue, MariaDB brown, SQLite teal) on a background tinted
+     with the same color. */
   --badge-mysql: light-dark(var(--color-blue-600), var(--color-blue-300));
   --badge-mysql-bg: --alpha(var(--badge-mysql) / 14%);
   --badge-mariadb: light-dark(var(--color-amber-700), var(--color-amber-300));
   --badge-mariadb-bg: --alpha(var(--badge-mariadb) / 16%);
+  --badge-sqlite: light-dark(var(--color-teal-700), var(--color-teal-300));
+  --badge-sqlite-bg: --alpha(var(--badge-sqlite) / 14%);
 
   /* Syntax highlighting of the SQL editor (`editorTheme.ts`). */
   --sql-keyword: light-dark(var(--color-violet-600), var(--color-violet-300));

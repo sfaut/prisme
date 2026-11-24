@@ -2,12 +2,13 @@
 //! the cursor (Ctrl+Enter), those a selection touches (Ctrl+Shift+Enter) or
 //! the selected parts of them ("Exécuter précisément").
 //!
-//! Splitting follows the lexical rules of MySQL and MariaDB, without parsing
-//! the SQL: a `;` separates two queries, except inside a string (`'…'`,
-//! `"…"`), a quoted identifier (`` `…` ``) or a comment (`-- …`, `# …`,
-//! `/* … */`). The `DELIMITER` command of the `mysql` client is recognised: it
-//! changes the separator (for example `//` around a `CREATE PROCEDURE`) and is
-//! never sent to the server.
+//! Splitting follows the lexical rules of the dialect (`LexicalRules`),
+//! without parsing the SQL: a `;` separates two queries, except inside a
+//! string (`'…'`, `"…"`), a quoted name (`` `…` ``, `[…]` in SQLite) or a
+//! comment (`-- …`, `# …` in MySQL, `/* … */`). In MySQL, the `DELIMITER`
+//! command of the `mysql` client is recognised: it changes the separator (for
+//! example `//` around a `CREATE PROCEDURE`) and is never sent to the server.
+//! In SQLite, the body of a `CREATE TRIGGER` keeps its `;` up to its `END`.
 //!
 //! `split` gives the queries to run; `chunks` gives the whole text in pieces
 //! (`DELIMITER` commands, queries with their comments and their separator),
@@ -23,6 +24,11 @@
 //! The scan may therefore stand inside a character: the separator is looked
 //! for among the bytes, never by slicing the text there. A UTF-8 separator
 //! can only match from the first byte of a character.
+
+mod lexical;
+
+use lexical::Body;
+pub use lexical::LexicalRules;
 
 /// Default query separator.
 const DEFAULT_DELIMITER: &str = ";";
@@ -103,9 +109,10 @@ enum Event {
     },
 }
 
-/// Splits `text` into queries. Empty pieces (spaces, comments only) are ignored.
-pub fn split(text: &str) -> Vec<Statement> {
-    scan(text)
+/// Splits `text` into queries, following the lexical rules `rules`. Empty
+/// pieces (spaces, comments only) are ignored.
+pub fn split(text: &str, rules: &LexicalRules) -> Vec<Statement> {
+    scan(text, rules)
         .events
         .into_iter()
         .filter_map(|event| match event {
@@ -122,8 +129,8 @@ pub fn split(text: &str) -> Vec<Statement> {
 
 /// Cuts `text` into pieces, without losing anything: `DELIMITER` commands,
 /// queries with their comments, whitespace and comments at the end of the text.
-pub fn chunks(text: &str) -> Vec<Chunk> {
-    scan(text)
+pub fn chunks(text: &str, rules: &LexicalRules) -> Vec<Chunk> {
+    scan(text, rules)
         .events
         .into_iter()
         .map(|event| match event {
@@ -150,8 +157,8 @@ pub fn chunks(text: &str) -> Vec<Chunk> {
 
 /// Tells how a query can be appended to `text`: with which separator, and
 /// where the last query lacks its own, so that the two do not make one.
-pub fn text_end(text: &str) -> TextEnd {
-    let scan = scan(text);
+pub fn text_end(text: &str, rules: &LexicalRules) -> TextEnd {
+    let scan = scan(text, rules);
     let open = matches!(
         scan.events.last(),
         Some(Event::Statement { first: Some(_), delimiter, .. }) if delimiter.is_empty()
@@ -164,7 +171,7 @@ pub fn text_end(text: &str) -> TextEnd {
 
 /// Scans `text` and collects, in order, the `DELIMITER` commands and the
 /// pieces that end with a separator or with the end of the text.
-fn scan(text: &str) -> Scan {
+fn scan(text: &str, rules: &LexicalRules) -> Scan {
     let bytes = text.as_bytes();
     let mut events = Vec::new();
     let mut delimiter = DEFAULT_DELIMITER.to_string();
@@ -172,10 +179,12 @@ fn scan(text: &str) -> Scan {
     let mut chunk_start = 0;
     let mut start: Option<usize> = None;
     let mut token_end = 0;
+    let mut body = Body::default();
     let mut i = 0;
 
     while i < bytes.len() {
-        if start.is_none()
+        if rules.delimiter_command
+            && start.is_none()
             && at_line_start(bytes, i)
             && let Some((new_delimiter, line_end)) = delimiter_command(text, i)
         {
@@ -200,6 +209,14 @@ fn scan(text: &str) -> Scan {
             continue;
         }
         if bytes[i..].starts_with(delimiter.as_bytes()) {
+            // A `;` of the body of a trigger is part of the statement.
+            if let Some(next) = body.separator() {
+                body = next;
+                i += delimiter.len();
+                token_end = i;
+                continue;
+            }
+            body = Body::default();
             events.push(Event::Statement {
                 chunk_start,
                 first: start.take(),
@@ -213,18 +230,37 @@ fn scan(text: &str) -> Scan {
         }
         match bytes[i] {
             b' ' | b'\t' | b'\r' | b'\n' => i += 1,
-            b'-' if is_dash_comment(bytes, i) => i = line_end(bytes, i),
-            b'#' => i = line_end(bytes, i),
+            b'-' if is_dash_comment(bytes, i, rules.space_after_dashes) => {
+                i = line_end(bytes, i);
+            }
+            b'#' if rules.hash_comments => i = line_end(bytes, i),
             b'/' if bytes.get(i + 1) == Some(&b'*') => i = block_comment_end(bytes, i),
             quote @ (b'\'' | b'"' | b'`') => {
                 start.get_or_insert(i);
-                i = quoted_end(bytes, i, quote);
+                let escapes = rules.backslash_escapes
+                    && (quote == b'\'' || quote == b'"' && rules.double_quoted_strings);
+                i = quoted_end(bytes, i, quote, escapes);
+                token_end = i;
+                body = body.other();
+            }
+            b'[' if rules.bracket_identifiers => {
+                start.get_or_insert(i);
+                i = bracket_end(bytes, i);
+                token_end = i;
+                body = body.other();
+            }
+            byte if rules.trigger_bodies && is_word_byte(byte) => {
+                start.get_or_insert(i);
+                let end = word_end(bytes, i);
+                body = body.word(&text[i..end]);
+                i = end;
                 token_end = i;
             }
             _ => {
                 start.get_or_insert(i);
                 i += 1;
                 token_end = i;
+                body = body.other();
             }
         }
     }
@@ -356,10 +392,36 @@ fn delimiter_command(text: &str, i: usize) -> Option<(String, usize)> {
     Some((new_delimiter.to_string(), end))
 }
 
-/// Tells whether `--` at byte `i` opens a comment: it must be followed by a
-/// space, a control character or the end of the text (MySQL rule).
-fn is_dash_comment(bytes: &[u8], i: usize) -> bool {
-    bytes.get(i + 1) == Some(&b'-') && bytes.get(i + 2).is_none_or(|&byte| byte <= b' ')
+/// Tells whether `--` at byte `i` opens a comment; with `space_after`, it
+/// must be followed by a space, a control character or the end of the text
+/// (MySQL rule).
+fn is_dash_comment(bytes: &[u8], i: usize, space_after: bool) -> bool {
+    bytes.get(i + 1) == Some(&b'-')
+        && (!space_after || bytes.get(i + 2).is_none_or(|&byte| byte <= b' '))
+}
+
+/// Can the byte be part of a word (letters, digits, `_`, `$`, and the bytes
+/// of a non-ASCII character)?
+fn is_word_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'$' || byte >= 0x80
+}
+
+/// Position following the end of the word that starts at byte `i`. It ends
+/// on an ASCII byte, never inside a character.
+fn word_end(bytes: &[u8], i: usize) -> usize {
+    bytes[i..]
+        .iter()
+        .position(|&byte| !is_word_byte(byte))
+        .map_or(bytes.len(), |offset| i + offset)
+}
+
+/// Position following the end of the name `[…]` opened at byte `i`: the
+/// first `]`, which does not double (SQLite).
+fn bracket_end(bytes: &[u8], i: usize) -> usize {
+    bytes[i + 1..]
+        .iter()
+        .position(|&byte| byte == b']')
+        .map_or(bytes.len(), |offset| i + 1 + offset + 1)
 }
 
 /// Position of the line feed that ends the line of byte `i`, or end of the text.
@@ -380,13 +442,13 @@ fn block_comment_end(bytes: &[u8], i: usize) -> usize {
 
 /// Position following the end of the string or identifier opened by `quote` at byte `i`.
 ///
-/// A doubled quote stays in the string. In `'…'` and `"…"`, the backslash
-/// escapes the next character; not in `` `…` ``.
-fn quoted_end(bytes: &[u8], i: usize, quote: u8) -> usize {
+/// A doubled quote stays in the string. With `escapes`, the backslash
+/// escapes the next character.
+fn quoted_end(bytes: &[u8], i: usize, quote: u8, escapes: bool) -> usize {
     let mut j = i + 1;
     while j < bytes.len() {
         match bytes[j] {
-            b'\\' if quote != b'`' => j += 2,
+            b'\\' if escapes => j += 2,
             byte if byte == quote => {
                 if bytes.get(j + 1) == Some(&quote) {
                     j += 2;
@@ -404,11 +466,96 @@ fn quoted_end(bytes: &[u8], i: usize, quote: u8) -> usize {
 mod tests {
     use super::*;
 
+    /// Rules of MySQL (`prisme_dialects`).
+    const MYSQL: LexicalRules = LexicalRules {
+        hash_comments: true,
+        space_after_dashes: true,
+        backslash_escapes: true,
+        double_quoted_strings: true,
+        identifier_quotes: "`",
+        bracket_identifiers: false,
+        delimiter_command: true,
+        trigger_bodies: false,
+    };
+
+    /// Rules of SQLite (`prisme_dialects`).
+    const SQLITE: LexicalRules = LexicalRules {
+        hash_comments: false,
+        space_after_dashes: false,
+        backslash_escapes: false,
+        double_quoted_strings: false,
+        identifier_quotes: "\"`",
+        bracket_identifiers: true,
+        delimiter_command: false,
+        trigger_bodies: true,
+    };
+
+    /// Queries of a MySQL text.
     fn sqls(text: &str) -> Vec<String> {
-        split(text)
+        sqls_of(text, &MYSQL)
+    }
+
+    /// Queries of a text, following `rules`.
+    fn sqls_of(text: &str, rules: &LexicalRules) -> Vec<String> {
+        split(text, rules)
             .into_iter()
             .map(|statement| statement.sql)
             .collect()
+    }
+
+    #[test]
+    fn follows_the_lexical_rules_of_sqlite() {
+        // `#` opens no comment, `--` needs no space, the backslash escapes nothing.
+        assert_eq!(
+            sqls_of(
+                "SELECT 1 # x; SELECT 5--2; x\nSELECT 'a\\'; SELECT 3",
+                &SQLITE
+            ),
+            ["SELECT 1 # x", "SELECT 5--2; x\nSELECT 'a\\'", "SELECT 3"]
+        );
+        // Square brackets quote a name, and their `]` does not double.
+        assert_eq!(
+            sqls_of("SELECT [a;b], \"c;d\", `e;f`; SELECT [x]]; 2", &SQLITE),
+            ["SELECT [a;b], \"c;d\", `e;f`", "SELECT [x]]", "2"]
+        );
+        // DELIMITER is no command of SQLite.
+        assert_eq!(
+            sqls_of("DELIMITER //\nSELECT 1//", &SQLITE),
+            ["DELIMITER //\nSELECT 1//"]
+        );
+    }
+
+    #[test]
+    fn keeps_the_body_of_a_sqlite_trigger_whole() {
+        let trigger = "CREATE TEMP TRIGGER tr AFTER INSERT ON t BEGIN\n  \
+                       UPDATE u SET b = CASE WHEN new.a > 0 THEN 1 END;\n  \
+                       DELETE FROM v; -- ; END;\nEND";
+        assert_eq!(
+            sqls_of(&format!("{trigger};\nSELECT 1; SELECT 2"), &SQLITE),
+            [trigger, "SELECT 1", "SELECT 2"]
+        );
+        // A body left open runs to the end of the text.
+        assert_eq!(
+            sqls_of(
+                "create trigger tr after insert on t begin select 1; select 2",
+                &SQLITE
+            )
+            .len(),
+            1
+        );
+        // Names that hold `trigger` or `end` open nothing.
+        assert_eq!(
+            sqls_of(
+                "CREATE TABLE trigger_log (end_at); SELECT end_at FROM trigger_log;",
+                &SQLITE
+            ),
+            [
+                "CREATE TABLE trigger_log (end_at)",
+                "SELECT end_at FROM trigger_log"
+            ]
+        );
+        // MySQL leaves triggers to DELIMITER.
+        assert_eq!(sqls("CREATE TRIGGER tr BEGIN SELECT 1; END").len(), 2);
     }
 
     #[test]
@@ -443,7 +590,7 @@ mod tests {
 
     #[test]
     fn statements_start_after_leading_comments() {
-        let statements = split("-- title\n/* note */ SELECT 1;");
+        let statements = split("-- title\n/* note */ SELECT 1;", &MYSQL);
         assert_eq!(statements[0].sql, "SELECT 1");
         assert_eq!(statements[0].start, 20);
         assert_eq!(statements[0].end, 29);
@@ -465,7 +612,7 @@ mod tests {
     fn cuts_the_whole_text_into_chunks() {
         let text = "-- purge\nDELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END //\n delimiter ;\nCALL p(); # end\n";
         assert_eq!(
-            chunks(text),
+            chunks(text, &MYSQL),
             [
                 Chunk::Sql {
                     text: "-- purge\n".to_string(),
@@ -499,7 +646,7 @@ mod tests {
     #[test]
     fn counts_positions_in_utf16_units() {
         // "é" counts for 1 UTF-16 unit (2 bytes), "😀" for 2 units (4 bytes).
-        let statements = split("SELECT 'é😀';\nSELECT 2;");
+        let statements = split("SELECT 'é😀';\nSELECT 2;", &MYSQL);
         assert_eq!(statements[0].end, 13);
         assert_eq!(statements[1].start, 14);
     }
@@ -520,7 +667,7 @@ mod tests {
     #[test]
     fn finds_the_statement_under_the_cursor() {
         let text = "select * from xlist.video;\n\nselect * from xlist.person;\n";
-        let statements = split(text);
+        let statements = split(text, &MYSQL);
         let second = text.find("select * from xlist.person").unwrap();
 
         assert_eq!(statement_at(&statements, 0), Some(0));
@@ -536,7 +683,7 @@ mod tests {
     fn finds_the_statements_a_passage_touches() {
         // Queries at 12..21, 23..32 and 34..43.
         let text = "-- comment\n\nSELECT 1;\n\nSELECT 2;\n\nSELECT 3;\n";
-        let statements = split(text);
+        let statements = split(text, &MYSQL);
         assert_eq!(statements_in(&statements, 0, text.len()), [0, 1, 2]);
         // A single character of the query, or its separator, is enough.
         assert_eq!(statements_in(&statements, 30, 31), [1]);
@@ -553,7 +700,7 @@ mod tests {
         // Queries at 0..9 and 10..53.
         let text = "SELECT 1;
 SELECT id, name FROM user WHERE id > 1;";
-        let statements = split(text);
+        let statements = split(text, &MYSQL);
         let pieces = |start, end| {
             pieces_in(&statements, start, end)
                 .into_iter()
@@ -582,13 +729,14 @@ SELECT id, name FROM user WHERE id > 1;";
         );
         assert!(pieces(8, 10).is_empty());
         // Positions in UTF-16 units, past a character outside the BMP.
-        let statements = split("SELECT '😀', 2 FROM t;");
+        let statements = split("SELECT '😀', 2 FROM t;", &MYSQL);
         let piece = &pieces_in(&statements, 0, 14)[0];
         assert_eq!((piece.sql.as_str(), piece.end), ("SELECT '😀', 2", 14));
         // A separator set by DELIMITER is kept inside the parts.
         let statements = split(
             "DELIMITER //
 CREATE PROCEDURE p() BEGIN SELECT 1; END//",
+            &MYSQL,
         );
         assert_eq!(
             pieces_in(&statements, 0, 100)[0].sql,
@@ -599,7 +747,7 @@ CREATE PROCEDURE p() BEGIN SELECT 1; END//",
     #[test]
     fn tells_how_to_append_a_query() {
         let end = |text: &str| {
-            let end = text_end(text);
+            let end = text_end(text, &MYSQL);
             (end.delimiter, end.open_end)
         };
         assert_eq!(end("SELECT 1;\n"), (";".to_string(), None));
@@ -618,7 +766,7 @@ CREATE PROCEDURE p() BEGIN SELECT 1; END//",
 
     #[test]
     fn cursor_before_the_first_statement_designates_it() {
-        let statements = split("\n\n-- comment\nSELECT 1;");
+        let statements = split("\n\n-- comment\nSELECT 1;", &MYSQL);
         assert_eq!(statement_at(&statements, 0), Some(0));
     }
 }

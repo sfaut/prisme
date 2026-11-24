@@ -15,7 +15,7 @@
 use std::future::Future;
 use std::time::{Duration, Instant};
 
-use super::secret_mask::masked;
+use crate::secret_mask::masked;
 
 /// Target of the trace events, and of the spans that give their context.
 pub const TARGET: &str = "prisme_sql";

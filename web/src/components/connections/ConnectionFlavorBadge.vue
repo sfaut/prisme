@@ -1,8 +1,8 @@
 <!--
-  Badge of the flavor of a connection's server (`mysql`, `mariadb`): a pill
-  tinted in the engine's colors, whose tooltip gives the name and the version
-  of the server. Shown after the name of a source in the navigator, and of
-  the connection in the connections manager.
+  Badge of the flavor of a connection's source (`mysql`, `mariadb`,
+  `sqlite`): a pill tinted in the engine's colors, whose tooltip gives the
+  name and the version of the source. Shown after the name of a source in
+  the navigator, and of the connection in the connections manager.
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
@@ -50,6 +50,11 @@ const tooltip = computed(() => serverName(props.flavor, props.version))
   &[data-flavor='mariadb'] {
     background: var(--badge-mariadb-bg);
     color: var(--badge-mariadb);
+  }
+
+  &[data-flavor='sqlite'] {
+    background: var(--badge-sqlite-bg);
+    color: var(--badge-sqlite);
   }
 }
 </style>

@@ -1,0 +1,79 @@
+{
+  "comment": "Reference of the CTE export for SQLite, read by the tests of the TypeScript serialiser (web/src/components/result/__tests__/cte.spec.ts), which must write expected-sqlite.sql byte for byte with the lexical settings of a SQLite session (double quotes for the names, no backslash escapes), and by crates/connectors/tests/cte.rs, which loads the rows into a table of the declared types, reads them back as the connector gives them, with the families of the columns, then runs expected-sqlite.sql, which must give back the same names and cells, with the families of read_back. SQLite has no typed literal of a date or a time: these values are strings; bytes are written in hexadecimal and come back as a BLOB; a NUMERIC column keeps 12.50 as the REAL 12.5 and -3.00 as the INTEGER -3.",
+  "columns": ["id", "prix", "taux", "créé le", "jour", "heure", "select", "vide", "json", "octets"],
+  "declared": ["INTEGER", "NUMERIC", "REAL", "DATETIME", "DATE", "TIME", "TEXT", "TEXT", "JSON", "BLOB"],
+  "families": [
+    "integer",
+    "decimal",
+    "float",
+    "datetime",
+    "date",
+    "time",
+    "text",
+    "text",
+    "json",
+    "binary"
+  ],
+  "read_back": [
+    "integer",
+    "float",
+    "float",
+    "text",
+    "text",
+    "text",
+    "text",
+    "text",
+    "text",
+    "binary"
+  ],
+  "rows": [
+    [
+      "1",
+      "12.5",
+      "0.125",
+      "2026-10-12 09:32:00",
+      "2026-10-12",
+      "12:00:00",
+      "dit 'oui'",
+      "",
+      "{\"a\": \"x\\ny\"}",
+      "0xFF001A"
+    ],
+    [
+      "-2",
+      "-3",
+      "0.00000015",
+      null,
+      "2026-01-01",
+      "23:59:59.999",
+      "a\\b \\n",
+      null,
+      "[1, 2]",
+      "0x616263"
+    ],
+    [
+      "3",
+      "1000000",
+      "-0.5",
+      "2026-02-03 04:05:06",
+      null,
+      "00:00:01",
+      "ligne 1\r\nligne 2\ttab",
+      " espace ",
+      "{\"b\": null}",
+      "0x"
+    ],
+    [
+      "4",
+      null,
+      "100000000000000000000",
+      "2026-12-31T23:59:59Z",
+      "2026-02-28",
+      null,
+      "€ 😀 ''",
+      "x",
+      null,
+      null
+    ]
+  ]
+}

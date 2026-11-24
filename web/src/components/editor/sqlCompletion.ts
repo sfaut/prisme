@@ -5,8 +5,9 @@
  * `@codemirror/lang-sql`: databases, then their tables, views, functions and
  * procedures, then the columns of the tables. Completion then offers the
  * names of the current database without a prefix, and the columns after
- * `table.` or `alias.`. Each option shows its nature (database, table, view,
- * function, procedure) or, for a column, its type.
+ * `table.` or `alias.`. Each option shows its nature (namespace, named by
+ * its level: `base`, `schéma`; table, view, function, procedure) or, for a
+ * column, its type.
  *
  * A name that is not a plain identifier (space, dash, leading digit...) or
  * that is a reserved word of the server is inserted quoted: double quotes if
@@ -16,8 +17,10 @@
 import type { Completion } from '@codemirror/autocomplete'
 import type { SQLNamespace } from '@codemirror/lang-sql'
 
-import type { RoutineInfo } from '@/api/generated/RoutineInfo'
-import type { CatalogSchema, CatalogTable } from '@/stores/catalog'
+import type { NamespaceLevel } from '@/api/generated/NamespaceLevel'
+import { LEVEL_NAMES } from '@/api/namespaceLevels'
+
+import { type CatalogObject, type CatalogSchema, isRelation } from '@/stores/catalog'
 
 import { displayedType, quoteIfNeeded, upperType } from '@/components/navigator/navigatorNodes'
 
@@ -72,24 +75,30 @@ function nameCompletion(
  * @param reserved
  *     Reserved words of the server, in capitals; none while they are not
  *     received.
+ * @param level Level of the namespaces, which names them.
  */
 export function completionSchema(
   schemas: CatalogSchema[],
   ansiQuotes = false,
   reserved: ReadonlySet<string> = new Set(),
+  level: NamespaceLevel = 'database',
 ): SQLNamespace {
   const quoting: Quoting = { ansiQuotes, reserved }
   const namespace: Record<string, SQLNamespace> = {}
   for (const schema of schemas) {
     const children: Record<string, SQLNamespace> = {}
-    for (const table of schema.tables ?? []) {
-      children[table.name] = tableNamespace(table, quoting)
-    }
-    for (const routine of schema.routines ?? []) {
-      children[routine.name] = routineNamespace(routine, quoting)
+    for (const object of schema.objects ?? []) {
+      if (isRelation(object)) {
+        children[object.name] = tableNamespace(object, quoting)
+      } else if (object.kind === 'procedure' || object.kind === 'function') {
+        children[object.name] = routineNamespace(object, quoting)
+      }
     }
     namespace[schema.name] = {
-      self: nameCompletion(schema.name, quoting, { type: 'namespace', detail: 'base' }),
+      self: nameCompletion(schema.name, quoting, {
+        type: 'namespace',
+        detail: LEVEL_NAMES[level].name,
+      }),
       children,
     }
   }
@@ -102,7 +111,7 @@ export function completionSchema(
  * @param routine Routine of the catalog.
  * @param quoting How the names are quoted.
  */
-function routineNamespace(routine: RoutineInfo, quoting: Quoting): SQLNamespace {
+function routineNamespace(routine: CatalogObject, quoting: Quoting): SQLNamespace {
   return {
     self: nameCompletion(routine.name, quoting, {
       type: 'function',
@@ -118,7 +127,7 @@ function routineNamespace(routine: RoutineInfo, quoting: Quoting): SQLNamespace 
  * @param table Table or view of the catalog.
  * @param quoting How the names are quoted.
  */
-function tableNamespace(table: CatalogTable, quoting: Quoting): SQLNamespace {
+function tableNamespace(table: CatalogObject, quoting: Quoting): SQLNamespace {
   return {
     self: nameCompletion(table.name, quoting, {
       type: 'type',

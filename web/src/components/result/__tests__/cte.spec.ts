@@ -73,6 +73,31 @@ describe('CTE', () => {
     },
   )
 
+  it('writes the reference file of sqlite byte for byte', async () => {
+    const sqlite = JSON.parse(readFileSync(resolve(FIXTURES, 'input-sqlite.json'), 'utf-8')) as {
+      columns: string[]
+      families: TypeFamily[]
+      rows: Cell[][]
+    }
+    const types = sqlite.families.map((family) => ({ family, name: '' }))
+    const frame = viewFrame(
+      sqlite.rows.map((_, index) => index),
+      sqlite.columns.map((_, index) => index),
+    )
+    // The lexical settings of a SQLite session: double quotes for the names,
+    // no backslash escapes.
+    const text = await cteText(
+      frame,
+      sqlite.rows,
+      sqlite.columns,
+      types,
+      options({ flavor: 'sqlite', ansiQuotes: true, backslashEscapes: false }),
+    )
+    expect(`${cteStatement(text, ';')}\n`).toBe(
+      readFileSync(resolve(FIXTURES, 'expected-sqlite.sql'), 'utf-8'),
+    )
+  })
+
   it('writes the form of each dialect, names quoted only when needed', async () => {
     const rows: Cell[][] = [
       ['1', 'Ada', '2026-10-12 09:32:00'],
@@ -157,6 +182,18 @@ describe('CTE', () => {
     expect(cteLiteral('\u0005', 'bit', options())).toBe("b'101'")
     expect(cteLiteral('\u0000', 'bit', options())).toBe("b'0'")
     expect(cteLiteral('0x0100', 'bit', options())).toBe("b'100000000'")
+  })
+
+  it('writes dates and times as strings, bytes and bits in hexadecimal for SQLite', () => {
+    const sqlite = options({ flavor: 'sqlite', backslashEscapes: false })
+    expect(cteLiteral('2026-10-12', 'date', sqlite)).toBe("'2026-10-12'")
+    expect(cteLiteral('2026-10-12 09:32:00', 'datetime', sqlite)).toBe("'2026-10-12 09:32:00'")
+    expect(cteLiteral('12:00:00', 'time', sqlite)).toBe("'12:00:00'")
+    expect(cteLiteral('0xFF001A', 'binary', sqlite)).toBe("X'FF001A'")
+    expect(cteLiteral('abc', 'binary', sqlite)).toBe("X'616263'")
+    expect(cteLiteral('\u0005', 'bit', sqlite)).toBe("X'05'")
+    expect(cteLiteral('a\\b', 'text', sqlite)).toBe("'a\\b'")
+    expect(cteLiteral('12.50', 'decimal', sqlite)).toBe('12.50')
   })
 
   it('writes NULL, and every other value as a string', () => {

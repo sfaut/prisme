@@ -12,7 +12,7 @@
 
 use std::io::{self, Read};
 
-use prisme_connectors::mysql::{Cell, TypeFamily};
+use prisme_connectors::columns::{Cell, TypeFamily};
 
 /// Byte order mark, by which Excel recognises UTF-8.
 const BOM: char = '\u{FEFF}';

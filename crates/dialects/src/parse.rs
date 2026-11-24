@@ -1,8 +1,9 @@
 //! Parsing of a text of several queries.
 //!
-//! `parse_statements` parses like `Parser::parse_sql`, plus the MySQL and
-//! MariaDB statements that `sqlparser` does not know (`mysql_statements.rs`):
-//! the classification, the syntax errors and the default limit rely on it.
+//! `parse_statements` parses like `Parser::parse_sql`, plus the statements
+//! of the dialect that `sqlparser` does not know (`mysql_statements.rs`,
+//! `sqlite_statements.rs`): the classification, the syntax errors and the
+//! default limit rely on it.
 //!
 //! `parse_each` parses query by query, for the beautifier. Several of its rules rely on the AST (aliases, function names). An
 //! editor text often contains a query that the parser does not understand,
@@ -15,8 +16,10 @@ use sqlparser::ast::Statement;
 use sqlparser::parser::{Parser, ParserError};
 use sqlparser::tokenizer::Token;
 
-use crate::Dialect;
-use crate::mysql_statements::{self, MySqlStatement, expect_end};
+use crate::mysql_statements::{self, MySqlStatement};
+use crate::sqlite_statements::{SqliteStatement, parse_replace, parse_sqlite_statement};
+use crate::words::expect_end;
+use crate::{Dialect, Statements};
 
 /// Statement parsed by `sqlparser`, or a MySQL / MariaDB statement it does
 /// not know.
@@ -29,6 +32,8 @@ pub(crate) enum Parsed {
     /// Routine, event, `ALTER TABLE` on an existing index, or transaction
     /// statement whose syntax `sqlparser` misses.
     MySql(MySqlStatement),
+    /// `PRAGMA`, `DETACH`, `VACUUM` or `REINDEX` of SQLite.
+    Sqlite(SqliteStatement),
 }
 
 /// Parses the queries of the text, separated by `;`, as `Parser::parse_sql`
@@ -46,12 +51,15 @@ pub(crate) fn parse_statements(sql: &str, dialect: Dialect) -> Result<Vec<Parsed
         if parser.peek_token_ref().token == Token::EOF {
             return Ok(statements);
         }
-        statements.push(parse_statement(&mut parser)?);
+        statements.push(match dialect.spec().statements {
+            Statements::MySql => parse_mysql_statement(&mut parser)?,
+            Statements::Sqlite => parse_sqlite(&mut parser)?,
+        });
     }
 }
 
-/// Parses the statement at the position of the parser, up to its `;` or the
-/// end of the text: a routine, an event or a `SET ... TRANSACTION` (whose
+/// Parses the MySQL or MariaDB statement at the position of the parser, up
+/// to its `;` or the end of the text: a routine, an event or a `SET ... TRANSACTION` (whose
 /// scope `sqlparser` drops), else a statement of `sqlparser`, else an
 /// `ALTER TABLE` with an operation on an existing index (`sqlparser` reads
 /// `DROP INDEX IF EXISTS i` as the index `IF`, then stops), a
@@ -61,7 +69,7 @@ pub(crate) fn parse_statements(sql: &str, dialect: Dialect) -> Result<Vec<Parsed
 /// Workaround: the bugs of `sqlparser` on `DROP INDEX IF EXISTS` and on the
 /// scope of `SET TRANSACTION`, and the statements it does not parse
 /// (`docs/DEVELOPER.md`, section "Workarounds").
-fn parse_statement(parser: &mut Parser) -> Result<Parsed, ParserError> {
+fn parse_mysql_statement(parser: &mut Parser) -> Result<Parsed, ParserError> {
     if let Some(statement) = mysql_statements::parse_routine_or_event(parser)
         .or_else(|| mysql_statements::parse_set_transaction(parser))
     {
@@ -81,6 +89,25 @@ fn parse_statement(parser: &mut Parser) -> Result<Parsed, ParserError> {
                 .or_else(|| mysql_statements::parse_xa(parser))
                 .map_or(Err(error), |statement| statement.map(Parsed::MySql))
         })
+}
+
+/// Parses the SQLite statement at the position of the parser, up to its `;`
+/// or the end of the text: a `PRAGMA`, `DETACH`, `VACUUM` or `REINDEX`
+/// (`sqlite_statements.rs`), a `REPLACE` read as `INSERT OR REPLACE`, else a
+/// statement of `sqlparser`.
+///
+/// Workaround: the statements `sqlparser` does not parse (`docs/DEVELOPER.md`,
+/// section "Workarounds").
+fn parse_sqlite(parser: &mut Parser) -> Result<Parsed, ParserError> {
+    if let Some(statement) = parse_sqlite_statement(parser) {
+        return statement.map(Parsed::Sqlite);
+    }
+    let statement = match parse_replace(parser) {
+        Some(statement) => statement?,
+        None => parser.parse_statement()?,
+    };
+    expect_end(parser)?;
+    Ok(Parsed::Sql(statement))
 }
 
 /// Parses the queries of the text one by one; after a query not understood,
@@ -111,6 +138,35 @@ pub(crate) fn parse_each(sql: &str, dialect: Dialect) -> Vec<Statement> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_the_statements_of_sqlite() {
+        for sql in [
+            "PRAGMA table_info(t)",
+            "PRAGMA main.journal_mode = WAL",
+            "PRAGMA foreign_keys = ON",
+            "ATTACH DATABASE 'a.db' AS a",
+            "DETACH a",
+            "VACUUM INTO 'copy.db'",
+            "REINDEX t",
+            "ANALYZE main",
+            "INSERT OR REPLACE INTO t VALUES (1) RETURNING *",
+            "INSERT INTO t VALUES (1) ON CONFLICT (a) DO UPDATE SET b = 2",
+            "UPDATE OR IGNORE t SET a = 1 FROM u WHERE t.id = u.id",
+            "CREATE TEMP TRIGGER tr AFTER INSERT ON t BEGIN SELECT RAISE(ABORT, 'no'); END",
+            "CREATE TABLE temp.x (a INTEGER PRIMARY KEY) STRICT, WITHOUT ROWID",
+            "CREATE VIRTUAL TABLE f USING fts5(a)",
+            "BEGIN IMMEDIATE; SAVEPOINT s; RELEASE s; END",
+            "SELECT [a b], `c`, \"d\" FROM t INDEXED BY i LIMIT -1",
+            "SELECT a ->> '$.b' FROM t WHERE a GLOB 'x*'",
+        ] {
+            assert!(parse_statements(sql, Dialect::Sqlite).is_ok(), "{sql}");
+        }
+        // `#` opens no comment in SQLite.
+        assert!(parse_statements("SELECT 1 # comment", Dialect::Sqlite).is_err());
+        // The statements of SQLite are none of MySQL.
+        assert!(parse_statements("PRAGMA table_info(t)", Dialect::MySql).is_err());
+    }
 
     #[test]
     fn analyses_the_statements_of_a_procedure_body() {

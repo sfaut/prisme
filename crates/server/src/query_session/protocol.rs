@@ -1,7 +1,9 @@
 //! Messages of the query session, as JSON text: what the client sends, and
 //! what the session answers. The types are exported to the interface by `ts-rs`.
 
-use prisme_connectors::mysql::{Cell, ColumnTypeInfo, ServerInfo};
+use prisme_connectors::api::{AttachedDatabase, SourceInfo};
+use prisme_connectors::columns::{Cell, ColumnTypeInfo};
+use prisme_connectors::location::Location;
 use prisme_connectors::outcome::StatementOutcome;
 use prisme_dialects::verb::StatementVerb;
 use serde::{Deserialize, Serialize};
@@ -25,6 +27,22 @@ pub(crate) enum ClientMessage {
     CancelQuery { query: u32 },
     /// Change the session's current database, like `USE`, without a result to show.
     Use { database: String },
+    /// Copy the database of the schema `schema` (a database in memory) into
+    /// a new file at `location`, as typed: an absolute path, of a file that
+    /// does not exist.
+    Backup { schema: String, location: String },
+    /// Attach the database at `location`, as typed (an absolute path, a URL
+    /// or `:memory:`), to the session, under the schema `schema`; with
+    /// `save`, also add it to the databases of the connection.
+    Attach {
+        schema: String,
+        location: String,
+        #[serde(default)]
+        #[ts(optional, as = "Option<bool>")]
+        save: bool,
+    },
+    /// Detach the database of the schema `schema` from the session.
+    Detach { schema: String },
 }
 
 /// Request passed to the session by the reading of the client's messages.
@@ -39,6 +57,24 @@ pub(crate) enum SessionRequest {
     },
     /// Change the current database.
     Use(String),
+    /// Copy a database into a new file.
+    Backup {
+        /// Schema of the database.
+        schema: String,
+        /// Location of the file, as typed.
+        location: String,
+    },
+    /// Attach a database.
+    Attach {
+        /// Schema of the database.
+        schema: String,
+        /// Location of the database, as typed.
+        location: String,
+        /// Also add it to the databases of the connection?
+        save: bool,
+    },
+    /// Detach the database of a schema.
+    Detach(String),
 }
 
 /// Run request sent by the client.
@@ -122,6 +158,9 @@ pub(crate) enum LimitReport {
     NotApplicable,
     /// Query not parsed: reading stops by itself after N rows.
     Unparsed,
+    /// Query that takes no `LIMIT` (`VALUES` of SQLite): reading stops by
+    /// itself after N rows.
+    Capped,
 }
 
 /// Message sent to the client.
@@ -131,7 +170,7 @@ pub(crate) enum LimitReport {
 pub(crate) enum ServerMessage {
     /// The connection to the target server is open.
     Ready {
-        server: ServerInfo,
+        server: SourceInfo,
         database: Option<String>,
         /// Is a transaction open on the session's connection? Always false
         /// when it opens; true for a WebSocket that reattaches during one.
@@ -190,9 +229,19 @@ pub(crate) enum ServerMessage {
     BatchDone,
     /// Current database of the session, after a successful `use` request.
     Database { database: Option<String> },
+    /// The database of the schema `schema` was copied into the file at
+    /// `location`, after a `backup` request; a failure comes as a session
+    /// `error`.
+    BackedUp { schema: String, location: Location },
     /// A transaction opened (`open`) or ended on the session's connection,
     /// at the end of a request, before `batch_done`.
     Transaction { open: bool },
+    /// The databases attached to the session's connection, right after
+    /// `ready` for an engine that attaches databases, then once they
+    /// changed, after a batch that attached or detached one, before
+    /// `batch_done`, or after an `attach` or `detach` request: the main one
+    /// first, in the order of their attachment.
+    Databases { databases: Vec<AttachedDatabase> },
     /// Last batch of the session, sent to a WebSocket that reattaches to it.
     Resume {
         /// Is the batch still running?

@@ -11,7 +11,8 @@ use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use ts_rs::TS;
 
-use prisme_connectors::mysql::{ConnectFailure, MysqlError};
+use prisme_connectors::api::ConnectorError;
+use prisme_connectors::failure::ConnectFailure;
 
 use crate::connections::ConnectionsError;
 use crate::editors::EditorsError;
@@ -103,7 +104,8 @@ impl From<SettingsError> for ApiError {
             | SettingsError::RetentionOutOfRange { .. }
             | SettingsError::IndentSizeOutOfRange
             | SettingsError::ConcatMaxBytesOutOfRange
-            | SettingsError::PivotRefreshMsOutOfRange => Self::BadRequest(error.detail()),
+            | SettingsError::PivotRefreshMsOutOfRange
+            | SettingsError::RemoteOutOfRange { .. } => Self::BadRequest(error.detail()),
             SettingsError::Sqlite(_) => {
                 tracing::error!("{error}");
                 Self::Internal
@@ -140,13 +142,13 @@ impl From<ProfileError> for ApiError {
     }
 }
 
-impl From<MysqlError> for ApiError {
-    /// Translates a failure of the target server: 504 if it did not answer in
-    /// time, 502 otherwise. The flavor of the server is not known yet.
-    fn from(error: MysqlError) -> Self {
-        let detail = ErrorDetail::of_mysql(&error, None);
+impl From<ConnectorError> for ApiError {
+    /// Translates a failure of the source: 504 if it did not answer in time,
+    /// 502 otherwise. The flavor of the source is not known yet.
+    fn from(error: ConnectorError) -> Self {
+        let detail = ErrorDetail::of_connector(&error, None);
         match error {
-            MysqlError::Connect(ConnectFailure::Timeout { .. }) => Self::GatewayTimeout(detail),
+            ConnectorError::Connect(ConnectFailure::Timeout { .. }) => Self::GatewayTimeout(detail),
             _ => Self::BadGateway(detail),
         }
     }

@@ -1972,3 +1972,41 @@ From the root of the repository: `node bench/streaming/run.mjs` (1 million
 rows, 3 passes, a few minutes), then `node bench/streaming/run.mjs 10000000
 100000 1` (a quarter of an hour). The results go to
 `target/streaming-bench/results-<rows>.json`.
+
+## 18. Counting the rows of a SQLite write: cost of the update hook
+
+Measure made on 2026-11-23, to choose how the SQLite connector counts the
+rows of a write.
+
+### 18.1 Question
+
+`changes()` gives one count per statement: an upsert counts its rows
+inserted and updated together. The update hook of SQLite
+(`sqlite3_update_hook`), a function the library calls for each row written,
+would tell them apart. What does it cost?
+
+### 18.2 Measurement
+
+`bench/sqlite`, section 15 (`cargo run --release --manifest-path
+bench/sqlite/Cargo.toml --target-dir target/sqlite-measures`): one million
+rows inserted by one `INSERT ... SELECT` from a recursive CTE into a table
+in memory, best of 5 runs, without a hook and with a hook that counts the
+rows under a mutex; SQLite 3.54.1 of `rusqlite` 0.41.1, release build, on
+the development machine.
+
+| Hook | Best of 5 |
+|---|---|
+| absent | 331 ms |
+| set | 415 ms |
+
+A first run in a throwaway project gave 425 ms and 466 ms: between +10 % and
++25 % on a write of many rows.
+
+### 18.3 Decision
+
+The connector does not use the hook. Its cost is not the reason: the hook
+reports nothing for a `WITHOUT ROWID` table nor for a `DELETE` without
+`WHERE`, and mixes the rows of the triggers with those of the statement
+(`docs/SQL-COMPARISON.md`, section 6), so the counts it would give could be
+false without telling it. The connector reports what `changes()` tells.
+

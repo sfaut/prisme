@@ -1,18 +1,21 @@
 import { describe, expect, it } from 'vitest'
 
-import { probeMessage, versionWarning } from '../connections'
-import type { ServerInfo } from '../generated/ServerInfo'
+import { MYSQL_CAPABILITIES } from '@/api/__tests__/capabilities'
+import { probeMessage, unavailableWarning, versionWarning } from '../connections'
+import type { DatabaseState } from '../generated/DatabaseState'
+import type { SourceInfo } from '../generated/SourceInfo'
 
 /**
  * Identity of a server, supported unless `oldest_supported` is given.
  */
-function server(overrides: Partial<ServerInfo>): ServerInfo {
+function server(overrides: Partial<SourceInfo>): SourceInfo {
   return {
     flavor: 'mysql',
     version: '8.4.11',
     ansi_quotes: false,
     no_backslash_escapes: false,
     oldest_supported: null,
+    capabilities: MYSQL_CAPABILITIES,
     ...overrides,
   }
 }
@@ -34,5 +37,64 @@ describe('versions', () => {
     expect(old.title).toBe(
       'MySQL 5.7.44\nVersion antérieure à MySQL 8.0.11, la plus ancienne prise en charge par Prisme : les requêtes s’exécutent, sans garantie.',
     )
+  })
+})
+
+describe('databases not opened', () => {
+  /**
+   * Database `schema` of the file at `address`, missing.
+   */
+  function missing(schema: string, address: string): DatabaseState {
+    return {
+      schema,
+      location: { scheme: 'file', address },
+      status: 'unavailable',
+      failure: { reason: 'file_not_found', location: address },
+    }
+  }
+
+  /**
+   * Database `schema`, open.
+   */
+  function open(schema: string): DatabaseState {
+    return {
+      schema,
+      location: { scheme: 'memory', address: '' },
+      status: 'open',
+      bytes: 0,
+      journal_mode: 'memory',
+      read_only: false,
+    }
+  }
+
+  const sqlite = { flavor: 'sqlite' as const, version: '3.54.1' }
+
+  it('tells each database not opened, and why', () => {
+    expect(unavailableWarning(server({ ...sqlite, databases: [open('main')] }))).toBeNull()
+    expect(
+      unavailableWarning(
+        server({ ...sqlite, databases: [open('main'), missing('ref', 'D:/a.db')] }),
+      ),
+    ).toBe(
+      'La base « ref » ne s’ouvre pas : les sessions s’ouvrent sans elle.\nLe fichier D:/a.db n’existe pas.',
+    )
+    expect(
+      unavailableWarning(
+        server({ ...sqlite, databases: [missing('ref', 'D:/a.db'), missing('old', 'D:/b.db')] }),
+      ),
+    ).toBe(
+      [
+        '2 bases ne s’ouvrent pas : les sessions s’ouvrent sans elles.',
+        '« ref » : Le fichier D:/a.db n’existe pas.',
+        '« old » : Le fichier D:/b.db n’existe pas.',
+      ].join('\n'),
+    )
+  })
+
+  it('turns the message of a test into a warning, unless the states show beside it', () => {
+    const info = server({ ...sqlite, databases: [open('main'), missing('ref', 'D:/a.db')] })
+    expect(probeMessage(info).tone).toBe('warning')
+    expect(probeMessage(info).title.split('\n')[0]).toBe('SQLite 3.54.1')
+    expect(probeMessage(info, false)).toEqual({ tone: 'success', title: 'SQLite 3.54.1' })
   })
 })

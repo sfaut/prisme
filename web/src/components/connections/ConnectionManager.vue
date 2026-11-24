@@ -6,10 +6,12 @@
   "⋮" menu of a source in the navigator ("Modifier", on that connection),
   through the connections store: it is mounted once.
 
-  A saved connection shows its card at the top (icon, name, flavor badge,
-  server and its version, last connection; the list gives its place), with "Tester", "Dupliquer" and
-  "Supprimer" (after confirmation, `ConnectionRemoveDialog`), then its
-  settings on a single page (`ConnectionForm`). "Tester" connects with the
+  A saved connection shows its card at the top (icon of its kind, name,
+  flavor badge, source and its version, last connection; the list gives its
+  place), with "Tester", "Dupliquer" and "Supprimer" (after confirmation,
+  `ConnectionRemoveDialog`), then its settings on a single page, those of
+  its family: a server (`ConnectionFormServer`) or databases held in files
+  (`ConnectionFormFiles`). "Tester" connects with the
   settings as typed; unchanged, the test is that of the saved connection,
   whose server and date of connection the server then remembers.
 
@@ -23,9 +25,11 @@
   warning says so, and the button says that they will be rolled back.
 
   A creation goes in three steps (`ConnectionManagerSteps`): the kind of
-  source (`ConnectionManagerTypes`, MySQL / MariaDB only for now), the
-  settings, then the result of their test before saving: a failed test does
-  not prevent saving (a server not reachable yet). It stays
+  source (`ConnectionManagerTypes`, MySQL / MariaDB or SQLite for now), the
+  settings of its family, then the result of their test before saving: a
+  failed test does not prevent saving (a server not reachable yet). For
+  databases held in files, the test gives the state of each one, with its
+  fixes (`ConnectionCheckFiles`). It stays
   under the "Nouvelle connexion" button while another connection is shown.
   "Dupliquer" starts a creation at the settings, from the input of the
   connection shown under another name; its password, left empty, is that of
@@ -42,6 +46,7 @@ import { probeConnection, probeMessage, probeSettings } from '@/api/connections'
 import { serverName } from '@/api/flavors'
 import { errorMessage } from '@/api/errorMessage'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
+import type { DatabaseState } from '@/api/generated/DatabaseState'
 import { useConnectionsStore } from '@/stores/connections'
 import { useEditorsStore } from '@/stores/editors'
 
@@ -49,17 +54,26 @@ import {
   type ConnectionForm as Form,
   connectedText,
   copyForm,
+  attachedText,
+  connectionOf,
+  ENGINE_FAMILIES,
+  filesOf,
   emptyForm,
   formOf,
   isChanged,
   placeOf,
+  placeOfForm,
 } from './connectionForm'
 import type { Creation, ListEntry, ManagerSelection } from './connectionManager'
-import { SOURCE_FAMILIES } from './sourceTypes'
+import { reviewText } from './databaseCheck'
+import { ENGINE_TYPES, SOURCE_FAMILIES } from './sourceTypes'
 import { openTransactionsNotice } from './transactionNotice'
 
+import ConnectionCheckFiles from './ConnectionCheckFiles.vue'
 import ConnectionFlavorBadge from './ConnectionFlavorBadge.vue'
-import ConnectionForm from './ConnectionForm.vue'
+import ConnectionFormFiles from './ConnectionFormFiles.vue'
+import ConnectionFormServer from './ConnectionFormServer.vue'
+import ConnectionSchemeBadge from './ConnectionSchemeBadge.vue'
 import ConnectionManagerList from './ConnectionManagerList.vue'
 import ConnectionManagerSteps from './ConnectionManagerSteps.vue'
 import ConnectionManagerTypes from './ConnectionManagerTypes.vue'
@@ -78,6 +92,11 @@ const editors = useEditorsStore()
 const TYPES = new Map(
   SOURCE_FAMILIES.flatMap((family) => family.types).map((type) => [type.key, type]),
 )
+
+/**
+ * Engine of each kind of source supported, by key.
+ */
+const TYPE_ENGINES = new Map(Object.values(ENGINE_TYPES).map((type) => [type.key, type.engine]))
 
 /**
  * Is the window open?
@@ -116,6 +135,28 @@ const error = ref<string | null>(null)
  * the warning of an unsupported version), `null` if none.
  */
 const probed = ref<ReturnType<typeof probeMessage> | null>(null)
+
+/**
+ * State of each database held in files, as the last test of a creation gave
+ * it; `null` without such a test.
+ */
+const checked = ref<DatabaseState[] | null>(null)
+
+/**
+ * Message of the last test as shown: a warning while a database tested is
+ * to look at again, which its fixes clear.
+ */
+const shownProbed = computed(() => {
+  const message = probed.value
+  const input = form.value
+  if (message === null || checked.value === null || input === null) {
+    return message
+  }
+  const review = reviewText(input.databases, checked.value)
+  return review === null
+    ? message
+    : { tone: 'warning' as const, title: `${message.title}\n${review}` }
+})
 
 /**
  * Test in progress.
@@ -158,6 +199,12 @@ const form = computed<Form | null>(() =>
 const shownCreation = computed(() => (selected.value === 'new' ? creation.value : null))
 
 /**
+ * Protocol of the main database and number of the databases attached, of
+ * the saved connection shown if it is held in files.
+ */
+const savedFiles = computed(() => (saved.value === null ? null : filesOf(saved.value.settings)))
+
+/**
  * Is the input of a saved connection changed?
  *
  * @param connection Saved connection.
@@ -180,10 +227,12 @@ const entries = computed<ListEntry[]>(() =>
     const isChangedNow = changed(connection)
     return {
       id: connection.id,
+      engine: connection.engine,
       name: isChangedNow ? forms.value[connection.id]!.name : connection.name,
-      place: placeOf(connection),
+      place: placeOf(connection.settings),
+      files: filesOf(connection.settings),
       changed: isChangedNow,
-      connected: connection.connected_at !== null,
+      connected: connection.probe !== null,
     }
   }),
 )
@@ -254,12 +303,27 @@ const summary = computed(() => {
     return []
   }
   const input = step.form
+  // The databases tested have their own list (`ConnectionCheckFiles`).
+  const settings =
+    ENGINE_FAMILIES[input.engine] === 'files'
+      ? (checked.value === null ? input.databases : []).map((database) => ({
+          label: database.schema || '(sans schéma)',
+          value:
+            database.origin === 'memory'
+              ? 'en mémoire'
+              : database.origin === 'new'
+                ? `${database.location} (à créer)`
+                : database.location,
+        }))
+      : [
+          { label: 'Serveur', value: placeOfForm(input) },
+          { label: 'Compte', value: input.username || '(aucun)' },
+          { label: 'Base', value: input.database_name || '(aucune)' },
+        ]
   return [
     { label: 'Type', value: TYPES.get(step.type)!.label },
     { label: 'Nom', value: input.name || '(sans nom)' },
-    { label: 'Serveur', value: placeOf(input) },
-    { label: 'Compte', value: input.username || '(aucun)' },
-    { label: 'Base', value: input.database_name || '(aucune)' },
+    ...settings,
     { label: 'Session gardée', value: `${input.session_timeout_minutes} min` },
   ]
 })
@@ -270,6 +334,7 @@ const summary = computed(() => {
 function clearMessages(): void {
   error.value = null
   probed.value = null
+  checked.value = null
 }
 
 /**
@@ -356,8 +421,17 @@ watch(open, (isOpen) => {
   }
 })
 
-// A changed input makes the last test stale.
-watch(form, () => (probed.value = null), { deep: true })
+// A changed input makes the last test stale, except the fixes of the
+// "Vérification" step: the files keep the state tested.
+watch(
+  form,
+  () => {
+    if (shownCreation.value?.step !== 3) {
+      probed.value = null
+    }
+  },
+  { deep: true },
+)
 
 /**
  * Connects with the input of the connection shown. Unchanged, the test is
@@ -375,7 +449,7 @@ async function probe(): Promise<void> {
   try {
     if (changed(connection)) {
       probed.value = probeMessage(
-        await probeSettings({ connection: { ...input }, saved_id: connection.id }),
+        await probeSettings({ connection: connectionOf(input), saved_id: connection.id }),
       )
     } else {
       probed.value = probeMessage(await probeConnection(connection.id))
@@ -400,7 +474,7 @@ async function save(): Promise<void> {
   saving.value = true
   clearMessages()
   try {
-    await connections.update(connection.id, { ...input })
+    await connections.update(connection.id, connectionOf(input))
     const updated = connections.connections.find((item) => item.id === connection.id)
     if (updated !== undefined) {
       forms.value[connection.id] = formOf(updated)
@@ -431,7 +505,12 @@ function duplicate(): void {
   if (connection === null || input === null) {
     return
   }
-  creation.value = { step: 2, type: 'mysql', form: copyForm(input), copyOf: connection.id }
+  creation.value = {
+    step: 2,
+    type: ENGINE_TYPES[connection.engine].key,
+    form: copyForm(input),
+    copyOf: connection.id,
+  }
   selected.value = 'new'
   clearMessages()
 }
@@ -447,16 +526,19 @@ async function next(): Promise<void> {
   }
   clearMessages()
   if (current.step === 1) {
+    current.form.engine = TYPE_ENGINES.get(current.type) ?? current.form.engine
     current.step = 2
     return
   }
   probing.value = true
   try {
     const info = await probeSettings({
-      connection: { ...current.form },
+      connection: connectionOf(current.form),
       saved_id: current.copyOf ?? undefined,
     })
-    probed.value = probeMessage(info)
+    // The state of each database shows beside the message.
+    probed.value = probeMessage(info, false)
+    checked.value = info.databases ?? null
   } catch (failure) {
     error.value = errorMessage(failure)
   } finally {
@@ -497,8 +579,8 @@ async function create(): Promise<void> {
     const input = { ...current.form }
     const id =
       current.copyOf === null
-        ? await connections.create(input)
-        : await connections.copy(current.copyOf, input)
+        ? await connections.create(connectionOf(input))
+        : await connections.copy(current.copyOf, connectionOf(input))
     creation.value = null
     select(id)
   } catch (failure) {
@@ -561,20 +643,20 @@ function onRemoved(id: number): void {
             class="grid size-12 shrink-0 place-items-center rounded-control bg-primary/15 text-primary"
             aria-hidden="true"
           >
-            <component :is="SOURCE_FAMILIES[0]!.types[0]!.icon" class="size-5" />
+            <component :is="ENGINE_TYPES[saved.engine].icon" class="size-5" />
           </span>
           <div class="flex min-w-0 flex-1 flex-col gap-1">
             <h3 class="flex min-w-0 items-center gap-2 text-lg font-semibold text-fg-strong">
               <span class="truncate">{{ form.name || '(sans nom)' }}</span>
               <connection-flavor-badge
-                v-if="saved.server_flavor"
-                :flavor="saved.server_flavor"
-                :version="saved.server_version"
+                v-if="saved.probe"
+                :flavor="saved.probe.flavor"
+                :version="saved.probe.version"
               />
             </h3>
             <div class="flex min-w-0 items-center gap-4 text-sm text-fg-secondary">
-              <span v-if="saved.server_flavor" class="truncate font-mono">
-                {{ serverName(saved.server_flavor, saved.server_version) }}
+              <span v-if="saved.probe" class="truncate font-mono">
+                {{ serverName(saved.probe.flavor, saved.probe.version) }}
               </span>
               <span class="flex shrink-0 items-center gap-2">
                 <span
@@ -582,7 +664,7 @@ function onRemoved(id: number): void {
                   :class="
                     shownChanged
                       ? 'bg-warning'
-                      : saved.connected_at !== null
+                      : saved.probe !== null
                         ? 'bg-success'
                         : 'bg-fg-faint'
                   "
@@ -590,6 +672,16 @@ function onRemoved(id: number): void {
                 />
                 {{ shownChanged ? 'Modifiée, non enregistrée' : connectedText(saved) }}
               </span>
+            </div>
+            <div
+              v-if="savedFiles"
+              class="flex min-w-0 items-center gap-2 text-sm text-fg-secondary"
+            >
+              <connection-scheme-badge :scheme="savedFiles.scheme" />
+              <span v-if="savedFiles.scheme !== 'memory'" class="truncate font-mono">
+                {{ placeOf(saved.settings) }}
+              </span>
+              <span class="shrink-0">{{ attachedText(savedFiles.attached) }}</span>
             </div>
           </div>
           <div class="flex shrink-0 items-center gap-3">
@@ -626,7 +718,7 @@ function onRemoved(id: number): void {
           </template>
 
           <ui-alert v-if="error" tone="error" :title="error" />
-          <ui-alert v-if="probed" :tone="probed.tone" :title="probed.title" />
+          <ui-alert v-if="shownProbed" :tone="shownProbed.tone" :title="shownProbed.title" />
           <ui-alert
             v-if="shownChanged && transactionCount > 0"
             tone="warning"
@@ -638,11 +730,14 @@ function onRemoved(id: number): void {
             v-model:type="shownCreation.type"
           />
           <!-- The input is changed in place: the form gets it, without replacing it. -->
-          <connection-form
-            v-else-if="form && (saved || shownCreation?.step === 2)"
-            :form="form"
-            :password="saved ? 'saved' : shownCreation?.copyOf ? 'copy' : 'new'"
-          />
+          <template v-else-if="form && (saved || shownCreation?.step === 2)">
+            <connection-form-files v-if="ENGINE_FAMILIES[form.engine] === 'files'" :form="form" />
+            <connection-form-server
+              v-else
+              :form="form"
+              :password="saved ? 'saved' : shownCreation?.copyOf ? 'copy' : 'new'"
+            />
+          </template>
           <template v-else-if="shownCreation?.step === 3">
             <dl
               class="grid grid-cols-[--spacing(40)_minmax(0,1fr)] gap-x-6 gap-y-2 rounded-control border border-line px-4 py-3"
@@ -652,6 +747,11 @@ function onRemoved(id: number): void {
                 <dd class="truncate font-mono text-fg-strong">{{ row.value }}</dd>
               </template>
             </dl>
+            <connection-check-files
+              v-if="form && checked && ENGINE_FAMILIES[form.engine] === 'files'"
+              :form="form"
+              :states="checked"
+            />
             <p class="text-sm text-fg-secondary">
               Une fois enregistrée, la connexion apparaît dans le navigateur d’objets et dans le
               choix de connexion des éditeurs.

@@ -1,11 +1,12 @@
 import { flushPromises, mount } from '@vue/test-utils'
+import { MYSQL_CAPABILITIES } from '@/api/__tests__/capabilities'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { NewConnection } from '@/api/generated/NewConnection'
 import type { ProbeRequest } from '@/api/generated/ProbeRequest'
-import type { ServerInfo } from '@/api/generated/ServerInfo'
+import type { SourceInfo } from '@/api/generated/SourceInfo'
 import { useConnectionsStore } from '@/stores/connections'
 
 import ConnectionManager from '../ConnectionManager.vue'
@@ -13,12 +14,13 @@ import ConnectionManager from '../ConnectionManager.vue'
 /**
  * Server answering the tests.
  */
-const SERVER: ServerInfo = {
+const SERVER: SourceInfo = {
   flavor: 'mariadb',
   version: '11.4.4-MariaDB',
   ansi_quotes: false,
   no_backslash_escapes: false,
   oldest_supported: null,
+  capabilities: MYSQL_CAPABILITIES,
 }
 
 /**
@@ -32,8 +34,8 @@ const api = vi.hoisted(() => ({
   copyConnection: vi.fn<(id: number, connection: NewConnection) => Promise<{ id: number }>>(),
   updateConnection: vi.fn<(id: number, connection: NewConnection) => Promise<void>>(),
   deleteConnection: vi.fn<(id: number) => Promise<void>>(),
-  probeConnection: vi.fn<(id: number) => Promise<ServerInfo>>(),
-  probeSettings: vi.fn<(probe: ProbeRequest) => Promise<ServerInfo>>(),
+  probeConnection: vi.fn<(id: number) => Promise<SourceInfo>>(),
+  probeSettings: vi.fn<(probe: ProbeRequest) => Promise<SourceInfo>>(),
 }))
 vi.mock('@/api/connections', async (original) => ({
   ...(await original<typeof import('@/api/connections')>()),
@@ -51,16 +53,17 @@ function connection(id: number, name: string): ConnectionSummary {
     id,
     name,
     engine: 'mysql',
-    host: `${name}.lan`,
-    port: 3306,
-    username: 'root',
-    database_name: '',
+    settings: {
+      family: 'server',
+      host: `${name}.lan`,
+      port: 3306,
+      username: 'root',
+      database_name: '',
+    },
     init_sql: '',
     session_timeout_minutes: 5,
     show_system_schemas: true,
-    server_flavor: 'mariadb',
-    server_version: '11.4.4-MariaDB',
-    connected_at: null,
+    probe: null,
     created_at: '2026-11-01T10:00:00.000Z',
   }
 }
@@ -183,7 +186,12 @@ beforeEach(() => {
     return { id: 3 }
   })
   api.copyConnection.mockImplementation(async (_, input) => {
-    saved = [...saved, { ...connection(4, input.name), host: input.host }]
+    const copied = connection(4, input.name)
+    const settings =
+      copied.settings.family === 'server' && input.settings.family === 'server'
+        ? { ...copied.settings, host: input.settings.host }
+        : copied.settings
+    saved = [...saved, { ...copied, settings }]
     return { id: 4 }
   })
 })
@@ -208,7 +216,9 @@ describe('ConnectionManager', () => {
     await click('Enregistrer')
     expect(api.updateConnection).toHaveBeenCalledWith(
       1,
-      expect.objectContaining({ host: 'autre.lan', password: '' }),
+      expect.objectContaining({
+        settings: expect.objectContaining({ host: 'autre.lan', password: '' }),
+      }),
     )
   })
 
@@ -258,7 +268,10 @@ describe('ConnectionManager', () => {
     await click('Enregistrer')
     expect(api.copyConnection).toHaveBeenCalledWith(
       2,
-      expect.objectContaining({ name: 'prod-copie', host: 'prod.lan', password: '' }),
+      expect.objectContaining({
+        name: 'prod-copie',
+        settings: expect.objectContaining({ host: 'prod.lan', password: '' }),
+      }),
     )
   })
 

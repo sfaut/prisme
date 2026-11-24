@@ -5,6 +5,7 @@
 //! | Method and path                     | Role                                                          |
 //! |-------------------------------------|---------------------------------------------------------------|
 //! | `GET /api/health`                   | Checks that the server answers.                               |
+//! | `GET /api/engines`                  | Engines of Prisme: their flavors and capabilities.            |
 //! | `GET /api/connections`              | Lists the user's connections, without passwords.              |
 //! | `POST /api/connections`             | Saves a connection, password encrypted.                       |
 //! | `POST /api/connections/probe`       | Tests typed settings, before saving them.                     |
@@ -22,7 +23,7 @@
 //! | `PUT /api/display`                  | Saves the display settings (204).                             |
 //! | `POST /api/beautify`                | Beautifies SQL (keywords in capitals...).                     |
 //! | `POST /api/analyze`                 | Analyses the editor's text (see `analyze.rs`).                |
-//! | `GET /api/dialects/{flavor}/keywords` | Keywords of the dialect (`?version=`: those of the version). |
+//! | `GET /api/dialects/{flavor}/syntax` | Keywords of the dialect (`?version=`: those of the version) and lexical rules of its texts. |
 //! | `GET /api/console/...`              | History of the queries, and its stream (see `console.rs`).    |
 //! | `/api/exports...`                   | Exports of full results to CSV files (see `exports.rs`).      |
 //! | `GET /` and any other path          | Files of the interface (see `web_assets.rs`).                 |
@@ -39,11 +40,14 @@ use axum::response::Response;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use axum_extra::extract::Query;
-use prisme_connectors::mysql::{self, Flavor, ServerInfo};
+use prisme_connectors::api::{Capabilities, Engine, Namespace, SourceInfo};
+use prisme_connectors::drivers;
+use prisme_connectors::flavor::Flavor;
 use prisme_dialects::Dialect;
 use prisme_dialects::analysis::CatalogNames;
 use prisme_dialects::beautify::{BeautifyOptions, DEFAULT_INDENT_SIZE, beautify_with};
 use prisme_dialects::keywords::keywords;
+use prisme_splitter::LexicalRules;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
@@ -61,8 +65,9 @@ use crate::error_detail::ErrorDetail;
 use crate::exports::{self, Exports};
 use crate::master_key::MasterKey;
 use crate::navigator;
+use crate::new_files;
 use crate::profile::{self, Profile, ProfileUpdate};
-use crate::query_session;
+use crate::query_session::{self, Source};
 use crate::recorder::Recorder;
 use crate::request_guard;
 use crate::sessions::Sessions;
@@ -85,25 +90,59 @@ pub struct AppState {
     pub console: broadcast::Sender<ConsoleEvent>,
     /// Exports of full results to CSV files (`exports.rs`).
     pub exports: Arc<Exports>,
+    /// Cache of the copies of the remote databases, one folder per user
+    /// (`connections::load_target`).
+    locations: Arc<PathBuf>,
+}
+
+/// Folders of the data folder the server writes into.
+pub struct Folders {
+    /// Exports of full results (`exports::FOLDER`).
+    pub exports: PathBuf,
+    /// Cache of the copies of the remote databases (`LOCATIONS_FOLDER`).
+    pub locations: PathBuf,
+}
+
+/// Folder of the cache of the remote databases, in the data folder.
+const LOCATIONS_FOLDER: [&str; 2] = ["cache", "locations"];
+
+impl Folders {
+    /// Folders of the data folder `data_dir`.
+    pub fn of(data_dir: &std::path::Path) -> Self {
+        Self {
+            exports: data_dir.join(exports::FOLDER),
+            locations: LOCATIONS_FOLDER
+                .iter()
+                .fold(data_dir.to_path_buf(), |path, part| path.join(part)),
+        }
+    }
+
+    /// Folders of the tests that neither export nor read a remote database:
+    /// never created.
+    #[cfg(test)]
+    pub fn unused() -> Self {
+        Self::of(&std::env::temp_dir().join("prisme-tests-without-files"))
+    }
 }
 
 impl AppState {
     /// Builds the state from the open internal database, the key, the local
-    /// user and the folder of the exports.
-    pub fn new(
-        db: Connection,
-        key: MasterKey,
-        local_user_id: i64,
-        exports_folder: PathBuf,
-    ) -> Self {
+    /// user and the folders it writes into.
+    pub fn new(db: Connection, key: MasterKey, local_user_id: i64, folders: Folders) -> Self {
         Self {
             db: Arc::new(Mutex::new(db)),
             key: Arc::new(key),
             local_user_id,
             sessions: Arc::default(),
             console: broadcast::Sender::new(console::EVENTS_CAPACITY),
-            exports: Arc::new(Exports::new(exports_folder)),
+            exports: Arc::new(Exports::new(folders.exports)),
+            locations: Arc::new(folders.locations),
         }
+    }
+
+    /// Folder of the cache of the remote databases (`Folders::locations`).
+    pub fn locations(&self) -> Arc<PathBuf> {
+        Arc::clone(&self.locations)
     }
 
     /// Internal database, for the console's writer: it must not write to the
@@ -152,11 +191,25 @@ struct AppVersion {
     version: &'static str,
 }
 
+/// Engine of Prisme, as returned by the API: what the interface tells of it
+/// before any session, such as the switches of the writes that concern it.
+#[derive(Serialize, TS)]
+#[ts(export)]
+struct EngineInfo {
+    /// Engine.
+    engine: Engine,
+    /// Flavors it serves, in the order of `Flavor::ALL`.
+    flavors: Vec<Flavor>,
+    /// What it can do.
+    capabilities: Capabilities,
+}
+
 /// Builds the router of the API.
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
         .route("/api/version", get(version))
+        .route("/api/engines", get(engines))
         .route(
             "/api/connections",
             get(list_connections).post(create_connection),
@@ -177,7 +230,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/profile", get(get_profile).put(put_profile))
         .route("/api/beautify", post(beautify_sql))
         .route("/api/analyze", post(analyze_sql))
-        .route("/api/dialects/{flavor}/keywords", get(dialect_keywords))
+        .route("/api/dialects/{flavor}/syntax", get(dialect_syntax))
         .merge(navigator::routes())
         .merge(console::routes())
         .merge(editors::routes())
@@ -203,6 +256,24 @@ async fn version() -> Json<AppVersion> {
     })
 }
 
+/// `GET /api/engines`: each engine of Prisme, with its flavors and its
+/// capabilities, in the order of `Engine::ALL`.
+async fn engines() -> Json<Vec<EngineInfo>> {
+    Json(
+        Engine::ALL
+            .into_iter()
+            .map(|engine| EngineInfo {
+                engine,
+                flavors: Flavor::ALL
+                    .into_iter()
+                    .filter(|flavor| flavor.engine() == engine)
+                    .collect(),
+                capabilities: drivers::of(engine).capabilities(),
+            })
+            .collect(),
+    )
+}
+
 /// `GET /api/connections`: connections of the current user, without passwords.
 async fn list_connections(
     State(state): State<AppState>,
@@ -214,15 +285,45 @@ async fn list_connections(
     Ok(Json(summaries))
 }
 
+/// Saves `connection` by `save`, once the empty databases it asks for are
+/// created (`new_files`); they are removed again if it is not saved.
+/// `save` returns `None` when the connection to change or copy does not
+/// exist.
+async fn save_with_files<T: Send + 'static>(
+    state: &AppState,
+    connection: NewConnection,
+    save: impl FnOnce(&Connection, &MasterKey, &NewConnection) -> Result<Option<T>, ConnectionsError>
+    + Send
+    + 'static,
+) -> Result<T, ApiError> {
+    connection.validate()?;
+    let files: new_files::NewFiles = new_files::create(&connection).await?;
+    let saved = state
+        .with_db(move |db, key| save(db, key, &connection))
+        .await;
+    match saved {
+        Ok(Some(saved)) => Ok(saved),
+        Ok(None) => {
+            files.discard();
+            Err(ApiError::NotFound)
+        }
+        Err(error) => {
+            files.discard();
+            Err(error)
+        }
+    }
+}
+
 /// `POST /api/connections`: saves a connection and returns its id (201).
 async fn create_connection(
     State(state): State<AppState>,
     user: CurrentUser,
     Json(new): Json<NewConnection>,
 ) -> Result<(StatusCode, Json<Created>), ApiError> {
-    let id = state
-        .with_db(move |db, key| connections::insert(db, key, user.id, &new))
-        .await?;
+    let id = save_with_files(&state, new, move |db, key, new| {
+        connections::insert(db, key, user.id, new).map(Some)
+    })
+    .await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
@@ -235,10 +336,10 @@ async fn copy_connection(
     Path(id): Path<i64>,
     Json(new): Json<NewConnection>,
 ) -> Result<(StatusCode, Json<Created>), ApiError> {
-    let id = state
-        .with_db(move |db, key| connections::insert_copy(db, key, user.id, id, &new))
-        .await?
-        .ok_or(ApiError::NotFound)?;
+    let id = save_with_files(&state, new, move |db, key, new| {
+        connections::insert_copy(db, key, user.id, id, new)
+    })
+    .await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
@@ -250,16 +351,14 @@ async fn update_connection(
     Path(id): Path<i64>,
     Json(changed): Json<NewConnection>,
 ) -> Result<StatusCode, ApiError> {
-    let updated = state
-        .with_db(move |db, key| connections::update(db, key, user.id, id, &changed))
-        .await?;
-    if updated {
-        // The sessions opened with the old settings close.
-        state.sessions.stop_connection(id);
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(ApiError::NotFound)
-    }
+    save_with_files(&state, changed, move |db, key, changed| {
+        let updated = connections::update(db, key, user.id, id, changed)?;
+        Ok(updated.then_some(()))
+    })
+    .await?;
+    // The sessions opened with the old settings close.
+    state.sessions.stop_connection(id);
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `DELETE /api/connections/{id}`: deletes a connection of the current user (204).
@@ -288,21 +387,22 @@ async fn query_socket(
     upgrade: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
     let user_id = user.id;
+    let locations = state.locations();
     let (target, read_only, name) = state
         .with_db(move |db, key| {
-            let target = connections::load_target(db, key, user_id, id)?;
+            let target = connections::load_target(db, key, user_id, id, &locations)?;
             let read_only = settings::load(db, user_id)?.read_only_session;
             let name = connections::name_of(db, user_id, id)?;
             Ok::<_, ApiError>((target, read_only, name))
         })
         .await?;
-    let target = connections::with_read_only(target.ok_or(ApiError::NotFound)?, read_only);
+    let source = Source::new(id, target.ok_or(ApiError::NotFound)?, read_only, None);
     Ok(upgrade.on_upgrade(move |socket| {
         let span = api_log::connection_span(id);
         let history = span.in_scope(|| console::connection_span(user_id, &name));
         async move {
             let on_end = Box::new(|| {});
-            query_session::start(socket, state, user_id, target, None, Duration::ZERO, on_end);
+            query_session::start(socket, state, user_id, source, None, Duration::ZERO, on_end);
         }
         .instrument(history)
         .instrument(span)
@@ -337,9 +437,10 @@ async fn editor_session(
         .await?
         .ok_or(ApiError::NotFound)?
         .ok_or(ApiError::BadRequest(ErrorDetail::NoConnection))?;
+    let locations = state.locations();
     let (target, minutes, read_only, name, saved_database) = state
         .with_db(move |db, key| {
-            let target = connections::load_target(db, key, user_id, connection_id)?;
+            let target = connections::load_target(db, key, user_id, connection_id, &locations)?;
             let minutes = connections::session_timeout(db, user_id, connection_id)?;
             let read_only = settings::load(db, user_id)?.read_only_session;
             let name = connections::name_of(db, user_id, connection_id)?;
@@ -352,23 +453,22 @@ async fn editor_session(
         })
         .await?
         .ok_or(ApiError::NotFound)?;
-    let mut target = connections::with_read_only(target, read_only);
-    if let Some(database) = opening_database(query.database, saved_database) {
-        target.database_name = database;
-    }
+    let namespace = opening_database(query.database, saved_database).map(Namespace::single);
+    let source = Source::new(connection_id, target, read_only, namespace);
     let keep_alive = Duration::from_secs(u64::from(minutes) * 60);
     Ok(upgrade.on_upgrade(move |socket| {
         let span = api_log::editor_span(id);
         let history = span.in_scope(|| console::editor_span(user_id, &name, id));
         async move {
             let sessions = Arc::clone(&state.sessions);
-            sessions.attach(id, connection_id, socket, |socket, on_end| {
+            let shared = Arc::clone(&source.shared);
+            sessions.attach(id, connection_id, shared, socket, |socket, on_end| {
                 let recorder = Recorder::new(state.clone(), id);
                 query_session::start(
                     socket,
                     state,
                     user_id,
-                    target,
+                    source,
                     Some(recorder),
                     keep_alive,
                     on_end,
@@ -499,12 +599,13 @@ struct KeywordsQuery {
     version: Option<String>,
 }
 
-/// Keywords of a dialect, in capitals, by category
-/// (`crates/dialects/keywords/*.yaml` files): the editor's highlighting sorts
-/// them into its word classes.
+/// What the editor's highlighting reads of a dialect: its keywords, in
+/// capitals, by category (`crates/dialects/keywords/*.yaml` files), which it
+/// sorts into its word classes, and the lexical rules of its texts, which the
+/// splitter follows too.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
-struct DialectKeywords {
+struct DialectSyntax {
     /// Reserved words.
     reserved: Vec<String>,
     /// Non-reserved keywords.
@@ -513,20 +614,24 @@ struct DialectKeywords {
     types: Vec<String>,
     /// Words that designate a value (`NULL`, `CURRENT_DATE`...).
     literals: Vec<String>,
+    /// Lexical rules of the texts: comments, quotes, escapes.
+    lexical: LexicalRules,
 }
 
-/// `GET /api/dialects/{flavor}/keywords`: keywords of the dialect, limited to
-/// those of the requested version.
-async fn dialect_keywords(
+/// `GET /api/dialects/{flavor}/syntax`: keywords of the dialect, limited to
+/// those of the requested version, and lexical rules of its texts.
+async fn dialect_syntax(
     Path(flavor): Path<Flavor>,
     Query(query): Query<KeywordsQuery>,
-) -> Json<DialectKeywords> {
-    let words = keywords(dialect_of(flavor), query.version.as_deref());
-    Json(DialectKeywords {
+) -> Json<DialectSyntax> {
+    let dialect = dialect_of(flavor);
+    let words = keywords(dialect, query.version.as_deref());
+    Json(DialectSyntax {
         reserved: words.reserved,
         keywords: words.keywords,
         types: words.types,
         literals: words.literals,
+        lexical: *dialect.lexical_rules(),
     })
 }
 
@@ -594,16 +699,18 @@ async fn probe_settings(
     State(state): State<AppState>,
     user: CurrentUser,
     Json(request): Json<ProbeRequest>,
-) -> Result<Json<ServerInfo>, ApiError> {
+) -> Result<Json<SourceInfo>, ApiError> {
     let user_id = user.id;
     let name = request.connection.name.clone();
+    let locations = state.locations();
     let target = state
-        .with_db(move |db, key| connections::probe_target(db, key, user_id, request))
+        .with_db(move |db, key| connections::probe_target(db, key, user_id, request, &locations))
         .await?
         .ok_or(ApiError::NotFound)?;
 
     let span = console::sql_span(user_id, &name, None, Action::Probe);
-    Ok(Json(mysql::probe(&target).instrument(span).await?))
+    let probing = drivers::of(target.engine).probe(&target);
+    Ok(Json(probing.instrument(span).await?))
 }
 
 /// `POST /api/connections/{id}/probe`: connects to the server and returns its identity.
@@ -611,11 +718,12 @@ async fn probe_connection(
     State(state): State<AppState>,
     user: CurrentUser,
     Path(id): Path<i64>,
-) -> Result<Json<ServerInfo>, ApiError> {
+) -> Result<Json<SourceInfo>, ApiError> {
     let user_id = user.id;
+    let locations = state.locations();
     let (target, name) = state
         .with_db(move |db, key| {
-            let target = connections::load_target(db, key, user_id, id)?;
+            let target = connections::load_target(db, key, user_id, id, &locations)?;
             let name = connections::name_of(db, user_id, id)?;
             Ok::<_, ConnectionsError>(target.map(|target| (target, name)))
         })
@@ -623,7 +731,8 @@ async fn probe_connection(
         .ok_or(ApiError::NotFound)?;
 
     let span = console::sql_span(user_id, &name, None, Action::Probe);
-    let info = mysql::probe(&target).instrument(span).await?;
+    let probing = drivers::of(target.engine).probe(&target);
+    let info = probing.instrument(span).await?;
     let server = info.clone();
     state
         .with_db(move |db, _| connections::remember_server(db, user_id, id, &server))
@@ -644,7 +753,7 @@ mod tests {
     fn test_app() -> Router {
         let db = store::open_in_memory();
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
-        let state = AppState::new(db, MasterKey::generate(), user_id, exports::unused_folder());
+        let state = AppState::new(db, MasterKey::generate(), user_id, Folders::unused());
         router(state)
     }
 
@@ -676,10 +785,14 @@ mod tests {
     fn connection_json(name: &str, port: u16) -> Value {
         json!({
             "name": name,
-            "host": "127.0.0.1",
-            "port": port,
-            "username": "root",
-            "password": "secret",
+            "engine": "mysql",
+            "settings": {
+                "family": "server",
+                "host": "127.0.0.1",
+                "port": port,
+                "username": "root",
+                "password": "secret",
+            },
         })
     }
 
@@ -687,6 +800,18 @@ mod tests {
     async fn health_answers() {
         let (status, _) = send(&test_app(), "GET", "/api/health", None).await;
         assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn answers_the_engines_with_their_flavors_and_capabilities() {
+        let (status, body) = send(&test_app(), "GET", "/api/engines", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body[0]["engine"], "mysql");
+        assert_eq!(body[0]["flavors"], serde_json::json!(["mysql", "mariadb"]));
+        assert_eq!(body[1]["engine"], "sqlite");
+        let kinds = body[1]["capabilities"]["write_kinds"].as_array().unwrap();
+        assert!(kinds.contains(&serde_json::json!("attach")));
+        assert!(!kinds.contains(&serde_json::json!("truncate_table")));
     }
 
     #[tokio::test]
@@ -744,7 +869,7 @@ mod tests {
         let editor = editors::create(&db, user_id, &NewEditor::default()).unwrap();
         let tab = editors::start_batch(&db, editor.id, &[(0, "SELECT 1".into())]).unwrap()[0].0;
         editors::save_chunk(&db, tab, 0, 0, r#"[["1",null]]"#).unwrap();
-        let state = AppState::new(db, MasterKey::generate(), user_id, exports::unused_folder());
+        let state = AppState::new(db, MasterKey::generate(), user_id, Folders::unused());
         let app = router(state);
 
         let uri = format!("/api/editors/{}/results", editor.id);
@@ -758,22 +883,24 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gives_the_keywords_of_a_dialect_and_version() {
+    async fn gives_the_syntax_of_a_dialect_and_version() {
         let app = test_app();
-        let (status, all) = send(&app, "GET", "/api/dialects/mysql/keywords", None).await;
+        let (status, all) = send(&app, "GET", "/api/dialects/mysql/syntax", None).await;
         assert_eq!(status, StatusCode::OK);
         let has = |body: &Value, category: &str, word: &str| {
             body[category].as_array().unwrap().contains(&json!(word))
         };
         assert!(has(&all, "reserved", "SELECT") && has(&all, "reserved", "WINDOW"));
         assert!(has(&all, "types", "VARCHAR") && has(&all, "literals", "NULL"));
+        assert_eq!(all["lexical"]["hash_comments"], true);
+        assert_eq!(all["lexical"]["identifier_quotes"], "`");
 
         // MySQL 5.7: the reserved words that appeared with MySQL 8.0 are not kept.
-        let uri = "/api/dialects/mysql/keywords?version=5.7.44";
+        let uri = "/api/dialects/mysql/syntax?version=5.7.44";
         let (_, old) = send(&app, "GET", uri, None).await;
         assert!(has(&old, "reserved", "SELECT") && !has(&old, "reserved", "WINDOW"));
 
-        let (status, _) = send(&app, "GET", "/api/dialects/mariadb/keywords", None).await;
+        let (status, _) = send(&app, "GET", "/api/dialects/mariadb/syntax", None).await;
         assert_eq!(status, StatusCode::OK);
     }
 
@@ -826,7 +953,7 @@ mod tests {
         )
         .await;
         let mut copy = connection_json("prod (copie)", 3306);
-        copy["password"] = json!("");
+        copy["settings"]["password"] = json!("");
         let uri = format!("/api/connections/{}/copies", created["id"]);
 
         let (status, copied) = send(&app, "POST", &uri, Some(copy.clone())).await;
@@ -856,7 +983,8 @@ mod tests {
         assert_eq!(status, StatusCode::NO_CONTENT);
         let (_, list) = send(&app, "GET", "/api/connections", None).await;
         assert_eq!(list[0]["name"], "staging");
-        assert_eq!(list[0]["port"], 3307);
+        assert_eq!(list[0]["settings"]["family"], "server");
+        assert_eq!(list[0]["settings"]["port"], 3307);
 
         let (status, _) = send(
             &app,
@@ -871,7 +999,7 @@ mod tests {
     #[tokio::test]
     async fn probe_of_an_unknown_saved_connection_gives_not_found() {
         let mut connection = connection_json("prod", 3306);
-        connection["password"] = json!("");
+        connection["settings"]["password"] = json!("");
         let (status, _) = send(
             &test_app(),
             "POST",
@@ -976,6 +1104,7 @@ mod tests {
         assert_eq!(settings["indent_size"], 4);
         assert_eq!(settings["concat_max_bytes"], 1000);
         assert_eq!(settings["pivot_refresh_ms"], 1000);
+        assert_eq!(settings["remote_max_mebibytes"], 1024);
 
         let update = |row_limit: u32, history_retention_days: u16| {
             json!({
@@ -987,6 +1116,10 @@ mod tests {
                 "indent_size": 2,
                 "concat_max_bytes": 4000,
                 "pivot_refresh_ms": 2500,
+                "remote_connect_timeout_seconds": 10,
+                "remote_download_timeout_minutes": 5,
+                "remote_max_mebibytes": 1024,
+                "remote_cache_days": 30,
             })
         };
         let (status, settings) = send(&app, "PUT", "/api/settings", Some(update(10000, 90))).await;
@@ -1015,6 +1148,10 @@ mod tests {
         let mut fast = update(1000, 90);
         fast["pivot_refresh_ms"] = json!(199);
         let (status, _) = send(&app, "PUT", "/api/settings", Some(fast)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let mut patient = update(1000, 90);
+        patient["remote_connect_timeout_seconds"] = json!(301);
+        let (status, _) = send(&app, "PUT", "/api/settings", Some(patient)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         let mut unknown = update(1000, 90);
         unknown["allowed_writes"] = json!(["grant"]);

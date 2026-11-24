@@ -25,8 +25,10 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
-use prisme_connectors::mysql::sql_log::{self, Sent};
-use prisme_connectors::mysql::{self, Connection, Flavor, MysqlError, ResultStream, TypeFamily};
+use prisme_connectors::api::{self, ConnectorError, Rows};
+use prisme_connectors::columns::TypeFamily;
+use prisme_connectors::flavor::Flavor;
+use prisme_connectors::sql_log::{self, Sent};
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
@@ -68,7 +70,7 @@ pub(super) struct Job {
     /// The export, followed by the registry.
     pub running: Arc<Running>,
     /// Connection of the export, read-only.
-    pub connection: Connection,
+    pub connection: Box<dyn api::Session>,
     /// Flavor of the server, for its error messages.
     pub flavor: Flavor,
     /// Query, run as it is written.
@@ -99,13 +101,13 @@ impl Job {
             flavor,
         };
         let outcome = writer
-            .write(&mut connection, &sql, &columns, &mut file)
+            .write(connection.as_mut(), &sql, &columns, &mut file)
             .await;
         drop(file);
         // Closed in the background: `mysql_async` first reads what remains
         // of an abandoned result, which the closing of the connection on the
         // server limits to the rows already on their way.
-        tokio::spawn(connection.disconnect());
+        tokio::spawn(connection.close());
         super::finish(&state, &running, outcome).await;
     }
 }
@@ -126,7 +128,7 @@ impl Writer<'_> {
     /// history of the queries.
     async fn write(
         &self,
-        connection: &mut Connection,
+        connection: &mut dyn api::Session,
         sql: &str,
         columns: &[usize],
         file: &mut File,
@@ -136,7 +138,7 @@ impl Writer<'_> {
             return Outcome::Cancelled;
         }
         let executing = Instant::now();
-        let executed = mysql::execute(connection, sql).await;
+        let executed = connection.execute(sql).await;
         let execution = executing.elapsed();
         let (outcome, rows, transfer) = match executed {
             Ok(stream) => {
@@ -163,17 +165,23 @@ impl Writer<'_> {
     /// too: the partial file holds as many rows as the export counts.
     async fn transfer(
         &self,
-        mut stream: ResultStream<'_>,
+        mut stream: Box<dyn Rows<'_> + '_>,
         columns: &[usize],
         file: &mut File,
     ) -> Outcome {
-        let names = stream.column_names();
+        let names: Vec<String> = stream
+            .columns()
+            .iter()
+            .map(|column| column.name.clone())
+            .collect();
         let order = match column_order(columns, &names) {
             Ok(order) => order,
             Err(detail) => return self.abandon(Outcome::Failed(detail)).await,
         };
-        let types = stream.column_types();
-        let families: Vec<TypeFamily> = order.iter().map(|&index| types[index].family).collect();
+        let families: Vec<TypeFamily> = order
+            .iter()
+            .map(|&index| stream.columns()[index].type_info.family)
+            .collect();
 
         let mut chunk = String::with_capacity(CHUNK);
         csv::write_start(&mut chunk, order.iter().map(|&index| names[index].as_str()));
@@ -262,11 +270,11 @@ impl Writer<'_> {
 
     /// Outcome of a failure of the query: stopped by the user (the closing
     /// of its connection makes the query fail), or failed.
-    fn failure(&self, error: &MysqlError) -> Outcome {
+    fn failure(&self, error: &ConnectorError) -> Outcome {
         if self.running.is_cancelled() {
             Outcome::Cancelled
         } else {
-            Outcome::Failed(ErrorDetail::of_mysql(error, Some(self.flavor)))
+            Outcome::Failed(ErrorDetail::of_connector(error, Some(self.flavor)))
         }
     }
 }

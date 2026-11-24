@@ -4,24 +4,24 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use tokio::net::TcpStream;
+use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message as ClientMessage;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 
-use crate::api::{AppState, router};
-use crate::connections::{self, NewConnection};
+use crate::api::{AppState, Folders, router};
+use crate::connections::{
+    self, NewConnection, NewFileDatabase, NewFilesSettings, NewServerSettings, NewSettings,
+};
 use crate::editors::{self, NewEditor};
 use crate::error_detail::ErrorDetail;
-use crate::exports;
 use crate::master_key::MasterKey;
-use crate::settings::{self, SettingsUpdate};
 use crate::store;
-use prisme_connectors::mysql::{Flavor, MysqlTarget};
+use crate::test_support::{ClientSocket, allow_writes, attachable_database, memory_connection};
+use prisme_connectors::api::Engine;
+use prisme_connectors::flavor::Flavor;
+use prisme_connectors::mysql::MysqlTarget;
 use prisme_connectors::test_servers;
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{WriteKind, classify};
-use std::collections::BTreeSet;
-
-type ClientSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 /// Starts Prisme on a free port, with a saved connection to `target` and
 /// an editor on this connection, and returns the server's address, the id
@@ -33,37 +33,34 @@ async fn start(target: &MysqlTarget) -> (String, i64, i64) {
 /// Starts Prisme as `start` does; with `writes`, the sessions are not
 /// read-only and allow these writes.
 async fn start_writing(target: &MysqlTarget, writes: Option<&[WriteKind]>) -> (String, i64, i64) {
-    let db = store::open_in_memory();
-    let key = MasterKey::generate();
-    let user_id = store::ensure_user(&db, "test@example.com").unwrap();
-    if let Some(writes) = writes {
-        let current = settings::load(&db, user_id).unwrap();
-        let update = SettingsUpdate {
-            row_limit: current.row_limit,
-            read_only_session: false,
-            allowed_writes: writes.to_vec(),
-            history_retention_days: current.history_retention_days,
-            debug_retention_days: current.debug_retention_days,
-            indent_size: current.indent_size,
-            concat_max_bytes: current.concat_max_bytes,
-            pivot_refresh_ms: current.pivot_refresh_ms,
-        };
-        settings::update(&db, user_id, &update).unwrap();
-    }
     let new = NewConnection {
         name: "test".to_string(),
-        host: target.host.clone(),
-        port: target.port,
-        username: target.username.clone(),
-        password: target.password.clone(),
-        database_name: target.database_name.clone(),
+        engine: Engine::Mysql,
+        settings: NewSettings::Server(NewServerSettings {
+            host: target.host.clone(),
+            port: target.port,
+            username: target.username.clone(),
+            password: target.password.clone(),
+            database_name: target.database_name.clone(),
+        }),
         // On-connect queries: the variable exists on each open connection,
         // and double quotes delimit identifiers there.
         init_sql: "SET @prisme_init = 1; SET SESSION sql_mode = 'ANSI_QUOTES'".to_string(),
         session_timeout_minutes: 5,
         show_system_schemas: true,
     };
-    let id = connections::insert(&db, &key, user_id, &new).unwrap();
+    start_connection(&new, writes).await
+}
+
+/// Starts Prisme as `start_writing` does, with the connection `new`.
+async fn start_connection(new: &NewConnection, writes: Option<&[WriteKind]>) -> (String, i64, i64) {
+    let db = store::open_in_memory();
+    let key = MasterKey::generate();
+    let user_id = store::ensure_user(&db, "test@example.com").unwrap();
+    if let Some(writes) = writes {
+        allow_writes(&db, user_id, writes);
+    }
+    let id = connections::insert(&db, &key, user_id, new).unwrap();
     let new_editor = NewEditor {
         connection_id: Some(id),
     };
@@ -71,9 +68,17 @@ async fn start_writing(target: &MysqlTarget, writes: Option<&[WriteKind]>) -> (S
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap().to_string();
-    let app = router(AppState::new(db, key, user_id, exports::unused_folder()));
+    let app = router(AppState::new(db, key, user_id, Folders::unused()));
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     (address, id, editor.id)
+}
+
+/// Waits for a SQLite session to open: `ready`, then its databases, told
+/// at once.
+async fn opened(socket: &mut ClientSocket) {
+    assert_eq!(next_json(socket).await["type"], "ready");
+    let databases = next_json(socket).await;
+    assert_eq!(databases["type"], "databases", "{databases}");
 }
 
 /// Reads the next text message of the server, as JSON.
@@ -119,7 +124,7 @@ async fn run(socket: &mut ClientSocket, mut request: Value) -> (Value, Vec<Recei
         if kind == "error" && message["query"].is_null() {
             return (message, results);
         }
-        if kind == "transaction" {
+        if kind == "transaction" || kind == "databases" {
             // State of the session, outside the results.
             continue;
         }
@@ -186,7 +191,10 @@ fn chooses_the_statement_under_the_cursor_those_of_the_selection_or_all() {
     use super::protocol::SelectionRange;
 
     // Queries at 0..9, 10..19 and 20..29.
-    let statements = prisme_splitter::split("SELECT 1;\nSELECT 2;\nSELECT 3;");
+    let statements = prisme_splitter::split(
+        "SELECT 1;\nSELECT 2;\nSELECT 3;",
+        Dialect::MySql.lexical_rules(),
+    );
     let sql = |chosen: Vec<&prisme_splitter::Statement>| {
         chosen
             .into_iter()
@@ -231,7 +239,7 @@ FROM product;
 SELECT ALL id, name, email
 FROM user
 WHERE email LIKE '%.fr';";
-    let statements = prisme_splitter::split(text);
+    let statements = prisme_splitter::split(text, Dialect::MySql.lexical_rules());
     let range = |start, end| SelectionRange { start, end };
     let pieces = |selection: &[SelectionRange]| {
         selected_pieces(&statements, selection)
@@ -318,19 +326,11 @@ fn a_heavy_batch_leaves_at_once() {
 #[tokio::test]
 async fn cancels_one_query_or_the_whole_batch() {
     // No running query: stopping does not contact the target server.
-    let target = super::MysqlTarget {
-        host: "127.0.0.1".to_string(),
-        port: 1,
-        username: "root".to_string(),
-        password: secrecy::SecretString::from("secret"),
-        database_name: String::new(),
-        init_statements: Vec::new(),
-    };
     let cancellation = super::Cancellation::default();
 
     // A stop sent right after its batch, before the batch starts, reaches it.
     let first = cancellation.receive_batch();
-    cancellation.cancel(&target).await;
+    cancellation.cancel().await;
     assert!(cancellation.is_cancelled(first, 0));
 
     // A batch received after the stop is not affected.
@@ -338,7 +338,7 @@ async fn cancels_one_query_or_the_whole_batch() {
     assert!(!cancellation.is_cancelled(second, 0));
 
     // A stop of one query reaches that query of the last batch only.
-    cancellation.cancel_query(&target, 1).await;
+    cancellation.cancel_query(1).await;
     assert!(cancellation.is_cancelled(second, 1));
     assert!(!cancellation.is_cancelled(second, 0));
     let third = cancellation.receive_batch();
@@ -347,11 +347,14 @@ async fn cancels_one_query_or_the_whole_batch() {
 
 #[test]
 fn refuses_the_writes_not_allowed_and_unparsable_queries() {
+    // `None`: read-only sessions, no switch on.
     let refusal = |sql: &str, writes: Option<&[WriteKind]>| {
-        let writes: Option<BTreeSet<WriteKind>> =
-            writes.map(|kinds| kinds.iter().copied().collect());
+        let writes = super::limits::Writes {
+            read_only: writes.is_none(),
+            allowed: writes.unwrap_or_default().iter().copied().collect(),
+        };
         let kind = classify(sql, Dialect::MariaDb);
-        super::limits::write_refusal(&kind, writes.as_ref())
+        super::limits::write_refusal(&kind, &writes)
     };
     assert_eq!(refusal("SELECT 1", None), None);
     assert_eq!(refusal("SHOW TABLES", None), None);
@@ -404,6 +407,39 @@ fn refuses_the_writes_not_allowed_and_unparsable_queries() {
     assert_eq!(
         refusal("SELECT * FROM t PROCEDURE ANALYSE()", Some(&WriteKind::ALL)),
         Some(ErrorDetail::UnparsedQueryRefused)
+    );
+}
+
+#[test]
+fn a_read_only_session_still_attaches_under_its_switch() {
+    let refusal = |sql: &str, read_only: bool, allowed: &[WriteKind]| {
+        let writes = super::limits::Writes {
+            read_only,
+            allowed: allowed.iter().copied().collect(),
+        };
+        super::limits::write_refusal(&classify(sql, Dialect::Sqlite), &writes)
+    };
+    let attach = "ATTACH ':memory:' AS m";
+    assert_eq!(refusal(attach, true, &[WriteKind::Attach]), None);
+    assert_eq!(refusal("DETACH m", true, &[WriteKind::Attach]), None);
+    assert_eq!(
+        refusal(attach, true, &[]),
+        Some(ErrorDetail::WriteNotAllowed {
+            kinds: vec![WriteKind::Attach]
+        })
+    );
+    // The other writes stay refused, with the attachment or without.
+    assert_eq!(
+        refusal("VACUUM", true, &WriteKind::ALL),
+        Some(ErrorDetail::WriteReadOnly)
+    );
+    assert_eq!(
+        refusal(
+            "ATTACH ':memory:' AS m; DELETE FROM t",
+            true,
+            &WriteKind::ALL
+        ),
+        Some(ErrorDetail::WriteReadOnly)
     );
 }
 
@@ -778,12 +814,13 @@ async fn closing_the_editor_session_ends_it_at_once() {
         .await;
         assert!(closed.is_ok());
 
-        // A new WebSocket opens another session: back to the default database.
+        // A new WebSocket opens another session, on the last current
+        // database of the editor.
         let (mut socket, _) = connect_async(&url).await.unwrap();
         let ready = next_json(&mut socket).await;
         assert_eq!(
             (ready["type"].as_str(), ready["database"].as_str()),
-            (Some("ready"), Some(target.database_name.as_str()))
+            (Some("ready"), Some("mysql"))
         );
         }).await;
     }
@@ -977,4 +1014,330 @@ async fn editor_session_ends_when_the_server_closes_its_connection() {
             })
             .await;
     }
+}
+
+#[tokio::test]
+async fn a_sqlite_session_stays_on_main_whatever_the_database_asked_for() {
+    let (address, _, editor_id) = start_connection(&memory_connection(), None).await;
+    // SQLite changes no database: the one asked for is left aside.
+    let url = format!("ws://{address}/api/editors/{editor_id}/session?database=other");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    opened(&mut socket).await;
+    assert_eq!(
+        run_all_rows(&mut socket, "SELECT 1; SELECT 2").await,
+        [1, 1]
+    );
+}
+
+#[tokio::test]
+async fn the_queries_of_a_sqlite_session_share_its_databases_in_memory() {
+    let writes = [WriteKind::CreateTable, WriteKind::Insert];
+    let (address, _, editor_id) = start_connection(&memory_connection(), Some(&writes)).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    opened(&mut socket).await;
+    run_one(&mut socket, "CREATE TABLE t (x INTEGER)", None).await;
+    run_one(&mut socket, "INSERT INTO t VALUES (1), (2)", None).await;
+    // Without a transaction, each query of a batch runs on a connection of
+    // its own, which sees the database in memory of the session.
+    let reads = "SELECT x FROM t; SELECT x FROM t WHERE x = 2";
+    assert_eq!(run_all_rows(&mut socket, reads).await, [2, 1]);
+}
+
+#[tokio::test]
+async fn the_parallel_queries_of_a_sqlite_session_see_its_attached_databases() {
+    let folder = tempfile::tempdir().unwrap();
+    let [main, other] = ["main", "other"].map(|name| folder.path().join(format!("{name}.db")));
+    rusqlite::Connection::open(&main).unwrap();
+    rusqlite::Connection::open(&other)
+        .unwrap()
+        .execute_batch("CREATE TABLE t (a); INSERT INTO t VALUES (1)")
+        .unwrap();
+    let new = NewConnection {
+        name: "files".to_string(),
+        settings: NewSettings::Files(NewFilesSettings {
+            databases: vec![NewFileDatabase {
+                schema: "main".to_string(),
+                location: main.to_string_lossy().into_owned(),
+                create: false,
+            }],
+        }),
+        ..memory_connection()
+    };
+    let writes = [WriteKind::Attach, WriteKind::CreateTable];
+    let (address, _, editor_id) = start_connection(&new, Some(&writes)).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    opened(&mut socket).await;
+
+    // Attached in SQL: each connection of a parallel batch attaches it too.
+    let attach = format!("ATTACH '{}' AS other", other.display());
+    run_one(&mut socket, &attach, None).await;
+    let reads = "SELECT a FROM other.t; SELECT count(*) FROM other.t";
+    assert_eq!(run_all_rows(&mut socket, reads).await, [1, 1]);
+
+    // A database private to the session's connection: the batch runs there,
+    // in sequence.
+    run_one(&mut socket, "ATTACH ':memory:' AS scratch", None).await;
+    run_one(&mut socket, "CREATE TABLE scratch.x (a)", None).await;
+    let reads = "SELECT count(*) FROM scratch.x; SELECT a FROM other.t";
+    assert_eq!(run_all_rows(&mut socket, reads).await, [1, 1]);
+}
+
+#[tokio::test]
+async fn tells_the_databases_of_a_sqlite_session_at_once_and_when_they_change() {
+    let folder = tempfile::tempdir().unwrap();
+    let other = attachable_database(folder.path(), "other");
+    let writes = [WriteKind::Attach];
+    let (address, _, editor_id) = start_connection(&memory_connection(), Some(&writes)).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    assert_eq!(next_json(&mut socket).await["type"], "ready");
+    let opening = next_json(&mut socket).await;
+    assert_eq!(opening["type"], "databases", "{opening}");
+    assert_eq!(opening["databases"][0]["location"]["scheme"], "memory");
+
+    // Messages of a batch, from `batch` to `batch_done`, by type.
+    let mut messages_of = async |sql: &str| -> Vec<Value> {
+        let request = json!({ "type": "run", "sql": sql, "cursor": 0 });
+        socket
+            .send(ClientMessage::Text(request.to_string().into()))
+            .await
+            .unwrap();
+        let mut messages = Vec::new();
+        loop {
+            let message = next_json(&mut socket).await;
+            if message["type"] == "batch_done" {
+                return messages;
+            }
+            messages.push(message);
+        }
+    };
+    let databases = |messages: &[Value]| -> Vec<Value> {
+        messages
+            .iter()
+            .filter(|message| message["type"] == "databases")
+            .map(|message| message["databases"].clone())
+            .collect()
+    };
+    // On a main database in memory, the file is named by its URI.
+    let uri = prisme_dialects::sqlite_files::file_uri(&other, false);
+    let attached = messages_of(&format!("ATTACH '{uri}' AS other")).await;
+    let schemas: Vec<Value> = databases(&attached)
+        .iter()
+        .flat_map(|list| list.as_array().unwrap().clone())
+        .map(|database| database["schema"].clone())
+        .collect();
+    assert_eq!(schemas, [json!("main"), json!("other")]);
+    // A read changes nothing: no message.
+    assert!(databases(&messages_of("SELECT 1").await).is_empty());
+    assert_eq!(databases(&messages_of("DETACH other").await).len(), 1);
+
+    // A page that comes back gets them after `ready`.
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    assert_eq!(next_json(&mut socket).await["type"], "ready");
+    let message = next_json(&mut socket).await;
+    assert_eq!(message["type"], "databases");
+    assert_eq!(message["databases"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn copies_a_database_of_a_sqlite_session_into_a_file() {
+    let folder = tempfile::tempdir().unwrap();
+    let copy = folder.path().join("copy.db");
+    let writes = [WriteKind::CreateTable, WriteKind::Insert];
+    let (address, _, editor_id) = start_connection(&memory_connection(), Some(&writes)).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    opened(&mut socket).await;
+    run_one(&mut socket, "CREATE TABLE t (x INTEGER)", None).await;
+    run_one(&mut socket, "INSERT INTO t VALUES (1), (2)", None).await;
+
+    let mut backup = async |location: &str| -> Value {
+        let request = json!({ "type": "backup", "schema": "main", "location": location });
+        socket
+            .send(ClientMessage::Text(request.to_string().into()))
+            .await
+            .unwrap();
+        next_json(&mut socket).await
+    };
+    let location = copy.to_string_lossy().into_owned();
+    let copied = backup(&location).await;
+    assert_eq!(copied["type"], "backed_up", "{copied}");
+    assert_eq!(copied["location"]["scheme"], "file");
+    let rows: i64 = rusqlite::Connection::open(&copy)
+        .unwrap()
+        .query_row("SELECT count(*) FROM t", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(rows, 2);
+    // A file that exists is never overwritten; a URL is no file to create.
+    for refused in [location.as_str(), "https://example.com/copy.db"] {
+        let message = backup(refused).await;
+        assert_eq!(message["type"], "error", "{message}");
+    }
+}
+
+#[tokio::test]
+async fn a_read_only_sqlite_session_copies_its_databases() {
+    let folder = tempfile::tempdir().unwrap();
+    let copy = folder.path().join("copy.db");
+    let (address, _, editor_id) = start_connection(&memory_connection(), None).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    opened(&mut socket).await;
+    let request = json!({
+        "type": "backup",
+        "schema": "main",
+        "location": copy.to_string_lossy(),
+    });
+    socket
+        .send(ClientMessage::Text(request.to_string().into()))
+        .await
+        .unwrap();
+    let message = next_json(&mut socket).await;
+    assert_eq!(message["type"], "backed_up", "{message}");
+    assert!(copy.exists());
+}
+
+#[tokio::test]
+async fn attaches_and_detaches_a_database_of_a_sqlite_session() {
+    let folder = tempfile::tempdir().unwrap();
+    let other = attachable_database(folder.path(), "other");
+    // A read-only session, without switches: the request comes from the
+    // navigator.
+    let (address, _, editor_id) = start_connection(&memory_connection(), None).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    opened(&mut socket).await;
+
+    let mut send = async |request: Value| -> Value {
+        socket
+            .send(ClientMessage::Text(request.to_string().into()))
+            .await
+            .unwrap();
+        next_json(&mut socket).await
+    };
+    let schemas = |message: &Value| -> Vec<String> {
+        assert_eq!(message["type"], "databases", "{message}");
+        message["databases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|database| database["schema"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let attached = send(json!({ "type": "attach", "schema": "other", "location": other })).await;
+    assert_eq!(schemas(&attached), ["main", "other"]);
+    assert_eq!(attached["databases"][1]["location"]["scheme"], "file");
+    let missing = folder
+        .path()
+        .join("missing.db")
+        .to_string_lossy()
+        .into_owned();
+    for (schema, location) in [("gone", missing.as_str()), ("temp", other.as_str())] {
+        let refused =
+            send(json!({ "type": "attach", "schema": schema, "location": location })).await;
+        assert_eq!(refused["type"], "error", "{refused}");
+    }
+    let detached = send(json!({ "type": "detach", "schema": "other" })).await;
+    assert_eq!(schemas(&detached), ["main"]);
+    let refused = send(json!({ "type": "detach", "schema": "other" })).await;
+    assert_eq!(refused["type"], "error", "{refused}");
+}
+
+#[tokio::test]
+async fn the_parallel_queries_see_a_database_the_navigator_attached() {
+    let folder = tempfile::tempdir().unwrap();
+    let other = attachable_database(folder.path(), "other");
+    let (address, _, editor_id) = start_connection(&memory_connection(), None).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    opened(&mut socket).await;
+    let request = json!({ "type": "attach", "schema": "other", "location": other });
+    socket
+        .send(ClientMessage::Text(request.to_string().into()))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut socket).await["type"], "databases");
+    let reads = "SELECT a FROM other.u; SELECT count(*) FROM other.u";
+    assert_eq!(run_all_rows(&mut socket, reads).await, [3, 1]);
+}
+
+#[tokio::test]
+async fn saves_a_database_attached_in_the_connection() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let folder = tempfile::tempdir().unwrap();
+    let other = attachable_database(folder.path(), "other");
+    let (address, connection_id, editor_id) = start_connection(&memory_connection(), None).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    opened(&mut socket).await;
+    let mut send = async |request: Value| -> Value {
+        socket
+            .send(ClientMessage::Text(request.to_string().into()))
+            .await
+            .unwrap();
+        next_json(&mut socket).await
+    };
+    let attach = |schema: &str| json!({ "type": "attach", "schema": schema, "location": other, "save": true });
+    assert_eq!(send(attach("other")).await["type"], "databases");
+    assert_eq!(send(attach("other_again")).await["type"], "databases");
+    // Detached from the session only, it stays in the connection: saved
+    // again, whatever its case, it is refused, and detached again from the
+    // session.
+    let detached = send(json!({ "type": "detach", "schema": "other" })).await;
+    assert_eq!(detached["type"], "databases", "{detached}");
+    let refused = send(attach("OTHER")).await;
+    assert_eq!(refused["type"], "error", "{refused}");
+    assert_eq!(refused["detail"]["code"], "duplicate_schema", "{refused}");
+    let detached = send(json!({ "type": "detach", "schema": "OTHER" })).await;
+    assert_eq!(detached["type"], "error", "{detached}");
+
+    // The connection holds the databases saved, in their order.
+    // In plain HTTP: no HTTP client among the dependencies.
+    let mut http = TcpStream::connect(&address).await.unwrap();
+    let request =
+        format!("GET /api/connections HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n");
+    http.write_all(request.as_bytes()).await.unwrap();
+    let mut answer = String::new();
+    http.read_to_string(&mut answer).await.unwrap();
+    let (_, body) = answer.split_once("\r\n\r\n").unwrap();
+    let connections: Value = serde_json::from_str(body).unwrap();
+    let saved = connections
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|connection| connection["id"] == connection_id)
+        .unwrap()
+        .clone();
+    let schemas: Vec<&str> = saved["settings"]["databases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|database| database["schema"].as_str().unwrap())
+        .collect();
+    assert_eq!(schemas, ["main", "other", "other_again"]);
+}
+
+#[tokio::test]
+async fn refuses_a_path_alone_on_a_main_database_in_memory() {
+    let folder = tempfile::tempdir().unwrap();
+    let other = attachable_database(folder.path(), "other");
+    let writes = [WriteKind::Attach];
+    let (address, _, editor_id) = start_connection(&memory_connection(), Some(&writes)).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    opened(&mut socket).await;
+
+    let result = run_one(&mut socket, &format!("ATTACH '{other}' AS other"), None).await;
+    let detail = result.end["detail"].clone();
+    assert_eq!(detail["code"], "attach_path_in_memory", "{detail}");
+    assert_eq!(detail["path"], other.as_str());
+    // The URI the refusal gives attaches the file.
+    let uri = detail["uri"].as_str().unwrap().to_string();
+    let result = run_one(&mut socket, &format!("ATTACH '{uri}' AS other"), None).await;
+    assert_eq!(result.end["type"], "done", "{:?}", result.end);
+    let result = run_one(&mut socket, "SELECT a FROM other.u", None).await;
+    assert_eq!(result.rows, 3);
 }

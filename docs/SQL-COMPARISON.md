@@ -13,7 +13,7 @@ Measured on 2026-11-02, and on 2026-11-05 for the cases of `GROUP_CONCAT` added 
 | MySQL | 8.0.11, 9.7.4, 26.10.0 | servers `mysql-oldest`, `mysql-lts`, `mysql-latest` of `compose.yaml` |
 | MariaDB | 10.6.3, 12.3.3, 13.0.2 | servers `mariadb-oldest`, `mariadb-lts`, `mariadb-latest` of `compose.yaml` |
 | PostgreSQL | 18.6 | container `prisme-probe-postgres-18.6` (image `postgres:latest` of 2026-10-06) |
-| SQLite | 3.53.4 | `node:sqlite` of Node 26.7.0, in memory; Prisme bundles SQLite 3.53.2 (`libsqlite3-sys` 0.38.2) |
+| SQLite | 3.53.4 | `node:sqlite` of Node 26.7.0, in memory; Prisme bundles SQLite 3.54.1 (`libsqlite3-sys` 0.39.1), measured in section 6 |
 | DuckDB | 2.0.0 | `@duckdb/node-api` 2.0.0-r.1, in memory |
 
 Settings the values depend on, as the engines start (cases `info.*`):
@@ -273,6 +273,8 @@ The standard `LISTAGG` aggregates a text, takes a literal separator and `WITHIN 
 
 The standard rounds only in `CAST` and assignments, rounding or truncating as the implementation chooses (SQL-92 4.6, 6.10). In floating point, `ROUND(1.005, 2)` gives 1 to two decimals wherever it runs (PostgreSQL has no `ROUND` with digits for a `DOUBLE PRECISION`), as the double nearest 1.005 lies below it; the three versions of MySQL write the same value differently.
 
+Text of a `DOUBLE` as the server sends it (text protocol), measured on 2026-11-22 on MySQL 8.0.11 and 26.10.0 and MariaDB 10.6.3 and 13.0.2, the same on the four: `1e20` gives `1e20`, `1.5e300` gives `1.5e300`, `123456789012345678e0` gives `1.2345678901234568e17`, `1e-7` gives `0.0000001`, `100e0` gives `100`, `PI()` gives `3.141592653589793`. SQLite writes its real numbers otherwise (`1.0e+20`, `100.0`, section 6). Prisme shows every number in plain decimal, without scientific notation (`docs/TODO-SQLITE.md`, decision 14).
+
 ### 3.11 Dates
 
 | Case | Expression | Standard | MySQL | MariaDB | PostgreSQL | SQLite | DuckDB | ClickHouse |
@@ -343,7 +345,7 @@ The expression names no column: an error on the column shows that the engine rea
 
 ### 3.15 Origin of the columns of a result
 
-What the metadata of a result tell of the column a result column reads, measured on 2026-11-01 by the test `tells_the_origin_of_the_columns_of_a_result` of `crates/connectors/tests/mysql.rs`, on the six servers of `compose.yaml`, and by `mysql --column-type-info`. This is the protocol of MySQL and MariaDB, without a case in `bench/sql/cases.mjs`, which compares expressions; the other engines have no connector yet, and are not measured.
+What the metadata of a result tell of the column a result column reads, measured on 2026-11-01 by the test `tells_the_origin_of_the_columns_of_a_result` of `crates/connectors/tests/mysql.rs`, on the six servers of `compose.yaml`, and by `mysql --column-type-info`. This is the protocol of MySQL and MariaDB, without a case in `bench/sql/cases.mjs`, which compares expressions; SQLite counts otherwise (section 6), and the other engines have no connector yet, and are not measured.
 
 | Column of the result | `org_table`, `org_name` | `PRI_KEY_FLAG` |
 |---|---|---|
@@ -418,3 +420,202 @@ ClickHouse, current documentation, read on 2026-11-01:
 - [groupConcat](https://clickhouse.com/docs/sql-reference/aggregate-functions/reference/groupconcat), [groupArray](https://clickhouse.com/docs/sql-reference/aggregate-functions/reference/grouparray), [combinators](https://clickhouse.com/docs/sql-reference/aggregate-functions/combinators), [filtered aggregates](https://clickhouse.com/docs/resources/support-center/knowledge-base/queries-sql/filtered-aggregates).
 
 Left out, found only on third-party sites: the value of `'12' + 1` in ClickHouse, the side converted by `'10' > 9`, and `CAST('2026-02-30' AS Date)`.
+
+## 6. SQLite embedded in Prisme
+
+Behaviours of the SQLite library that the SQLite connector relies on (`docs/TODO-SQLITE.md`): those of the engine Prisme ships, measured through `rusqlite` as the connector will call it, rather than SQL compared between engines. Measured on 2026-11-22 with SQLite 3.54.1 (`rusqlite` 0.41.1, `bundled`), on Windows 11, by `bench/sqlite/` (`docs/DEVELOPER.md`, section "SQLite embedded in Prisme").
+
+Read-only and attachments:
+
+- A connection opened read-only (`SQLITE_OPEN_READ_ONLY`) attaches an existing file, then refuses to write in it as in `main`: "attempt to write a readonly database". Its attachments inherit its mode.
+- A connection opened read-write attaches a file read-only with the URI `file:<path>?mode=ro`: the same error on a write.
+
+Attaching a missing file:
+
+- An attachment inherits the flags of its connection: without `SQLITE_OPEN_CREATE`, `ATTACH` of a missing path fails ("unable to open database") and creates nothing, read-only or not. `?mode=rw` in a URI refuses it the same way. Opening a missing path without `SQLITE_OPEN_CREATE` fails too ("unable to open database file"). A connection of Prisme opened without that flag therefore never creates a file, its attachments included.
+- `ATTACH` of a file that is not a database (text) fails: "file is not a database".
+
+Databases in memory:
+
+- `file:/<name>?vfs=memdb` (URI) opens a database in memory that every connection of the process opening the same name shares: a table created by one is seen by the other, also after the first one closed. Once every connection closed, the database is gone. The same name attached (`ATTACH 'file:/<name>?vfs=memdb' AS s`) is shared the same way.
+- `ATTACH ':memory:'` gives each connection a database of its own: another connection attaching `:memory:` sees none of its tables.
+
+Text of a `REAL`:
+
+| Value | `CAST(x AS TEXT)` in SQLite | Shortest text that reads back the same value (Rust) |
+|---|---|---|
+| 0.1 | `0.1` | `0.1` |
+| 1.0 | `1.0` | `1` |
+| 1e20 | `1.0e+20` | `100000000000000000000` |
+| 1e-7 | `1.0e-07` | `0.0000001` |
+| 0.1 + 0.2 | `0.30000000000000004` | `0.30000000000000004` |
+| π | `3.1415926535897931` | `3.141592653589793` |
+| `f64::MAX` | `1.7976931348623157e+308` | 309 digits |
+
+SQLite writes up to 17 significant digits (`printf('%!.17g')` gives the same texts), always with a decimal point, in exponent form from 10¹⁷ on and below 10⁻⁴ (`1e16` gives `10000000000000000.0`); the shortest text sometimes has one digit less (π).
+
+Values written into an `INT`, a `NUMERIC` and a `REAL` column: the storage class SQLite keeps, then the text it gives for the value. SQLite returns an INTEGER as a 64-bit integer and a REAL as a 64-bit binary floating-point number, without text: the text is the one SQLite writes when asked for it (`sqlite3_column_text`, as `CAST(x AS TEXT)`).
+
+| Written | `INT` | `NUMERIC` | `REAL` |
+|---|---|---|---|
+| `1e2` | INTEGER `100` | INTEGER `100` | REAL `100.0` |
+| `1e10`, `1.0e+10`, `'1e10'` | INTEGER `10000000000` | INTEGER `10000000000` | REAL `10000000000.0` |
+| `10.0` | INTEGER `10` | INTEGER `10` | REAL `10.0` |
+| `1.5`, `'1.50'` | REAL `1.5` | REAL `1.5` | REAL `1.5` |
+| `0.1` | REAL `0.1` | REAL `0.1` | REAL `0.1` |
+| `1e20` | REAL `1.0e+20` | REAL `1.0e+20` | REAL `1.0e+20` |
+| `12345678901234567890` | REAL `1.2345678901234567e+19` | REAL `1.2345678901234567e+19` | REAL `1.2345678901234567e+19` |
+| `9223372036854775807` | INTEGER `9223372036854775807` | INTEGER `9223372036854775807` | REAL `9.2233720368547758e+18` |
+| `9223372036854775808` | REAL `9.2233720368547758e+18` | REAL `9.2233720368547758e+18` | REAL `9.2233720368547758e+18` |
+| `'abc'` | TEXT `abc` | TEXT `abc` | TEXT `abc` |
+
+`INT` and `NUMERIC` columns behave alike: a real number without a fractional part that fits in 64 bits is kept as an integer (`1e2` gives `100`, never `1e2`); a fractional or larger number is kept as a real number (`1.5`, `1.0e+20`); a text that reads as a number is converted, another text stays as it is. A `REAL` column keeps every number as a real number, written with a decimal point (`100.0`).
+
+Interruption (`sqlite3_interrupt`, `InterruptHandle` of `rusqlite`), from another thread:
+
+- An endless `WITH RECURSIVE` stops at once (0.2 ms after the call) with the error "interrupted"; the connection stays usable.
+- Interrupted inside an explicit transaction, an endless `INSERT` rolls the whole transaction back: `is_autocommit` is true again, and the rows inserted before it in the transaction are gone.
+
+Transaction after an error:
+
+- A broken constraint or a syntax error inside a transaction fails the statement alone: `is_autocommit` stays false, the transaction is still open.
+- `INSERT OR ROLLBACK` that breaks a constraint rolls the transaction back: `is_autocommit` is true again.
+
+`DETACH` while in use:
+
+- Inside a transaction that read the attached database, and while a read of it is open: "database other is locked".
+- Inside a transaction that did not touch it, and once its read is finished: accepted.
+
+Paths on Windows: a path written with `\`, with `/`, the URI `file:///C:/...` and the URI `file:C:\...` open and attach the same file.
+
+Lexical rules of a text, which the splitter of the editor follows (`crates/splitter`), and where `sqlite3_complete`, which tells the `sqlite3` shell that a statement ended, sees one end:
+
+| Text | SQLite | `sqlite3_complete` |
+|---|---|---|
+| `SELECT 1 # comment` | error: unrecognized token `#` | `SELECT 1 # ;` complete: `#` opens no comment |
+| `SELECT 1 --comment` | `1`: `--` opens a comment without a space after it | `SELECT 1 -- ;` not complete |
+| `SELECT 1 /* comment` | `1`: a block comment left open ends with the text | `SELECT 1 /* ; */` not complete |
+| `SELECT 1 /* outer /* inner */ */` | error: block comments do not nest | |
+| `SELECT 'a\'` | the text `a\`: the backslash escapes nothing | `SELECT 'a\';` complete |
+| `SELECT 'it''s'` | the text `it's`: a doubled quote | |
+| `"a b"`, `` `a b` ``, `[a b]` | the same name | `SELECT [;]` not complete |
+| `"a""b"` | the name `a"b` | |
+| `[a]]b]` | error: a bracket does not double | |
+| `SELECT "no_such_column"` | the text `no_such_column`: a name in double quotes that names no column is read as a text | |
+| `x'41'` | a BLOB | |
+
+Triggers, whose body holds statements each ended by `;`:
+
+| Text | `sqlite3_complete` |
+|---|---|
+| `CREATE TRIGGER tr AFTER INSERT ON t BEGIN SELECT 1;` | not complete |
+| `… BEGIN SELECT 1; END` | not complete |
+| `… BEGIN SELECT 1; END;` | complete |
+| `CREATE TEMP TRIGGER … END;`, `CREATE TEMPORARY TRIGGER … SELECT 1;` | complete; not complete |
+| `EXPLAIN CREATE TRIGGER … BEGIN SELECT 1;` | not complete |
+| `… BEGIN SELECT CASE WHEN 1 THEN 2 END;` | not complete: `END` closes the body only right after a `;` |
+| `… BEGIN SELECT CASE WHEN 1 THEN 2 END; END;` | complete |
+| `CREATE TABLE trigger_log (a); SELECT 1;` | complete: a name holding `trigger` opens no body |
+
+A trigger whose body holds `CASE … END;` is created, and runs: SQLite ends the body at the `END` that follows a `;`.
+
+`LIMIT` after a `VALUES`, where Prisme adds its default limit (`crates/dialects/src/limit.rs`):
+
+| Query | SQLite |
+|---|---|
+| `VALUES (1), (2) LIMIT 1` | error: near `LIMIT` |
+| `SELECT 1 UNION VALUES (2) LIMIT 1` | error: near `LIMIT` |
+| `VALUES (2) UNION SELECT 1 LIMIT 1` | 1 row |
+| `SELECT * FROM (VALUES (1), (2)) LIMIT 1` | 1 row |
+
+A `LIMIT` follows a `SELECT` only: a query whose last term is a `VALUES` takes none, and Prisme stops reading it after the extra row.
+
+Pragmas, which the classification gives a role by a closed list of those of the library (`crates/dialects/src/sqlite_pragmas.rs`):
+
+- `pragma_list` names 67 pragmas; 59 of them have a table function `pragma_<name>`, all but `case_sensitive_like`, `data_store_directory`, `incremental_vacuum`, `mmap_size`, `shrink_memory`, `temp_store_directory`, `wal_autocheckpoint` and `wal_checkpoint`. Of the three pragmas that write in the file (`optimize`, `wal_checkpoint`, `incremental_vacuum`), only `optimize` has one: `SELECT * FROM pragma_optimize` runs it.
+- `PRAGMA no_such_pragma` and `PRAGMA no_such_pragma = 1` run without an error, and return nothing.
+- `PRAGMA table_info = t` and `PRAGMA table_info(t)` return the same rows: the value of a pragma that reads is its argument, in either form.
+- `PRAGMA foreign_keys(1)` sets the pragma as `PRAGMA foreign_keys = 1` does (`PRAGMA foreign_keys` then gives `1`); `PRAGMA main.cache_size(-100)` likewise.
+- A table function takes no value to set: `pragma_journal_mode('wal')` reads `'wal'` as a schema ("unknown database 'wal'"), `pragma_foreign_keys(1)` fails ("too many arguments on pragma_foreign_keys() - max 0").
+- On a read-only connection: `PRAGMA user_version = 3` and `PRAGMA incremental_vacuum` fail ("attempt to write a readonly database"); `PRAGMA optimize`, `PRAGMA wal_checkpoint` (which gives `0, -1, -1`), `PRAGMA foreign_keys = 1` and `PRAGMA cache_size = 10` run.
+- On a read-only connection, `ATTACH 'file:...?mode=rw'` fails: "access mode not allowed: rw".
+
+Outcome of a write, as `changes()`, `total_changes()` and `last_insert_rowid()` report it once the statement ran, measured on 2026-11-23. The table `t (id INTEGER PRIMARY KEY, k TEXT UNIQUE, v INTEGER)` has a trigger that inserts into another table after each `DELETE`; the statements run in this order.
+
+| Statement | `changes()` | `total_changes()` grows by | `last_insert_rowid()` |
+|---|---|---|---|
+| `INSERT` of three rows | 3 | 3 | the id of the last one (3) |
+| `INSERT OR IGNORE` of a duplicate and a new row | 1 | 1 | the id of the new row |
+| `INSERT OR REPLACE` of a duplicate and a new row | 2 | 2 | the id of the last row written |
+| `INSERT ... ON CONFLICT (k) DO UPDATE` of a duplicate and a new row | 2 | 2 | the id of the new row |
+| The same upsert of a duplicate alone, with its values unchanged | 1 | 1 | unchanged |
+| `UPDATE t SET v = v` on 7 rows | 7 | 7 | unchanged |
+| `UPDATE` that finds no row | 0 | 0 | unchanged |
+| `UPDATE OR REPLACE` that deletes a row of the same key | 1 | 1 | unchanged |
+| `DELETE` of one row, its trigger inserting one | 1 | 2 | unchanged |
+| `INSERT ... RETURNING id` | 1 | 1 | the id of the row |
+| `CREATE TABLE`, `CREATE TABLE ... AS SELECT`, `SELECT` | that of the statement before (1) | 0 | unchanged |
+
+`changes()` counts the rows the statement wrote itself: an `UPDATE` counts the rows found, changed or not, an upsert its rows inserted and updated together, a replacement its rows written without the rows it deleted; the rows written by triggers are left out. After a statement that writes no row, it still gives the count of the last write: only a growth of `total_changes()` tells that the statement wrote.
+
+Compared with MySQL and MariaDB (section 3.16), SQLite does not tell the rows of an `UPDATE` changed from those found with the same values, the rows inserted by an upsert from those it updated, the rows a replacement deleted, the rows an `INSERT OR IGNORE` skipped, nor any warning. The connector reports what `changes()` tells, and leaves the other counts absent.
+
+The update hook (`sqlite3_update_hook`, feature `hooks` of `rusqlite`), called for each row written, measured on 2026-11-23 by `bench/sqlite` (section 15), on the same table `t` and a table `w (k TEXT PRIMARY KEY, v INTEGER) WITHOUT ROWID`:
+
+| Statement | `changes()` | Rows the hook reports |
+|---|---|---|
+| Upsert of a duplicate and a new row | 2 | 1 update, 1 insert |
+| `INSERT OR REPLACE` of a duplicate and a new row | 2 | 2 inserts, without the row deleted |
+| `INSERT OR IGNORE` of a duplicate and a new row | 1 | 1 insert |
+| `UPDATE t SET v = v` on 6 rows | 6 | 6 updates, changed or not |
+| `DELETE` of one row, its trigger inserting one | 1 | 1 delete of `t`, 1 insert of `log` |
+| Upsert, then `INSERT OR REPLACE`, into the `WITHOUT ROWID` table | 1 each | none |
+| `DELETE FROM log`, without `WHERE` | 1 | none |
+
+The hook tells the rows inserted from the rows updated of an upsert, but it reports nothing for a `WITHOUT ROWID` table nor for a `DELETE` without `WHERE` (truncate optimization), nothing of the rows a replacement deletes, and it mixes the rows of the triggers with those of the statement: its counts would be false without telling it, so the connector does not use it. The pre-update hook (`sqlite3_preupdate_hook`), which would give the depth of a trigger and the old and new values, needs a SQLite built with `SQLITE_ENABLE_PREUPDATE_HOOK`: the feature `preupdate_hook` of `rusqlite` 0.41.1 then generates its bindings with `bindgen`, whose build stops without libclang ("Unable to find libclang"); it is not measured. Cost of the update hook: `docs/PERFORMANCES.md`, chapter 18.
+
+A session stays on `main`: SQLite has no statement that changes the current database. A name without a schema is searched in `temp`, then `main`, then the attached databases in the order of their attachment, and an object created without a schema goes into `main` (`temp` for a temporary one) ([ATTACH DATABASE](https://sqlite.org/lang_attach.html)). The connector refuses `switch_namespace` (`Capabilities::switch_namespace` false), and the navigator shows no **Utiliser cette base** on the schemas of SQLite.
+
+Opening of the databases of a connection, measured on 2026-11-23:
+
+- A database in memory (`file:/<name>?vfs=memdb`, or `:memory:`) opens without `SQLITE_OPEN_CREATE`, and takes tables. Opened read-only, a new one refuses its first table ("attempt to write a readonly database"); an existing one, opened read-only by another connection, gives its rows and refuses an `INSERT`.
+- A connection attaches 10 databases at most besides `main` (`SQLITE_MAX_ATTACHED`, 10 unless SQLite is built with another value: `#define SQLITE_MAX_ATTACHED 10` in the `sqlite3.c` of `libsqlite3-sys` 0.39.1, which `rusqlite` 0.41.1 builds; [Limits In SQLite](https://sqlite.org/limits.html), section 11). A connection of Prisme saves as many.
+- `ATTACH ?1 AS ?2` takes the file and the name of the schema as bound parameters: `ATTACH ?1 AS ?2` with the name `other db` gives a schema read as `"other db".t`.
+- An attachment opens in the file system (VFS) of its connection: on a connection whose main database is in `memdb`, `ATTACH` of the path of a file gives an empty database in memory ("no such table" on its tables); the URI `file:///<path>?vfs=win32` (`unix` on Linux and macOS) reads the file, and so do `file:/<path>?vfs=win32`, `file:<path>?vfs=win32` and `file://localhost/<path>?vfs=win32` (`<path>` written `D:/data/v.db` on Windows), the forms of URI that the classification of `ATTACH` accepts.
+- On Windows, the URI `file:////<server>/<share>/<path>` (an empty authority) reads a file of a network share: `file:////localhost/C$/.../opening.db` gives its rows.
+- `pragma_database_list` gives `main` (seq 0, file empty for a database in memory), then `temp` (seq 1) only once the connection created a temporary table, then the attached databases (seq 2 on), with the path of their file.
+- On a connection whose main database is in `memdb`, `pragma_database_list` gives an empty file for `main`, for a database in memory private to the connection (`:memory:`), for one shared (`file:/<name>?vfs=memdb`) and for a plain path, opened in memory; only a URI naming its file system gives the path of the file (`C:\...\opening.db`, and `\\localhost\C$\...` for a network share). An empty file does not tell a private database in memory from a shared one.
+- `pragma_table_list` lists the tables and views of every schema, `sqlite_schema` (`sqlite_temp_schema` in `temp`) included, with their type (`table`, `view`, `virtual`, `shadow`) and `wr` (1 for a table `WITHOUT ROWID`).
+- An interruption (`sqlite3_interrupt`) sent while no statement runs stops nothing: the next statement runs.
+- `prepare` takes a statement followed by a comment (`SELECT 1; -- end`); a comment alone prepares a statement without columns.
+
+Literals of the rows of a result that the interface writes (a CTE of `VALUES`, the `IN` clause of a selection, `web/src/components/result/cte.ts`), measured on 2026-11-24 by `bench/sqlite` (section 16):
+
+| Text | SQLite |
+|---|---|
+| `WITH ds (id, name, total, ratio, at, t, data) AS (VALUES (1, 'Ada', 12.50, 1.5E0, '2026-10-12 09:32:00', '12:00:00', X'FF001A'), (2, NULL, …))` | the two rows, rows written `(…)`, without `ROW` |
+| `typeof()` of `1`, `'Ada'`, `12.50`, `1.5E0`, `'2026-10-12'`, `X'FF'` in that CTE | `integer`, `text`, `real`, `real`, `text`, `blob` |
+| `DATE '2026-10-12'`, `TIMESTAMP '…'`, `TIME '12:00:00'` | error: no such column `DATE` (`TIMESTAMP`, `TIME`) |
+| `_binary'abc'`, `b'101'` | error: no such column `_binary` (`b`) |
+| `X'616263' = CAST('abc' AS BLOB)` | `1` |
+| `length('a\b')` | `3`: the backslash is an ordinary character |
+| `2 IN (1, 2)` | `1` |
+| `(1, 'a') IN ((1, 'a'), (2, 'b'))`, `(1, 'a') IN (VALUES (1, 'a'), (2, 'b'))` | `1` |
+| `(1, NULL) IN (VALUES (1, NULL))` | NULL |
+
+SQLite has no typed literal of a date or of a time, nor of a binary string: a date, a date-time and a time are written as texts, which SQLite stores as texts, and bytes as a hexadecimal literal `X'…'`, read as a BLOB. A decimal number (`12.50`) is read as a `REAL`, the class that a `NUMERIC` column gives it too.
+
+Operations on an index, which the navigator writes (`web/src/components/navigator/indexOperations.ts`), measured on 2026-11-24 by `bench/sqlite` (section 17), on a database attached as `other` holding `t (id INTEGER PRIMARY KEY, name TEXT UNIQUE, code TEXT)` and `k (a TEXT, b TEXT, PRIMARY KEY (a, b))`:
+
+| Text | SQLite |
+|---|---|
+| `CREATE INDEX "other"."i" ON "t" (code)` | created: the schema goes on the index, the table stays unqualified |
+| `CREATE INDEX j ON other.t (code)` | error: syntax, near `.` |
+| `CREATE UNIQUE INDEX other.u ON t (code, name)`, `CREATE INDEX other.p ON t (code) WHERE code IS NOT NULL` | created |
+| `CREATE INDEX other.sqlite_mine ON t (code)` | error: object name reserved for internal use |
+| `REINDEX "other"."i"`, `REINDEX other.sqlite_autoindex_t_1` | done |
+| `DROP INDEX "other"."i"` | dropped |
+| `DROP INDEX other.sqlite_autoindex_t_1` (of `UNIQUE`), `DROP INDEX other.sqlite_autoindex_k_1` (of the primary key) | error: index associated with UNIQUE or PRIMARY KEY constraint cannot be dropped |
+| `ALTER INDEX other.u RENAME TO v` | error: syntax, near `INDEX` |
+
+`pragma_index_list` gives the index of a constraint under the name `sqlite_autoindex_<table>_<n>`, with its origin (`u` for `UNIQUE`, `pk` for a primary key that is not an `INTEGER PRIMARY KEY`), and the others with the origin `c` and `partial` 1 for a partial index. SQLite reserves the names that start with `sqlite_`: an index of that name is always one of a constraint. Its `ALTER TABLE` neither adds nor drops a key ([ALTER TABLE](https://sqlite.org/lang_altertable.html)), and an index is neither renamed nor hidden.

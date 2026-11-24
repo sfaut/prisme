@@ -44,6 +44,7 @@ import { Database } from '@lucide/vue'
 import { TabsContent, TabsRoot } from 'reka-ui'
 import { computed, nextTick, onMounted, onUnmounted, ref, shallowReactive, watch } from 'vue'
 
+import type { AttachedDatabase } from './api/generated/AttachedDatabase'
 import type { Panels } from './api/generated/Panels'
 import type { SessionStatus } from './api/querySession'
 
@@ -108,6 +109,12 @@ const editorsError = ref<string | null>(null)
  * of the active editor is shown in bold in the navigator.
  */
 const databases = ref<Record<number, string | null>>({})
+
+/**
+ * Databases attached to each editor's session, for a source held in files:
+ * the navigator shows where each one lies.
+ */
+const sessionDatabases = ref<Record<number, AttachedDatabase[] | null>>({})
 
 /**
  * Stage of each editor's session; that of the active editor enables
@@ -206,6 +213,19 @@ function databaseOf(editor: EditorEntry): string | null {
     return null
   }
   return databases.value[editor.id] ?? null
+}
+
+/**
+ * Databases attached to an editor's session, `null` if unknown or if the
+ * session is closed.
+ *
+ * @param editor Editor.
+ */
+function sessionDatabasesOf(editor: EditorEntry): AttachedDatabase[] | null {
+  if (statusOf(editor) === 'closed') {
+    return null
+  }
+  return sessionDatabases.value[editor.id] ?? null
 }
 
 /**
@@ -321,7 +341,9 @@ async function connectEditor(
   const opens = reopens || editor.connectionId !== connectionId
   // The source chosen again reopens on its own database, in place of the
   // last current database of the editor, on which a session opens otherwise.
-  const opening = database ?? (reopens ? connectionOf(connectionId)?.database_name : undefined)
+  const settings = connectionOf(connectionId)?.settings
+  const own = settings?.family === 'server' ? settings.database_name : undefined
+  const opening = database ?? (reopens ? own : undefined)
   if (opens && opening !== undefined) {
     openingDatabases.value[editorId] = opening
   }
@@ -518,6 +540,7 @@ function selectSource(editorId: number, connectionId: number): void {
                     :active="editor.id === editors.activeId"
                     :selected-id="editor.connectionId"
                     :current-database="databaseOf(editor)"
+                    :session-databases="sessionDatabasesOf(editor)"
                     :session-status="statusOf(editor)"
                     @open-table="
                       (connectionId, schema, table) =>
@@ -532,6 +555,14 @@ function selectSource(editorId: number, connectionId: number): void {
                       (connectionId, schema) => useDatabase(editor.id, connectionId, schema)
                     "
                     @disconnect="disconnect(editor.id)"
+                    @attach="
+                      (schema, location, save) =>
+                        views.get(editor.id)?.attachDatabase(schema, location, save)
+                    "
+                    @detach="(schema) => views.get(editor.id)?.detachDatabase(schema)"
+                    @backup="
+                      (schema, location) => views.get(editor.id)?.backupDatabase(schema, location)
+                    "
                   />
                 </aside>
               </split-panel>
@@ -574,6 +605,7 @@ function selectSource(editorId: number, connectionId: number): void {
                   @database="(database) => (databases[editor.id] = database)"
                   @status="(status) => followStatus(editor.id, status)"
                   @transaction="(open) => (editors.transactions[editor.id] = open)"
+                  @databases="(list) => (sessionDatabases[editor.id] = list)"
                   @progress="(progress) => (editors.progress[editor.id] = progress)"
                 />
                 <div v-else class="flex max-w-xs flex-col items-center gap-3 text-center">
