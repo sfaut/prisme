@@ -26,7 +26,9 @@
 //!    time units (`second`, `day`...) where they can only be a unit, after
 //!    `INTERVAL <value>` and as the first argument of `EXTRACT`,
 //!    `TIMESTAMPADD` and `TIMESTAMPDIFF`. Table and column names (`name`,
-//!    `status`, `date`...) then stay as they are.
+//!    `status`, `date`...) then stay as they are, and so does a keyword that
+//!    is also the name of a table or a column of the catalog (`comment`),
+//!    whatever its case.
 //!
 //! 5. **Layout**: one clause per line, one column and one predicate per line
 //!    when there are several, spaces around operators (`layout` module).
@@ -200,7 +202,7 @@ fn beautify_part(sql: &str, options: BeautifyOptions, program: bool) -> String {
     let functions = case_function_names(&aliased, dialect, &options.catalog.routines);
     let cased = match analyze(&functions, dialect, options.version, options.catalog) {
         Some(words) => apply_roles(&functions, &words),
-        None => uppercase_keywords(&functions, dialect, options.version),
+        None => uppercase_keywords(&functions, dialect, options.version, options.catalog),
     };
     layout(&cased, dialect, program, options.indent_size)
 }
@@ -238,8 +240,15 @@ fn is_comment_only(sql: &str, dialect: Dialect) -> bool {
 
 /// Puts keywords in capitals, without changing anything else, word by word:
 /// fallback for a text the analysis does not understand. Only the words of
-/// the keyword files known to the version go to capitals.
-fn uppercase_keywords(sql: &str, dialect: Dialect, version: Option<&str>) -> String {
+/// the keyword files known to the version go to capitals, except those that
+/// are also the name of a table or a column of `catalog`: without the
+/// analysis, nothing tells the keyword from the name.
+fn uppercase_keywords(
+    sql: &str,
+    dialect: Dialect,
+    version: Option<&str>,
+    catalog: &CatalogNames,
+) -> String {
     let parser_dialect = dialect.parser_dialect();
     let Ok(tokens) = Tokenizer::new(parser_dialect.as_ref(), sql).tokenize_with_location() else {
         return sql.to_string();
@@ -303,7 +312,8 @@ fn uppercase_keywords(sql: &str, dialect: Dialect, version: Option<&str>) -> Str
             _ => UnitSlot::Elsewhere,
         };
         previous_word = upper;
-        if !is_unit && !is_keyword(&word.value, dialect, version) {
+        if !is_unit && (!is_keyword(&word.value, dialect, version) || is_name(&word.value, catalog))
+        {
             continue;
         }
         let (Some(start), Some(end)) =
@@ -319,12 +329,40 @@ fn uppercase_keywords(sql: &str, dialect: Dialect, version: Option<&str>) -> Str
     result
 }
 
+/// Is `word` the name of a table or a column of `catalog`, whatever its case?
+fn is_name(word: &str, catalog: &CatalogNames) -> bool {
+    catalog
+        .tables
+        .iter()
+        .chain(&catalog.columns)
+        .any(|name| name.eq_ignore_ascii_case(word))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn pretty(sql: &str) -> String {
-        uppercase_keywords(sql, Dialect::MariaDb, None)
+        uppercase_keywords(sql, Dialect::MariaDb, None, &CatalogNames::default())
+    }
+
+    #[test]
+    fn keeps_a_keyword_named_in_the_catalog_as_typed() {
+        let catalog = CatalogNames {
+            tables: vec!["Columns".to_string()],
+            columns: vec!["full".to_string()],
+            ..CatalogNames::default()
+        };
+        // A statement the analysis does not understand: word by word.
+        let sql = "show full columns from columns where full";
+        assert_eq!(
+            uppercase_keywords(sql, Dialect::MariaDb, None, &CatalogNames::default()),
+            "SHOW FULL COLUMNS FROM COLUMNS WHERE FULL"
+        );
+        assert_eq!(
+            uppercase_keywords(sql, Dialect::MariaDb, None, &catalog),
+            "SHOW full columns FROM columns WHERE full"
+        );
     }
 
     #[test]
