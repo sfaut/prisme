@@ -5,6 +5,7 @@
 //! | Method and path                     | Role                                                          |
 //! |-------------------------------------|---------------------------------------------------------------|
 //! | `GET /api/health`                   | Checks that the server answers.                               |
+//! | `GET /api/engines`                  | Engines of Prisme: their flavors and capabilities.            |
 //! | `GET /api/connections`              | Lists the user's connections, without passwords.              |
 //! | `POST /api/connections`             | Saves a connection, password encrypted.                       |
 //! | `POST /api/connections/probe`       | Tests typed settings, before saving them.                     |
@@ -39,7 +40,7 @@ use axum::response::Response;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use axum_extra::extract::Query;
-use prisme_connectors::api::{Namespace, SourceInfo};
+use prisme_connectors::api::{Capabilities, Engine, Namespace, SourceInfo};
 use prisme_connectors::drivers;
 use prisme_connectors::flavor::Flavor;
 use prisme_dialects::Dialect;
@@ -190,11 +191,25 @@ struct AppVersion {
     version: &'static str,
 }
 
+/// Engine of Prisme, as returned by the API: what the interface tells of it
+/// before any session, such as the switches of the writes that concern it.
+#[derive(Serialize, TS)]
+#[ts(export)]
+struct EngineInfo {
+    /// Engine.
+    engine: Engine,
+    /// Flavors it serves, in the order of `Flavor::ALL`.
+    flavors: Vec<Flavor>,
+    /// What it can do.
+    capabilities: Capabilities,
+}
+
 /// Builds the router of the API.
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
         .route("/api/version", get(version))
+        .route("/api/engines", get(engines))
         .route(
             "/api/connections",
             get(list_connections).post(create_connection),
@@ -239,6 +254,24 @@ async fn version() -> Json<AppVersion> {
     Json(AppVersion {
         version: env!("CARGO_PKG_VERSION"),
     })
+}
+
+/// `GET /api/engines`: each engine of Prisme, with its flavors and its
+/// capabilities, in the order of `Engine::ALL`.
+async fn engines() -> Json<Vec<EngineInfo>> {
+    Json(
+        Engine::ALL
+            .into_iter()
+            .map(|engine| EngineInfo {
+                engine,
+                flavors: Flavor::ALL
+                    .into_iter()
+                    .filter(|flavor| flavor.engine() == engine)
+                    .collect(),
+                capabilities: drivers::of(engine).capabilities(),
+            })
+            .collect(),
+    )
 }
 
 /// `GET /api/connections`: connections of the current user, without passwords.
@@ -767,6 +800,18 @@ mod tests {
     async fn health_answers() {
         let (status, _) = send(&test_app(), "GET", "/api/health", None).await;
         assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn answers_the_engines_with_their_flavors_and_capabilities() {
+        let (status, body) = send(&test_app(), "GET", "/api/engines", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body[0]["engine"], "mysql");
+        assert_eq!(body[0]["flavors"], serde_json::json!(["mysql", "mariadb"]));
+        assert_eq!(body[1]["engine"], "sqlite");
+        let kinds = body[1]["capabilities"]["write_kinds"].as_array().unwrap();
+        assert!(kinds.contains(&serde_json::json!("attach")));
+        assert!(!kinds.contains(&serde_json::json!("truncate_table")));
     }
 
     #[tokio::test]

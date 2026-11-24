@@ -4,6 +4,8 @@
  * messages and the settings, and their groups in the settings.
  */
 
+import { FLAVORS } from './flavors'
+import type { Flavor } from './generated/Flavor'
 import type { WriteKind } from './generated/WriteKind'
 
 /**
@@ -150,11 +152,37 @@ export const WRITE_KIND_GROUPS: WriteKindGroup[] = [
 ]
 
 /**
- * Tooltip of a kind in the settings: its statement, then what else it allows.
+ * Names of flavors as a French list: `MySQL`, `MySQL et MariaDB`,
+ * `MySQL, MariaDB et SQLite`.
+ *
+ * @param flavors Flavors, at least one.
+ */
+function flavorList(flavors: Flavor[]): string {
+  const names = flavors.map((flavor) => FLAVORS[flavor].name)
+  const last = names.pop()
+  return names.length === 0 ? (last ?? '') : `${names.join(', ')} et ${last}`
+}
+
+/**
+ * Tooltip of a kind in the settings: its statement, then what else it allows
+ * and the engines it concerns.
  *
  * @param kind Kind of write.
- * @returns The statement as title, its note if it has one as description.
+ * @param flavors
+ *     Flavors whose engine knows the kind (`flavorsOfWriteKind`); `null`
+ *     while unknown.
+ * @returns
+ *     The statement as title; its note, then the engines it concerns, each
+ *     on its line, as description.
  */
-export function writeKindTooltip(kind: WriteKind): { title: string; description?: string } {
-  return { title: WRITE_KIND_STATEMENTS[kind], description: WRITE_KIND_NOTES[kind] }
+export function writeKindTooltip(
+  kind: WriteKind,
+  flavors: Flavor[] | null = null,
+): { title: string; description?: string } {
+  const engines = flavors === null || flavors.length === 0 ? null : `Pour ${flavorList(flavors)}`
+  const lines = [WRITE_KIND_NOTES[kind], engines].filter((line) => line != null)
+  return {
+    title: WRITE_KIND_STATEMENTS[kind],
+    description: lines.length === 0 ? undefined : lines.join('\n'),
+  }
 }

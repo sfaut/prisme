@@ -121,7 +121,7 @@ Architecture:
 - ✅ Editor dialect, CTE and `IN` clause in SQLite (literals of the dates, times and bytes): the editor reads the tokens of its flavor (parameters `:name` and `$name`, square brackets); dates and times written as strings, bytes in hexadecimal; names in double quotes and backslashes left as they are, which the SQLite session tells (`DialectOptions`); a CTE for another dialect follows the default reading of that dialect
 - ✅ Operations on the indexes in the navigator, in SQLite (`CREATE INDEX`, `DROP INDEX`): unique index and index added by `CREATE [UNIQUE] INDEX`, the schema on the index; `REINDEX`; `DROP INDEX`, except for the primary key and the indexes of a constraint (`sqlite_autoindex_…`); `CREATE INDEX temp.i` and `DROP INDEX temp.i` classified as acting on a temporary table
 - ✅ Messages of the states of the databases (`DatabaseState`) in the interface: a session opened without databases that could not be opened says so in a banner of the editor, each with why; the test of a saved connection ("Tester", in the navigator and the manager) turns into a warning with them; the step "Vérification" keeps its state database by database
-- ⬜ Switches of the engine in the settings
+- ✅ Switches of the engine in the settings: every switch stays shown, the settings being the user's for every connection; its tooltip names the engines it concerns ("Pour MySQL et MariaDB"), from the capabilities of each engine (`GET /api/engines`)
 - ⬜ SQL run at connection: the pragmas of the connection it accepts, stated beside the field (decision 4)
 
 ## 7. Documentation

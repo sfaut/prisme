@@ -10,8 +10,16 @@
   With `readOnly`, while the sessions are read-only, the check boxes are
   greyed out and inactive, the database refusing their writes; only those
   of `READ_ONLY_KINDS` (`ATTACH`) stay active.
+
+  The settings are the user's, for every connection: each switch stays
+  shown, and its tooltip names the engines it concerns ("Pour MySQL et
+  MariaDB"), read from the server (`GET /api/engines`).
 -->
 <script setup lang="ts">
+import { onMounted, ref } from 'vue'
+
+import { fetchEngines, flavorsOfWriteKind } from '@/api/engines'
+import type { EngineInfo } from '@/api/generated/EngineInfo'
 import type { WriteKind } from '@/api/generated/WriteKind'
 import {
   READ_ONLY_KINDS,
@@ -35,6 +43,29 @@ const props = defineProps<{
  * Kinds of write allowed.
  */
 const model = defineModel<WriteKind[]>({ required: true })
+
+/**
+ * Engines of Prisme, `null` until read: the tooltips then name no engine.
+ */
+const engines = ref<EngineInfo[] | null>(null)
+
+onMounted(async () => {
+  try {
+    engines.value = await fetchEngines()
+  } catch {
+    // Server unreachable: the tooltips name no engine.
+  }
+})
+
+/**
+ * Tooltip of a kind: its statement, its note, the engines it concerns.
+ *
+ * @param kind Kind of write.
+ */
+function tooltipOf(kind: WriteKind) {
+  const flavors = engines.value === null ? null : flavorsOfWriteKind(engines.value, kind)
+  return writeKindTooltip(kind, flavors)
+}
 
 /**
  * Verbs of the objects, one column each, in this order.
@@ -91,7 +122,7 @@ function columnOf(verb: string, rank: number): string {
             :key="kind"
             class="flex h-8 min-w-0 items-center gap-2 rounded-control border border-line px-2 font-mono text-fg-strong has-checked:border-primary/40 has-checked:bg-primary/10 has-disabled:opacity-50"
             :class="columnOf(verb, rank)"
-            v-tooltip="locked(kind) ? null : writeKindTooltip(kind)"
+            v-tooltip="locked(kind) ? null : tooltipOf(kind)"
           >
             <input
               v-model="model"

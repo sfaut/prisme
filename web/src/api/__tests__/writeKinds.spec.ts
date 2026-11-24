@@ -19,4 +19,14 @@ describe('kinds of write', () => {
       'RENAME TABLE sur des tables temporaires',
     )
   })
+
+  it('names in the tooltip the engines a kind concerns', () => {
+    expect(writeKindTooltip('drop_view', ['mysql', 'mariadb', 'sqlite']).description).toBe(
+      'Pour MySQL, MariaDB et SQLite',
+    )
+    expect(writeKindTooltip('alter_table', ['mysql', 'mariadb']).description).toBe(
+      'Aussi CREATE INDEX et DROP INDEX\nPour MySQL et MariaDB',
+    )
+    expect(writeKindTooltip('attach', ['sqlite']).description?.split('\n')[1]).toBe('Pour SQLite')
+  })
 })
