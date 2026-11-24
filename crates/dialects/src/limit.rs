@@ -19,7 +19,7 @@ use sqlparser::keywords::Keyword;
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Token, TokenWithSpan, Tokenizer};
 
-use crate::Dialect;
+use crate::SessionDialect;
 use crate::offsets::OffsetIndex;
 use crate::parse::{Parsed, parse_statements};
 
@@ -62,19 +62,22 @@ pub enum LimitError {
     MultipleStatements(usize),
 }
 
-/// Applies the default limit of `max_rows` rows to the query `sql`.
+/// Applies the default limit of `max_rows` rows to the query `sql`, read in
+/// the lexical settings of the session.
 pub fn apply_default_limit(
     sql: &str,
-    dialect: Dialect,
+    dialect: impl Into<SessionDialect>,
     max_rows: u64,
 ) -> Result<LimitedQuery, LimitError> {
-    let parser_dialect = dialect.parser_dialect();
+    let session: SessionDialect = dialect.into();
+    let dialect = session.dialect;
+    let parser_dialect = session.parser_dialect();
     let unchanged = |outcome| LimitedQuery {
         sql: sql.to_string(),
         outcome,
     };
 
-    let Ok(statements) = parse_statements(sql, dialect) else {
+    let Ok(statements) = parse_statements(sql, session) else {
         return Ok(unchanged(LimitOutcome::Unparsed));
     };
     let query = match statements.as_slice() {
@@ -117,8 +120,8 @@ pub fn apply_default_limit(
 /// `LIMIT m, n`, `FETCH FIRST n ROWS`), when it is a literal number; `None`
 /// without a written limit, for a computed limit or a percentage. The
 /// interface uses it for the progress bar.
-pub fn written_limit(sql: &str, dialect: Dialect) -> Option<u64> {
-    let statements = Parser::parse_sql(dialect.parser_dialect().as_ref(), sql).ok()?;
+pub fn written_limit(sql: &str, dialect: impl Into<SessionDialect>) -> Option<u64> {
+    let statements = Parser::parse_sql(dialect.into().parser_dialect().as_ref(), sql).ok()?;
     let [Statement::Query(query)] = statements.as_slice() else {
         return None;
     };
@@ -210,6 +213,7 @@ fn lock_clause_start(tokens: &[TokenWithSpan]) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Dialect;
 
     /// Applies a limit of 1,000 rows in the MySQL dialect.
     fn limit(sql: &str) -> LimitedQuery {

@@ -61,7 +61,6 @@ use sqlparser::ast::{
 };
 use ts_rs::TS;
 
-use crate::Dialect;
 use crate::limit::returns_rows;
 use crate::mysql_statements::MySqlStatement;
 use crate::parse::{Parsed, parse_statements};
@@ -69,6 +68,7 @@ use crate::sqlite_files::attached_file;
 use crate::sqlite_pragmas::{self, PragmaRole};
 use crate::sqlite_statements::{PragmaForm, SqliteStatement};
 use crate::temporary::{TableName, table_name};
+use crate::{Dialect, SessionDialect};
 
 /// Nature of a query.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -226,10 +226,10 @@ impl WriteKind {
     }
 }
 
-/// Classifies the text `sql`, without a known temporary table. If it
-/// contains several queries, it needs the kinds of all its writes; a single
-/// forbidden write forbids it.
-pub fn classify(sql: &str, dialect: Dialect) -> StatementKind {
+/// Classifies the text `sql`, read in the lexical settings of the session,
+/// without a known temporary table. If it contains several queries, it needs
+/// the kinds of all its writes; a single forbidden write forbids it.
+pub fn classify(sql: &str, dialect: impl Into<SessionDialect>) -> StatementKind {
     classify_with(sql, dialect, &|_| false)
 }
 
@@ -237,12 +237,14 @@ pub fn classify(sql: &str, dialect: Dialect) -> StatementKind {
 /// table named in it is a temporary table of the connection.
 pub fn classify_with(
     sql: &str,
-    dialect: Dialect,
+    dialect: impl Into<SessionDialect>,
     temporary: &dyn Fn(&TableName) -> bool,
 ) -> StatementKind {
-    let Ok(statements) = parse_statements(sql, dialect) else {
+    let session: SessionDialect = dialect.into();
+    let Ok(statements) = parse_statements(sql, session) else {
         return StatementKind::Unparsed;
     };
+    let dialect = session.dialect;
     // A table of the temporary schema (`temp.t`) is a temporary table.
     let temporary = |table: &TableName| in_temporary_schema(table, dialect) || temporary(table);
     let mut kinds = BTreeSet::new();
@@ -638,7 +640,7 @@ fn mysql_write_kind(
 /// Does the text `sql` end a transaction with `COMMIT` or `ROLLBACK` (not
 /// to a savepoint)? The server may close the connection then (`RELEASE`,
 /// `completion_type = 2`).
-pub fn ends_transaction(sql: &str, dialect: Dialect) -> bool {
+pub fn ends_transaction(sql: &str, dialect: impl Into<SessionDialect>) -> bool {
     parse_statements(sql, dialect).is_ok_and(|statements| {
         statements.iter().any(|statement| {
             matches!(
@@ -658,7 +660,7 @@ pub fn ends_transaction(sql: &str, dialect: Dialect) -> bool {
 /// Can the text `sql` change the current database of the session? `USE`,
 /// `DROP DATABASE` / `DROP SCHEMA` (the current database may disappear), and
 /// a text Prisme cannot parse, whose effect is unknown.
-pub fn changes_database(sql: &str, dialect: Dialect) -> bool {
+pub fn changes_database(sql: &str, dialect: impl Into<SessionDialect>) -> bool {
     let Ok(statements) = parse_statements(sql, dialect) else {
         return true;
     };
@@ -856,6 +858,36 @@ mod tests {
         ] {
             assert_eq!(kind(sql), StatementKind::Read, "query: {sql}");
         }
+    }
+
+    #[test]
+    fn reads_double_quotes_as_names_under_ansi_quotes() {
+        use crate::DialectOptions;
+        let ansi = SessionDialect {
+            dialect: Dialect::MySql,
+            options: DialectOptions {
+                ansi_quotes: true,
+                no_backslash_escapes: false,
+            },
+        };
+        for (sql, write) in [
+            (
+                r#"CREATE TABLE t ("col" VARCHAR(10))"#,
+                WriteKind::CreateTable,
+            ),
+            (
+                r#"CREATE TEMPORARY TABLE t ("col" VARCHAR(10))"#,
+                WriteKind::CreateTemporaryTable,
+            ),
+        ] {
+            assert_eq!(kind(sql), StatementKind::Unparsed, "{sql}");
+            assert_eq!(
+                classify(sql, ansi),
+                StatementKind::Write(BTreeSet::from([write])),
+                "{sql}"
+            );
+        }
+        assert_eq!(classify(r#"SELECT "a" FROM t"#, ansi), StatementKind::Read);
     }
 
     #[test]

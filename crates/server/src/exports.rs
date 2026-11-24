@@ -54,7 +54,7 @@ use axum::routing::{delete, get, post};
 use futures_util::{Stream, stream};
 use prisme_connectors::api::{Canceller, Namespace, OpenOptions};
 use prisme_connectors::drivers;
-use prisme_dialects::Dialect;
+use prisme_dialects::SessionDialect;
 use prisme_dialects::classify::{StatementKind, classify};
 use prisme_dialects::limit::apply_default_limit;
 use serde::{Deserialize, Serialize};
@@ -64,7 +64,7 @@ use tokio_util::io::ReaderStream;
 use tracing::Instrument;
 use ts_rs::TS;
 
-use crate::analyze::dialect_of;
+use crate::analyze::session_dialect;
 use crate::api::AppState;
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
@@ -433,7 +433,7 @@ fn name_refusal(name: &str) -> Option<ErrorDetail> {
 
 /// Refusal of the query of an export: a single query, which Prisme can
 /// parse and which is a read.
-fn query_refusal(sql: &str, dialect: Dialect) -> Option<ErrorDetail> {
+fn query_refusal(sql: &str, dialect: SessionDialect) -> Option<ErrorDetail> {
     match classify(sql, dialect) {
         StatementKind::Read => {}
         StatementKind::Unparsed => return Some(ErrorDetail::UnparsedQueryRefused),
@@ -502,7 +502,7 @@ async fn start_export(
     let opening = drivers::of(target.engine).open(&target, options);
     let connection = opening.instrument(span.clone()).await?;
     let server = connection.info().clone();
-    if let Some(refusal) = query_refusal(&request.sql, dialect_of(server.flavor)) {
+    if let Some(refusal) = query_refusal(&request.sql, session_dialect(&server)) {
         connection.close().await;
         return Err(ApiError::BadRequest(refusal));
     }

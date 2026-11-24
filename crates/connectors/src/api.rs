@@ -22,6 +22,7 @@
 use std::sync::Arc;
 
 use futures_util::future::BoxFuture;
+pub use prisme_dialects::DialectOptions;
 use prisme_dialects::classify::WriteKind;
 use prisme_dialects::verb::StatementVerb;
 use secrecy::SecretString;
@@ -335,20 +336,6 @@ pub enum DatabaseStatus {
         /// Why it could not be opened.
         failure: ConnectFailure,
     },
-}
-
-/// Lexical settings of a session that change how its text reads, read on the
-/// source when the session opens (MySQL's modes), or fixed by its engine
-/// (SQLite: double quotes for the names, no backslash escapes).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct DialectOptions {
-    /// Do double quotes delimit identifiers, no longer strings (MySQL's
-    /// `ANSI_QUOTES` mode, directly or through `ANSI`; always for SQLite)?
-    pub ansi_quotes: bool,
-    /// Is the backslash an ordinary character in strings, no longer an
-    /// escape (MySQL's `NO_BACKSLASH_ESCAPES` mode; always for SQLite)?
-    pub no_backslash_escapes: bool,
 }
 
 /// Errors of the connectors.

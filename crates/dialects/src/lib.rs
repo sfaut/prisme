@@ -35,6 +35,8 @@ mod whitespace;
 mod words;
 
 use prisme_splitter::LexicalRules;
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// SQL dialect of a query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,4 +163,75 @@ impl Dialect {
     fn index(self) -> usize {
         self as usize
     }
+
+    /// Lexical settings of a session that changed none of them: those of
+    /// MySQL and MariaDB without their modes, those of SQLite, which has no
+    /// others.
+    pub fn default_options(self) -> DialectOptions {
+        let fixed = self == Self::Sqlite;
+        DialectOptions {
+            ansi_quotes: fixed,
+            no_backslash_escapes: fixed,
+        }
+    }
 }
+
+/// Lexical settings of a session that change how its text reads, read on the
+/// source when the session opens (MySQL's modes), or fixed by its engine
+/// (SQLite: double quotes for the names, no backslash escapes).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct DialectOptions {
+    /// Do double quotes delimit identifiers, no longer strings (MySQL's
+    /// `ANSI_QUOTES` mode, directly or through `ANSI`; always for SQLite)?
+    pub ansi_quotes: bool,
+    /// Is the backslash an ordinary character in strings, no longer an
+    /// escape (MySQL's `NO_BACKSLASH_ESCAPES` mode; always for SQLite)?
+    pub no_backslash_escapes: bool,
+}
+
+/// Dialect of a session: its dialect, read with the lexical settings of the
+/// session. A `Dialect` alone gives its default settings
+/// (`Dialect::default_options`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionDialect {
+    /// Dialect of the session.
+    pub dialect: Dialect,
+    /// Lexical settings of the session.
+    pub options: DialectOptions,
+}
+
+impl SessionDialect {
+    /// Lexical rules of the texts of the session: those of its dialect, with
+    /// double quotes for the names under `ANSI_QUOTES`.
+    pub fn lexical_rules(self) -> LexicalRules {
+        let mut rules = *self.dialect.lexical_rules();
+        if self.options.ansi_quotes && rules.double_quoted_strings {
+            rules.double_quoted_strings = false;
+            rules.identifier_quotes = ANSI_IDENTIFIER_QUOTES;
+        }
+        rules
+    }
+
+    /// `sqlparser` dialect used to parse a query of the session.
+    fn parser_dialect(self) -> Box<dyn sqlparser::dialect::Dialect> {
+        match self.dialect {
+            Dialect::MySql | Dialect::MariaDb => Box::new(mysql_parser::MySqlParserDialect::new(
+                self.options.ansi_quotes,
+            )),
+            Dialect::Sqlite => self.dialect.parser_dialect(),
+        }
+    }
+}
+
+impl From<Dialect> for SessionDialect {
+    fn from(dialect: Dialect) -> Self {
+        Self {
+            dialect,
+            options: dialect.default_options(),
+        }
+    }
+}
+
+/// Characters that quote a name in MySQL and MariaDB under `ANSI_QUOTES`.
+const ANSI_IDENTIFIER_QUOTES: &str = "\"`";

@@ -9,9 +9,10 @@
 //! units, like the editor's.
 
 use crate::error_detail::ErrorDetail;
+use prisme_connectors::api::SourceInfo;
 use prisme_connectors::flavor::Flavor;
-use prisme_dialects::Dialect;
 use prisme_dialects::syntax::syntax_error;
+use prisme_dialects::{Dialect, DialectOptions, SessionDialect};
 use prisme_splitter::{Statement, split, text_end};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -24,6 +25,10 @@ pub struct AnalyzeRequest {
     pub sql: String,
     /// Flavor of the session's server, which sets the dialect of the analysis.
     pub flavor: Flavor,
+    /// Lexical settings of the session (`ANSI_QUOTES`), read on the source
+    /// when it opened.
+    #[serde(flatten)]
+    pub dialect_options: DialectOptions,
 }
 
 /// Result of the analysis.
@@ -84,10 +89,22 @@ pub fn dialect_of(flavor: Flavor) -> Dialect {
     }
 }
 
+/// Dialect of the texts of a session: that of its flavor, with the lexical
+/// settings read on the source when it opened (`ANSI_QUOTES`).
+pub fn session_dialect(info: &SourceInfo) -> SessionDialect {
+    SessionDialect {
+        dialect: dialect_of(info.flavor),
+        options: info.dialect_options,
+    }
+}
+
 /// Analyses the editor's text.
 pub fn analyze(request: &AnalyzeRequest) -> Analysis {
-    let dialect = dialect_of(request.flavor);
-    let rules = dialect.lexical_rules();
+    let dialect = SessionDialect {
+        dialect: dialect_of(request.flavor),
+        options: request.dialect_options,
+    };
+    let rules = &dialect.lexical_rules();
     let statements = split(&request.sql, rules);
     Analysis {
         errors: statements
@@ -116,7 +133,7 @@ pub fn analyze(request: &AnalyzeRequest) -> Analysis {
 /// The underlined passage is the word that starts at the error's position;
 /// without a known position (unexpected end of query), the last character of
 /// the query.
-fn issue(statement: &Statement, dialect: Dialect) -> Option<SyntaxIssue> {
+fn issue(statement: &Statement, dialect: SessionDialect) -> Option<SyntaxIssue> {
     let error = syntax_error(&statement.sql, dialect)?;
     let (start, end) = locate(&statement.sql, error.line, error.column)
         .unwrap_or_else(|| last_character(&statement.sql));
@@ -171,6 +188,7 @@ mod tests {
         let request = AnalyzeRequest {
             sql: "SELECT 1;\n-- é\nSELECT 2".to_string(),
             flavor: Flavor::MariaDb,
+            dialect_options: DialectOptions::default(),
         };
         assert_eq!(
             analyze(&request).statements,
@@ -186,6 +204,7 @@ mod tests {
         let request = AnalyzeRequest {
             sql: "SELECT 1;\nSELECT 2 # note".to_string(),
             flavor: Flavor::MySql,
+            dialect_options: DialectOptions::default(),
         };
         assert_eq!(
             analyze(&request).text_end,
@@ -202,6 +221,7 @@ mod tests {
         let request = AnalyzeRequest {
             sql: "SELECT 'é';\nSELECT '😀'\nFROM t WHERE a = = 1;".to_string(),
             flavor: Flavor::MySql,
+            dialect_options: DialectOptions::default(),
         };
         let errors = analyze(&request).errors;
         assert_eq!(errors.len(), 1);
@@ -216,10 +236,23 @@ mod tests {
     }
 
     #[test]
+    fn reads_double_quotes_as_names_under_ansi_quotes() {
+        let mut request = AnalyzeRequest {
+            sql: r#"CREATE TEMPORARY TABLE t ("col" VARCHAR(10))"#.to_string(),
+            flavor: Flavor::MySql,
+            dialect_options: DialectOptions::default(),
+        };
+        assert_eq!(analyze(&request).errors.len(), 1);
+        request.dialect_options.ansi_quotes = true;
+        assert_eq!(analyze(&request).errors, vec![]);
+    }
+
+    #[test]
     fn underlines_the_last_character_of_an_unfinished_statement() {
         let request = AnalyzeRequest {
             sql: "SELECT * FROM t WHERE".to_string(),
             flavor: Flavor::MySql,
+            dialect_options: DialectOptions::default(),
         };
         let errors = analyze(&request).errors;
         assert_eq!((errors[0].start, errors[0].end), (20, 21));

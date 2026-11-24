@@ -11,7 +11,7 @@
 
 use sqlparser::parser::ParserError;
 
-use crate::Dialect;
+use crate::SessionDialect;
 use crate::parse::parse_statements;
 
 /// Syntax error of a query.
@@ -30,7 +30,7 @@ pub struct SyntaxError {
 const LOCATION_MARK: &str = " at Line: ";
 
 /// Parses a single query and returns its syntax error, `None` if it is understood.
-pub fn syntax_error(sql: &str, dialect: Dialect) -> Option<SyntaxError> {
+pub fn syntax_error(sql: &str, dialect: impl Into<SessionDialect>) -> Option<SyntaxError> {
     let error = parse_statements(sql, dialect).err()?;
     let text = match error {
         ParserError::ParserError(text) | ParserError::TokenizerError(text) => text,
@@ -64,6 +64,7 @@ fn with_location(text: &str) -> SyntaxError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Dialect;
 
     #[test]
     fn locates_the_error() {
