@@ -2,6 +2,57 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.15.0 (2026-11-24)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.15.0. Prisme now queries SQLite: a connection gathers a main database and up to ten attached databases, read from a file, from a web address or kept in memory, with the protocol of each in sight. Connections move to a manager window of their own, the preferences to a single window, and every adjustment of the display is kept in Prisme's database, from the panels to the scroll of a result grid. A write tells what each of its rows became, numbers always show in plain decimal, and a closed session reopens by itself when a query runs.
+
+### ✨ New features
+
+- SQLite sources: **Nouveau › Connexion › SQLite** (New › Connection › SQLite) creates a connection of a **Base principale** (Main database) and of **Bases attachées** (Attached databases), each one an existing file, a new file created on saving, or a database in memory, empty at each session. A location is an absolute path, with `\` or `/`, a `file:///` URL, or the address of a file on a web server (`https://`, `http://`, without an account), which Prisme copies into its data folder, reads read-only and downloads again only when the server says it changed. Other protocols (`s3`, `ftp`...) are refused with a message that names them. The **Bases distantes** (Remote databases) section of the preferences sets the timeouts, the largest size and how long an unused copy is kept.
+- SQLite: the **Vérification** (Check) step tests each database (size, journal, read-only; to create; in memory; missing or not a database, with **Le créer** (Create it) and **Retirer** (Remove)); a database that does not open does not prevent saving, and the editor says so in a banner. A database removed from a saved connection is struck through, with **Rétablir** (Restore), until the connection is saved; its file stays on the disk.
+- SQLite in the navigator: the schemas of a source (`main`, the attached databases, `temp`), each with its protocol (`file`, `https`, `memdb`...). The **⋮** menu of the source attaches a database **Pour cette session** (For this session) or **Dans la connexion** (In the connection), without closing the session; that of an attached database detaches it for the session or removes it from the connection; that of a database in memory saves it into a new file.
+- SQLite queries: the queries of an editor run in parallel and share its databases in memory and its attachments, as do the navigator and the exports. The editor follows the dialect of SQLite (comments, quotes, keywords), the default limit and `LIMIT -1`, transactions with the **Transaction ouverte** (Transaction open) badge, and cancellation. Errors name their SQLite code (**SQLITE_CONSTRAINT_UNIQUE, code 2067**). The CTE and the `IN` clause copied from a result, and the operations on an index of the navigator, are written for SQLite.
+- Writes in SQLite: the switches of the preferences apply to SQLite, and the tooltip of each switch names the engines it concerns. Two switches join them, **ATTACH** (`ATTACH` and `DETACH`, allowed even in read-only sessions, the database attached being read-only too) and **VACUUM** (`VACUUM`, `REINDEX`, `ANALYZE` and the pragmas that write in the file). A read-only session opens its databases read-only; the pragmas that only read run freely, and the SQL run at connection accepts the settings of the connection that its field lists.
+- Writes: the result tab of a statement without rows says what it did (**3 lignes insérées** (3 rows inserted), **2 lignes modifiées sur 3 trouvées** (2 rows changed out of 3 found), **1 ligne insérée, 1 modifiée, 1 inchangée** (1 row inserted, 1 changed, 1 unchanged), **Table vidée** (Table emptied)), with the id of the first row inserted and the warnings of MySQL and MariaDB, read at once and listed under the summary.
+- Connections manager: a window lists the connections on the left, grouped by kind of source, with a filter, and shows on the right the card and the settings of one of them, with its test, its copy (saved password included) and its deletion; the date of the last successful connection is kept. A new connection goes in three steps, and can be saved after a failed test. **Nouveau** (New) gets a menu that creates an editor or a connection.
+- Preferences: a single window, its sections listed on its left (profile, language, queries, SQL editor, Pivoteur, console, remote databases), each setting with its description in sight. The account menu opens on the user, then offers **Profil** (Profile) and **Préférences** (Preferences).
+- Saved display: the panels of each editor and their sizes, its navigator (open nodes, scroll), the position in its SQL text, the result tab shown, the columns, sort, filter and scroll of each result grid, the theme and the console settings are kept in Prisme's database, and come back after a reload, a reopened editor or another browser. A button of the activity bar (Ctrl-K then 0) brings the display of an editor back to its defaults.
+- Navigator: the connections are the roots of the tree, each with the icon of its kind of source, spinning while its catalog arrives. Each table shows the row count estimated by the server (1,3 k, 4,5 M), and the tables of a database sort by name or by row count.
+- Pivoteur: the eye of an element of the rows, the columns, the measures or the filters hides it for a while, its settings kept ([#39](https://github.com/sfaut/prisme/issues/39)). The settings of a measure and of a filter move into its menu, with their current value and submenus of fields; the tab joins the usual separators of a `GROUP_CONCAT`.
+- Sessions: running a query on a closed session opens a new one, then runs it, and a session reopens on the last current database of its editor ([#41](https://github.com/sfaut/prisme/issues/41)).
+- Saved results: on opening, the result tabs show at once, the one in front read first, and their rows arrive in the background, the editor usable meanwhile.
+- Tooltips: a title starting with a verb, the keyboard shortcut on its own line, then a subtle description; those that repeated the top bar are gone.
+
+### 🗑️ Removed features
+
+- The **Sources de données** (Data sources) and **Notebooks** roots of the navigator, its title menu and its add button: connections are added from **Nouveau** (New) or the account menu, in the connections manager.
+
+### 🐞 Bug fixes
+
+- Editor: `SHOW [EXTENDED] [FULL] {COLUMNS | FIELDS}` has every keyword colored; MariaDB, which refuses `EXTENDED`, gets `FULL` and `FIELDS` only ([#40](https://github.com/sfaut/prisme/issues/40)).
+- Numbers: MySQL and MariaDB sent some `DOUBLE`s in scientific notation (`1e20`); every number now shows in plain decimal, whatever the engine.
+- The top bar showed **Synchronisé** (Synchronised) while a change of the display was still waiting for its save.
+- A menu removed while open, as **Retirer** (Remove) of a Pivoteur element does, left the next element's menu opening by itself.
+- The focus ring of a field at the edge of a panel was clipped, and the text of the small fields touched it.
+
+### ⚙️ Internal improvements
+
+- Engine contracts: the server only knows the traits of a connector (driver, session, rows, catalog, cancellation) and its capabilities, given by a registry; MySQL and SQLite implement them, checked by a contract suite run on every engine. The locations of the databases held in files are read by a provider per protocol (`file`, `http`, `https`, `memory`), and the splitter and the editor read the lexical rules of each dialect.
+- Internal database: migrations 0029 to 0042. The connections are stored by family of settings (`connection_servers`, `connection_files`, `connection_probes`), with reference tables of the engines, flavors, protocols and kinds of write; the outcome of a write, the warnings read, the display of the editors, of the users and of the result grids, and the last database of an editor are saved.
+- API: `GET /api/engines` (engines, flavors and capabilities), `GET /api/dialects/{flavor}/syntax`, `POST /api/connections/{id}/copies`; connection settings tagged by their family (`server`, `files`).
+- Interface: three radius roles in the theme (tab, control, overlay), checked by a test; the flavor and protocol pills share their dimensions and font.
+- Dependencies:
+  - added: `reqwest` 0.13.5 (web files, TLS by `rustls`), `url` 2.5.8, `httpdate` 1.0.3 and `sha2` 0.11.1, for the databases read from a web server;
+  - `@lucide/vue` 1.77.0 → 1.79.0, `eslint-plugin-oxlint` 1.94.0 → 1.95.0, `npm-run-all2` 9.0.4 → 9.1.0, `oxlint` 1.94.0 → 1.95.0, `rusqlite` 0.41.1 → 0.43.0 (SQLite 3.54.1), `rusqlite_migration` 2.7.0 → 2.9.0;
+  - `typescript` stays at 6.0: TypeScript 7.0.2 is still not supported by `vue-tsc` and `typescript-eslint`.
+
+### 📝 Documentation
+
+- README: SQLite databases, writes and transactions in SQLite, the cache of the remote databases.
+- Developer guide: the SQLite engine, the connections in the internal database, adding an engine and adding a protocol, the saved display; the behaviours of SQLite measured in `docs/SQL-COMPARISON.md`.
+
 ## v0.14.1 (2026-11-20)
 
 ### 🚀 Launch

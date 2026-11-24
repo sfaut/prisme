@@ -1835,7 +1835,7 @@ dependencies = [
 
 [[package]]
 name = "prisme-connectors"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "axum",
  "futures-util",
@@ -1859,7 +1859,7 @@ dependencies = [
 
 [[package]]
 name = "prisme-dialects"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "prisme-splitter",
  "rusqlite",
@@ -1872,14 +1872,14 @@ dependencies = [
 
 [[package]]
 name = "prisme-pivot"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "prisme-store",
 ]
 
 [[package]]
 name = "prisme-server"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -1911,7 +1911,7 @@ dependencies = [
 
 [[package]]
 name = "prisme-splitter"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "serde",
  "ts-rs",
@@ -1919,14 +1919,14 @@ dependencies = [
 
 [[package]]
 name = "prisme-store"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "hashbrown 0.17.2",
 ]
 
 [[package]]
 name = "prisme-web-engine"
-version = "0.14.1"
+version = "0.15.0"
 dependencies = [
  "prisme-pivot",
  "prisme-store",
