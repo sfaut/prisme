@@ -746,6 +746,24 @@ The attachments of the navigator and of the settings go through that URI already
 | A badge on the main database alone, without a refusal | Dropped | It warns the user beforehand, but does not prevent the empty database. Kept alongside the refusal. |
 | Refuse the path alone, the message giving the URI for the system, and a badge `memdb` / `memory` in the navigator | **Kept** | The user writes what runs, the refusal explains the cause and the fix, the badge shows the file system beforehand. |
 
+## Connections in the internal database
+
+A connection is split by family of settings (migration `0037_connections_by_family.sql`): what every engine shares in `connections`, the settings of its family in a table of their own, keyed by the connection. The engines, their flavors and the protocols of the locations are reference tables, which a new engine, flavor or protocol joins by an `INSERT` of its migration, without rebuilding `connections`.
+
+| Table | Content |
+|---|---|
+| `setting_families` | Families of settings: `server`, `files`. Each one names the table of the settings of its connections. |
+| `engines` | Engines of the sources, one row per connector (`Engine`): `mysql`, `sqlite`, each with its family. |
+| `flavors` | Flavors an engine detects on connection (`Flavor`): `mysql` and `mariadb` of the engine `mysql`, `sqlite`. |
+| `schemes` | Protocols of the locations Prisme serves (`Scheme`): `file`, `http`, `https`, `memory`. |
+| `connections` | Name, engine, SQL run at connection (`init_sql`), session kept (`session_timeout_minutes`), system namespaces shown (`show_system_schemas`), date of creation. |
+| `connection_servers` | Family `server` (MySQL, MariaDB): host, port, account, password encrypted (AES-256-GCM, `password_secret`), database. Only the password is encrypted, so that the connections are listed without decrypting anything. |
+| `connection_files` | Family `files` (SQLite): one row per database, `main` at position 0, then the databases attached, in their order of attachment; schema (unique in the connection whatever its case, `temp` refused), protocol, location (empty for `memory`). |
+| `connection_probes` | Last successful connection of each connection: flavor, version, date. A connection never connected has no row. |
+| `write_kinds` | Kinds of write that a switch allows (`WriteKind`), `attach` and `maintenance` of SQLite included (migration `0040_write_kinds_sqlite.sql`); `user_allowed_writes` holds those a user allows. |
+
+The API sends the settings tagged by their family (`"family": "server"`, `"family": "files"`, see "Testing the API by hand"); `crates/server/src/connections.rs` reads and writes them, and repeats the lengths of the `CHECK`s in its validation.
+
 ## Testing the API by hand
 
 Start Prisme on a throwaway data folder, to delete to start from scratch:
