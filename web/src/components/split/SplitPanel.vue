@@ -6,9 +6,13 @@
   panel that fills (`fill`) takes the room left by the others. A panel
   without a default size, nor a size kept, shares that room with it in equal
   parts: the line that next moves it, or the panel beside, keeps its size
-  first (`isShared`). Each one keeps its smallest size; a window too small
-  shrinks the panel that fills first, then the others, which find their size
-  again once it grows.
+  first (`isShared`). The browser shares the room alone: a panel has no
+  smallest size for it, so that the panels always fit in their group, and a
+  window too small shrinks the panel that fills first, then the others, which
+  find their size again once it grows. The smallest size (`minSize`) is only
+  the threshold of a drag: below it, the line folds the panel, or stops.
+  A content that does not fit in its panel scrolls in it: nothing is
+  clipped, nor goes over the panels beside.
   A change of size that does not come from a drag animates quickly (folding,
   unfolding, the panel that fills taking or giving the room, a key on a
   line), with Tailwind's default duration and curve: the three parts of
@@ -36,7 +40,8 @@ const props = defineProps<{
    */
   defaultSize?: string
   /**
-   * Smallest size, open.
+   * Smallest size a drag gives the panel open: below it, the line folds the
+   * panel, or stops. The browser does not hold to it.
    */
   minSize?: string
   /**
@@ -65,15 +70,16 @@ const element = useTemplateRef<HTMLElement>('element')
 const shown = ref<number | null>(null)
 
 /**
- * Size of the panel along the group, with its smallest size.
+ * Size of the panel along the group. Without a smallest size (`0`): its
+ * content never keeps it from shrinking (`docs/DEVELOPER.md`, section
+ * "Splitters").
  */
 const style = computed(() => {
   const vertical = group.direction() === 'vertical'
-  const minProperty = vertical ? 'minBlockSize' : 'minInlineSize'
+  const min = { [vertical ? 'minBlockSize' : 'minInlineSize']: '0' }
   if (folded.value && props.foldedSize !== undefined) {
-    return { flex: `0 0 ${props.foldedSize}`, [minProperty]: '0' }
+    return { flex: `0 0 ${props.foldedSize}`, ...min }
   }
-  const min = { [minProperty]: props.minSize ?? '0' }
   if (props.fill) {
     return { flex: '1 1 0', ...min }
   }
@@ -121,12 +127,7 @@ onBeforeUnmount(() => group.unregister(entry))
 
 <style scoped>
 .split-panel {
-  /* Clipped without being a scroll container, and with room for the
-     focus ring of a field at its edge (the width of the ring, which
-     goes beyond its field by less: Chromium ignores a margin given
-     by a `calc()` holding a product). */
-  overflow: clip;
-  overflow-clip-margin: var(--focus-width);
+  overflow: auto;
   transition-property: flex-grow, flex-shrink, flex-basis;
   transition-duration: var(--default-transition-duration);
   transition-timing-function: var(--default-transition-timing-function);
