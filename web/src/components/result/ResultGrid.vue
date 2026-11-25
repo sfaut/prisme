@@ -1041,7 +1041,6 @@ defineExpose({ keptCount, selectedSize, selectedFull, exportFrame, order })
 .grid-scroller {
   position: relative;
   flex: 1;
-  min-block-size: --spacing(40);
   /* Safeguard: a scroll area taller than the window would draw all the rows
      and freeze the interface. */
   max-block-size: 100vh;

@@ -8,8 +8,9 @@
   console of the editor (`ConsolePanel`). The columns share the width, and
   the columns and the console the height, in splitters of Prisme
   (`split/`): dragging the line between two panels moves it, to the pixel,
-  within their bounds (the editors keep `--editors-min-width` and
-  `--editors-min-height`, where the line stops), and the panels, open or
+  within their bounds (a drag stops where the editors would go below
+  `--editors-min-width` or `--editors-min-height`; the browser shares the
+  room of the window without them), and the panels, open or
   closed with their sizes, are part of the display of the editor, saved
   with it on the server side (`editorDisplays` store). On the left of each
   editor's tab, down to its bottom, its activity bar (`PanelActivityBar`)
@@ -488,12 +489,7 @@ function selectSource(editorId: number, connectionId: number): void {
 </script>
 
 <template>
-  <!--
-    Clipped at the edges of the window: the split groups let their content
-    go beyond them by the width of the focus ring (`overflow-clip-margin`),
-    which, at the edge of the window, would give the page a scrollbar.
-  -->
-  <div class="flex h-full flex-col overflow-clip">
+  <div class="flex h-full flex-col">
     <top-bar />
     <!--
       Each panel of the splitters has an id of its own: the line that
