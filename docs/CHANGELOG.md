@@ -2,6 +2,30 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.15.1 (2026-11-25)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.15.1. The object navigator shows the comments of the objects, on demand, and the row counts of SQLite tables, which a connection can keep up to date at the opening of each session. The editor understands the `ANSI_QUOTES` and `NO_BACKSLASH_ESCAPES` modes and the table options of `ALTER TABLE`, and the layout fits in the window at every zoom, without the scrollbar of v0.15.0.
+
+### ✨ New features
+
+- Navigator: **Afficher les commentaires** (Show the comments), a button of its title, shows the comment of each database, table, view, column, index, routine, event and trigger after its line. Hidden by default, the choice is kept with the display of the editor. MySQL and MariaDB give their `COMMENT`s; SQLite, which has none, reads the `--` and `/* */` comments of the `CREATE` statements, where the README says to place them ([#46](https://github.com/sfaut/prisme/issues/46)).
+- Navigator: each SQLite table shows its row count, as measured by its last `ANALYZE` ([#43](https://github.com/sfaut/prisme/issues/43)).
+- SQLite connections: **Mettre à jour les statistiques** (Refresh the statistics), off by default, runs `PRAGMA optimize` on the files of the connection each time a session opens. The tables that need it are analyzed, which helps SQLite choose its indexes and keeps their row counts up to date. Only the statistics are written, even in read-only sessions; databases in memory and copies of remote databases are left out ([#43](https://github.com/sfaut/prisme/issues/43)).
+- Editor: `COMMENT` is colored as a keyword in MySQL and MariaDB, and **Enjoliver** (Beautify) puts it in capitals ([#45](https://github.com/sfaut/prisme/issues/45)).
+
+### 🐞 Bug fixes
+
+- Editor: under the `ANSI_QUOTES` mode, `CREATE TABLE t ("col" INT)` was refused as a query Prisme cannot parse. Under `NO_BACKSLASH_ESCAPES`, `'C:\'` is now a whole string for the splitting, the default limit and the write switches too, as it already was for the highlighting ([#44](https://github.com/sfaut/prisme/issues/44)).
+- Editor: `ALTER TABLE t COMMENT = '...'` and the other table options (`ENGINE`, `CHARACTER SET`, `ROW_FORMAT`...) were refused as queries Prisme cannot parse. Each engine has its own list, measured on MySQL and MariaDB ([#45](https://github.com/sfaut/prisme/issues/45)).
+- **Enjoliver** (Beautify): in a statement it reads word by word, a keyword that is also the name of a table or a column keeps the case it was typed in ([#45](https://github.com/sfaut/prisme/issues/45)).
+- Layout: a vertical scrollbar appeared from a 150% zoom, and a horizontal one with the data explorer open. The panels now always fit in the window, at every zoom, and nothing is clipped any more: a panel too small for its content scrolls it ([#42](https://github.com/sfaut/prisme/issues/42)).
+
+### ⚙️ Internal improvements
+
+- Dependencies: `anyhow` 1.0.104 → 1.0.105, `clap` 4.6.9 → 4.6.10, `rust-embed` 8.13.0 → 8.14.0, `hashbrown` 0.17.1 → 0.17.2, `url` 2.5.8 → 2.5.9, `@lucide/vue` 1.79.0 → 1.80.0, `@types/node` 24.19.2 → 24.19.3; the parser benchmark goes from `sqlparser` 0.63.0 to 0.64.0, the version Prisme pins.
+
 ## v0.15.0 (2026-11-24)
 
 ### 🚀 Launch
