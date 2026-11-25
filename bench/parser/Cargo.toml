@@ -15,7 +15,7 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-sqlparser = { version = "=0.63.0", features = ["visitor"] }
+sqlparser = { version = "=0.64.0", features = ["visitor"] }
 
 # Workspace of its own: the package is outside the members of the workspace of
 # Prisme.

@@ -1028,7 +1028,7 @@ Before each release, the dependencies go to their latest version, major versions
 
 | Dependency | Version kept | Version tried | Cause | Date |
 |---|---|---|---|---|
-| `typescript` | 6.0 | 7.0.2 | TypeScript 7, rewritten in Go, no longer provides the JavaScript API of the compiler. `vue-tsc` 3.3.11 crashes on start (`ERR_PACKAGE_PATH_NOT_EXPORTED: ./lib/tsc`), its support comes with Vue Language Tools v4 ([language-tools #5381](https://github.com/vuejs/language-tools/issues/5381)). `typescript-eslint` requires TypeScript `>=4.8.4 <6.1.0` ([typescript-eslint #12518](https://github.com/typescript-eslint/typescript-eslint/issues/12518)). Both expect TypeScript 7.1. 7.0.2, still the latest version on 2026-11-24, not tried again. | 2026-10-20 |
+| `typescript` | 6.0 | 7.0.2 | TypeScript 7, rewritten in Go, no longer provides the JavaScript API of the compiler. `vue-tsc` 3.3.11 crashes on start (`ERR_PACKAGE_PATH_NOT_EXPORTED: ./lib/tsc`), its support comes with Vue Language Tools v4 ([language-tools #5381](https://github.com/vuejs/language-tools/issues/5381)). `typescript-eslint` requires TypeScript `>=4.8.4 <6.1.0` ([typescript-eslint #12518](https://github.com/typescript-eslint/typescript-eslint/issues/12518)). Both expect TypeScript 7.1. 7.0.2, still the latest version on 2026-11-25, not tried again. | 2026-10-20 |
 
 The versions fixed on purpose, for another reason than a failed upgrade, are in "Pinned versions".
 

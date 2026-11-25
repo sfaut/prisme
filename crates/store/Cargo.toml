@@ -5,4 +5,4 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-hashbrown = { version = "0.17.1", default-features = false }
+hashbrown = { version = "0.17.2", default-features = false }

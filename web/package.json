@@ -27,7 +27,7 @@
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.15",
     "@lezer/highlight": "^1.2.5",
-    "@lucide/vue": "^1.79.0",
+    "@lucide/vue": "^1.80.0",
     "@tailwindcss/vite": "^4.3.5",
     "codemirror": "^6.0.2",
     "json-p3": "^3.0.3",
@@ -39,7 +39,7 @@
   "devDependencies": {
     "@tsconfig/node24": "^24.0.6",
     "@types/jsdom": "^30.0.0",
-    "@types/node": "^24.19.2",
+    "@types/node": "^24.19.3",
     "@vitejs/plugin-vue": "^6.0.11",
     "@vitest/eslint-plugin": "^1.6.28",
     "@vue/eslint-config-typescript": "^14.9.0",

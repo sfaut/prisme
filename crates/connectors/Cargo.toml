@@ -29,7 +29,7 @@ tokio = { version = "1.54.1", features = ["fs", "io-util", "sync", "time"] }
 tracing = "0.1.44"
 ts-rs = "12.0.1"
 # URLs of the locations typed (`file:///`, `https://`), read by location.rs.
-url = "2.5.8"
+url = "2.5.9"
 
 [features]
 # The development servers of compose.yaml (src/test_servers.rs), for the
